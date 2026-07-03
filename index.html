@@ -44,7 +44,7 @@
   input,select,textarea{font-family:inherit}
 
   /* ============ SHELL ============ */
-  .app{display:grid;grid-template-rows:auto 1fr;height:100vh;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
   header.topbar{
     display:flex;align-items:center;gap:16px;
     padding:10px 18px;background:var(--panel);
@@ -66,12 +66,23 @@
     padding:4px 10px;background:var(--panel-2);border-radius:var(--radius);border:1px solid var(--line)}
   .runclock b{color:var(--ink)}
 
-  /* ============ LAYOUT ============ */
-  .body{display:grid;grid-template-columns:230px 1fr 320px;overflow:hidden}
-  .col{overflow-y:auto;padding:14px}
-  .col.left{background:var(--panel);border-right:1px solid var(--line)}
-  .col.right{background:var(--panel);border-left:1px solid var(--line)}
-  .col.center{padding:14px 18px}
+  /* ============ TAB BAR ============ */
+  .tabbar{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);
+    padding:0 10px;overflow-x:auto;flex-shrink:0}
+  .tabbtn{padding:12px 18px;border:none;background:none;color:var(--ink-dim);font-size:14px;
+    font-weight:500;border-bottom:2.5px solid transparent;white-space:nowrap;transition:.12s}
+  .tabbtn:hover{color:var(--ink)}
+  .tabbtn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+
+  /* ============ LAYOUT (tabbed, no frozen panels) ============ */
+  .body{display:block;overflow-y:auto;min-height:0;flex:1}
+  .col{padding:16px 18px;max-width:1100px;margin:0 auto;display:none}
+  .col.active{display:block}
+  .col.left{background:transparent}
+  .col.right{background:transparent}
+  .col.center{padding:16px 18px}
+  /* live vitals + data can breathe wider */
+  .col.center{max-width:1400px}
 
   .col::-webkit-scrollbar{width:8px}
   .col::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
@@ -215,9 +226,9 @@
   .ocr-progress{height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin-top:6px}
   .ocr-progress span{display:block;height:100%;background:var(--trace-amber);width:0;transition:width .2s}
 
-  @media(max-width:1100px){
-    .body{grid-template-columns:1fr}
-    .col.left,.col.right{border:none;border-bottom:1px solid var(--line)}
+  @media(max-width:700px){
+    .tabbtn{padding:11px 13px;font-size:13px}
+    .col{padding:12px}
   }
 </style>
 </head>
@@ -226,7 +237,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Live Capture · v1.4</small>
+      Swine ICU <small>Live Capture · v1.6</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">—</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">📷 Upload photo</button>
@@ -237,9 +248,16 @@
     </div>
   </header>
 
+  <nav class="tabbar" id="tabbar">
+    <button class="tabbtn active" data-tab="live">Live</button>
+    <button class="tabbtn" data-tab="timeline">Timeline &amp; Labs</button>
+    <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
+    <button class="tabbtn" data-tab="settings">Photo / Settings</button>
+  </nav>
+
   <div class="body">
     <!-- ============ LEFT: PROTOCOL + SOURCE ============ -->
-    <aside class="col left">
+    <aside class="col left" data-panel="setup">
       <h2 class="sec">Protocol</h2>
       <div class="card" id="protoCard">
         <div class="drop" id="drop">
@@ -273,6 +291,10 @@
         <div class="hint">Bridge runs on your laptop, reads the Mindray monitor (vitals + ventilator via BeneLink) and streams here. Simulator needs no hardware.</div>
       </div>
 
+    </aside>
+
+    <!-- ============ SETTINGS: CAMERA + PHOTO EXTRACTION ============ -->
+    <aside class="col left" data-panel="settings">
       <h2 class="sec">Camera (backup)</h2>
       <div class="card">
         <button class="btn ghost" id="camBtn">Start monitor camera</button>
@@ -292,13 +314,18 @@
         <div class="field" id="apiKeyField" style="margin-bottom:8px">
           <label>Anthropic API key</label>
           <input id="apiKey" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+            <button class="btn sm primary" id="saveKeyBtn" style="width:auto">Save key</button>
+            <button class="btn sm ghost" id="clearKeyBtn" style="width:auto">Clear</button>
+            <span id="keyStatus" style="font-size:11px;color:var(--ink-faint)"></span>
+          </div>
         </div>
-        <div class="hint">Claude reads i-STAT screens, Mindray monitors, and handwritten forms accurately. Your key stays in this browser only (never uploaded or shared). Get a key at console.anthropic.com. Tesseract is free/offline but cannot read LCD screens.</div>
+        <div class="hint">Claude reads i-STAT screens, Mindray monitors, and handwritten forms accurately. Your key is saved in this browser only (never uploaded or shared) and stays across sessions until you clear it. Get a key at console.anthropic.com. Tesseract is free/offline but cannot read LCD screens.</div>
       </div>
     </aside>
 
     <!-- ============ CENTER: LIVE + TABLE ============ -->
-    <main class="col center">
+    <main class="col center" data-panel="live">
       <div id="liveArea">
         <h2 class="sec">Live — <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
         <div class="vitals" id="vitalsGrid">
@@ -322,7 +349,7 @@
     </main>
 
     <!-- ============ RIGHT: TIMELINE + CAPTURE + LABS ============ -->
-    <aside class="col right">
+    <aside class="col right" data-panel="timeline">
       <h2 class="sec">Timeline</h2>
       <div class="card" style="padding:8px 12px">
         <button class="btn cap" id="photoVitals">📷 Monitor photo → vitals</button>
@@ -1750,6 +1777,48 @@ $$('[data-close]').forEach(b=>b.addEventListener('click',()=>{b.closest('.modal-
 $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show');}));
 
 // boot with demo protocol so the UI is alive immediately
+
+/* ---------- API key & method persistence (survives refresh) ---------- */
+(function(){
+  var KEY='swineicu_apikey', METH='swineicu_ocrmethod';
+  function safeGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function safeSet(k,v){try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
+  function safeDel(k){try{localStorage.removeItem(k);}catch(e){}}
+  var savedKey=safeGet(KEY), savedMeth=safeGet(METH);
+  if(savedKey && $('#apiKey')){ $('#apiKey').value=savedKey; }
+  if(savedMeth && $('#ocrMethod')){ $('#ocrMethod').value=savedMeth;
+    $('#apiKeyField').style.display = savedMeth==='claude'?'block':'none'; }
+  var st=$('#keyStatus');
+  if(st && savedKey) st.textContent='✓ saved';
+  $('#saveKeyBtn') && $('#saveKeyBtn').addEventListener('click',function(){
+    var v=$('#apiKey').value.trim();
+    if(!v){ if(st){st.textContent='enter a key first';st.style.color='var(--alarm)';} return; }
+    var ok=safeSet(KEY,v);
+    if(st){ st.textContent= ok?'✓ saved — stays across sessions':'saved for this session only'; st.style.color= ok?'var(--trace)':'var(--trace-amber)'; }
+    toast(ok?'API key saved':'Saved for this session');
+  });
+  $('#clearKeyBtn') && $('#clearKeyBtn').addEventListener('click',function(){
+    safeDel(KEY); if($('#apiKey'))$('#apiKey').value='';
+    if(st){st.textContent='cleared';st.style.color='var(--ink-faint)';}
+    toast('API key cleared');
+  });
+  $('#ocrMethod') && $('#ocrMethod').addEventListener('change',function(e){ safeSet(METH,e.target.value); });
+})();
+
+/* ---------- tab navigation (replaces frozen 3-column panels) ---------- */
+(function(){
+  function showTab(name){
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+    document.querySelectorAll('.col[data-panel]').forEach(c=>c.classList.toggle('active', c.dataset.panel===name));
+    var body=document.querySelector('.body'); if(body) body.scrollTop=0;
+  }
+  document.querySelectorAll('.tabbtn').forEach(b=>{
+    b.addEventListener('click',()=>showTab(b.dataset.tab));
+  });
+  showTab('live');
+  window.showTab=showTab;
+})();
+
 loadProtocol(demoProtocol());
 </script>
 </body>
