@@ -10,21 +10,23 @@
      vernacular: amber/green phosphor readouts, dark bezel, mono data type.
      Palette derived from bedside-monitor world, not generic dashboard. */
   :root{
-    --bezel:#0e1418;          /* dark instrument bezel */
-    --panel:#141d22;          /* raised panel */
-    --panel-2:#1b262c;        /* inset well */
-    --line:#2a3942;           /* hairline divider */
-    --ink:#dfe9ec;            /* primary text */
-    --ink-dim:#8aa0a8;        /* secondary text */
-    --ink-faint:#5c727a;      /* tertiary */
-    --trace:#3ad6a0;          /* live green phosphor (vitals OK) */
-    --trace-amber:#f0b537;    /* amber readout / pending */
-    --trace-red:#f0655a;      /* alarm */
-    --alarm:#ff5a52;          /* alarm red */
-    --accent:#5cc8ff;         /* interactive cyan */
-    --accent-deep:#2b9fd6;
-    --ok:#3ad6a0;
-    --radius:4px;
+    /* Clean clinical light theme — white field, cool-gray structure,
+       monitor colors kept but darkened for legibility on white. */
+    --bezel:#eef2f5;          /* app background (very light cool gray) */
+    --panel:#ffffff;          /* cards / panels (white) */
+    --panel-2:#f4f7f9;        /* inset wells / table headers */
+    --line:#d8e0e6;           /* hairline divider */
+    --ink:#1c2b33;            /* primary text (dark slate) */
+    --ink-dim:#566872;        /* secondary text */
+    --ink-faint:#8497a0;      /* tertiary */
+    --trace:#0f9d6b;          /* live vitals OK (clinical green) */
+    --trace-amber:#c8861a;    /* amber readout / pending */
+    --trace-red:#d64535;      /* alarm */
+    --alarm:#e0392b;          /* alarm red */
+    --accent:#1f7fd1;         /* interactive medical blue */
+    --accent-deep:#1a6fb8;
+    --ok:#0f9d6b;
+    --radius:6px;
     --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
     --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
   }
@@ -32,9 +34,7 @@
   html,body{height:100%}
   body{
     font-family:var(--sans);
-    background:
-      radial-gradient(1200px 600px at 80% -10%, #16242b 0%, transparent 60%),
-      var(--bezel);
+    background:var(--bezel);
     color:var(--ink);
     font-size:14px;
     line-height:1.45;
@@ -86,14 +86,14 @@
     padding:8px 12px;border:1px solid var(--line);border-radius:var(--radius);
     background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:500;
     transition:.12s;width:100%}
-  .btn:hover{border-color:var(--accent);color:#fff}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
   .btn.primary{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff}
   .btn.primary:hover{background:var(--accent)}
   .btn.amber{background:transparent;border-color:var(--trace-amber);color:var(--trace-amber)}
   .btn.amber:hover{background:rgba(240,181,55,.12)}
   .btn.ghost{background:transparent}
   .btn.sm{padding:5px 9px;font-size:12px;width:auto}
-  .btn.cap{background:var(--trace);border-color:var(--trace);color:#06231a;font-weight:700}
+  .btn.cap{background:var(--trace);border-color:var(--trace);color:#fff;font-weight:700}
   .btn.cap:hover{background:#52e6b4}
   .btn-row{display:flex;gap:8px}
 
@@ -109,7 +109,7 @@
 
   /* ============ LIVE VITALS GRID ============ */
   .vitals{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
-  .vital{background:linear-gradient(180deg,#0c1316,#0a1013);border:1px solid var(--line);
+  .vital{background:var(--panel-2);border:1px solid var(--line);
     border-radius:var(--radius);padding:12px 14px;position:relative;overflow:hidden;min-height:92px}
   .vital .vlabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint);
     display:flex;justify-content:space-between;align-items:center}
@@ -226,9 +226,11 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Live Capture</small>
+      Swine ICU <small>Live Capture · v1.4</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">—</b></div>
+    <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">📷 Upload photo</button>
+    <input type="file" id="uploadPhotoFile" hidden accept="image/*">
     <div class="conn sim" id="conn">
       <span class="led"></span>
       <span class="label" id="connlabel">SIMULATOR</span>
@@ -277,6 +279,22 @@
         <video id="cam" style="display:none;margin-top:8px" muted playsinline></video>
         <div class="hint">Point at the monitor as a visual backup. Snapshots are timestamped to match recorded video.</div>
       </div>
+
+      <h2 class="sec">Photo extraction (AI)</h2>
+      <div class="card">
+        <div class="field" style="margin-bottom:8px">
+          <label>Method</label>
+          <select id="ocrMethod">
+            <option value="claude">Claude AI (reads LCD, handwriting)</option>
+            <option value="tesseract">Tesseract (offline, print only)</option>
+          </select>
+        </div>
+        <div class="field" id="apiKeyField" style="margin-bottom:8px">
+          <label>Anthropic API key</label>
+          <input id="apiKey" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
+        </div>
+        <div class="hint">Claude reads i-STAT screens, Mindray monitors, and handwritten forms accurately. Your key stays in this browser only (never uploaded or shared). Get a key at console.anthropic.com. Tesseract is free/offline but cannot read LCD screens.</div>
+      </div>
     </aside>
 
     <!-- ============ CENTER: LIVE + TABLE ============ -->
@@ -307,8 +325,8 @@
     <aside class="col right">
       <h2 class="sec">Timeline</h2>
       <div class="card" style="padding:8px 12px">
-        <button class="btn cap" id="photoVitals">📷 Photo → vitals</button>
-        <input type="file" id="vitalPhoto" hidden accept="image/*" capture="environment">
+        <button class="btn cap" id="photoVitals">📷 Monitor photo → vitals</button>
+        <input type="file" id="vitalPhoto" hidden accept="image/*">
         <button class="btn" id="captureNow" style="margin-top:8px">✎ Edit / enter</button>
         <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
       </div>
@@ -361,6 +379,25 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- ============ PHOTO TYPE CHOOSER ============ -->
+<div class="modal-bg" id="photoChooser">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head">
+      <h3>What's in this photo?</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:14px">Claude reads the photo and fills the values automatically. Auto-detect identifies the device; or pick the type yourself. You confirm & correct after.</div>
+      <button class="btn cap" id="pcAuto" style="margin-bottom:12px">✨ Auto-detect &amp; extract</button>
+      <div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Or choose the type</div>
+      <button class="btn" id="pcMonitor" style="margin-bottom:8px">🖥️ Monitor screen → vitals</button>
+      <button class="btn" id="pcVent" style="margin-bottom:8px">🌬️ Ventilator screen → vitals</button>
+      <button class="btn" id="pcIstat" style="margin-bottom:12px">🧪 i-STAT printout → labs</button>
+      <button class="btn ghost" id="pcCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- ============ H-CARE FORM SHEETS OVERLAY ============ -->
 <div id="hcare" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bezel);overflow:auto">
   <div style="max-width:1300px;margin:0 auto;padding:16px 20px 60px">
@@ -368,6 +405,8 @@
       <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE · IPROTO202500000107</small></div>
       <select id="hcAnimal" style="margin-left:auto;padding:7px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:13px"></select>
       <button class="btn sm" id="hcAddAnimal" style="width:auto">＋ Animal</button>
+      <button class="btn sm amber" id="hcPhoto" style="width:auto">📷 Photo → row</button>
+      <input type="file" id="hcPhotoFile" hidden accept="image/*">
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
       <button class="btn sm ghost" id="hcClose" style="width:auto">✕ Close</button>
     </div>
@@ -581,6 +620,67 @@ document.getElementById('hcClose').addEventListener('click',()=>document.getElem
 document.getElementById('hcAddAnimal').addEventListener('click',()=>hcAddAnimal(false));
 document.getElementById('hcAnimal').addEventListener('change',e=>{HCARE.animal=e.target.value;hcRenderSheet();});
 document.getElementById('hcExport').addEventListener('click',hcExportCSV);
+document.getElementById('hcPhoto').addEventListener('click',()=>{
+  if(HCARE.sheet==='case'){toast('Switch to Vitals or iSTAT sheet to read a photo into a row');return;}
+  document.getElementById('hcPhotoFile').click();
+});
+document.getElementById('hcPhotoFile').addEventListener('change',e=>{
+  if(e.target.files[0]) hcPhotoToRow(e.target.files[0]);
+  e.target.value='';
+});
+
+/* Photo → fills a chosen row of the active Data sheet (vitals or iSTAT) */
+async function hcPhotoToRow(file){
+  const sheet=HCARE.sheet; // 'vitals' or 'istat'
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  // ask which timepoint row this photo is for
+  const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
+  const pick=prompt('Which timepoint is this photo for? Enter the number:\n\n'+list, '1');
+  if(pick===null)return;
+  const rid=parseInt(pick)-1;
+  if(isNaN(rid)||rid<0||rid>=rows.length){toast('Invalid row');return;}
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    toast('Reading photo…');
+    try{
+      const cols = sheet==='vitals' ? HCARE.vitalsCols.filter(c=>c.type!=='x'&&c.type!=='c')
+                                    : HCARE.istatCols;
+      const fields = cols.map(c=>({key:c.k, label:c.label}));
+      const mapper = sheet==='vitals' ? hcMapVitals : hcMapIstat;
+      const {values:vals} = await extractFromPhoto(ev.target.result, fields, mapper);
+      const d=hcA()[sheet]; if(!d[rid])d[rid]={};
+      Object.assign(d[rid], vals);
+      d[rid]._photo=ev.target.result;
+      hcRenderSheet();
+      const n=Object.keys(vals).length;
+      toast(n?`Filled ${n} value${n>1?'s':''} into "${rows[rid]}" — check & correct`:'No values read — enter manually');
+    }catch(err){ toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+function hcMapVitals(text){
+  const out={};
+  const map={hr:'hr',pr:'hr',spo2:'spo2',etco2:'etco2',co2:'etco2',rr:'rr',resp:'rr',temp:'temp'};
+  text.split(/\n+/).forEach(line=>{
+    const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{1,6})\b[^0-9\-]{0,10}(\d{2,3}(?:\.\d)?)/);
+    if(mm){const k=map[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
+  });
+  // BP a/b(c) → femBP or carBP; first found → femBP, second → carBP
+  const bps=[...text.matchAll(/(\d{2,3})\s*\/\s*(\d{2,3})\s*\(?(\d{2,3})?\)?/g)];
+  if(bps[0]) out.femBP=`${bps[0][1]}/${bps[0][2]}${bps[0][3]?'('+bps[0][3]+')':''}`;
+  if(bps[1]) out.carBP=`${bps[1][1]}/${bps[1][2]}${bps[1][3]?'('+bps[1][3]+')':''}`;
+  return out;
+}
+function hcMapIstat(text){
+  const out={};
+  const alias={lactate:'lactate',lac:'lactate',k:'k',glu:'glu',glucose:'glu',hgb:'hgb',hb:'hgb',
+    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2',sо2:'so2'};
+  text.split(/\n+/).forEach(line=>{
+    const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{0,7})\b[^0-9\-]{0,8}(-?\d+\.?\d*)/);
+    if(mm){const k=alias[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
+  });
+  return out;
+}
 document.querySelectorAll('#hcTabs .atab').forEach(t=>{
   t.addEventListener('click',()=>{
     document.querySelectorAll('#hcTabs .atab').forEach(x=>x.classList.remove('on'));
@@ -614,6 +714,7 @@ const DEFAULT_VITALS = [
   {key:'ABPd', label:'ABP dia',unit:'mmHg',group:'vital', lo:30, hi:120},
   {key:'MAP',  label:'MAP',   unit:'mmHg', group:'vital', lo:50, hi:120},
   {key:'SpO2', label:'SpO₂',  unit:'%',    group:'vital', lo:88, hi:100},
+  {key:'PVC',  label:'PVC',   unit:'/min', group:'vital', lo:0,  hi:30},
   {key:'Temp', label:'Temp',  unit:'°C',   group:'vital', lo:35, hi:41},
   {key:'EtCO2',label:'EtCO₂', unit:'mmHg', group:'vital', lo:25, hi:55},
   {key:'CVP',  label:'CVP',   unit:'mmHg', group:'vital', lo:0,  hi:18},
@@ -621,11 +722,14 @@ const DEFAULT_VITALS = [
   {key:'RR',   label:'RR',    unit:'/min', group:'vent', lo:8,  hi:40},
   {key:'TV',   label:'Vt',    unit:'mL',   group:'vent', lo:200,hi:800},
   {key:'PEEP', label:'PEEP',  unit:'cmH₂O',group:'vent', lo:0,  hi:20},
-  {key:'PIP',  label:'PIP',   unit:'cmH₂O',group:'vent', lo:5,  hi:45},
+  {key:'PIP',  label:'PIP (PEAK)',unit:'cmH₂O',group:'vent', lo:5,hi:45},
+  {key:'PLAT', label:'PLAT',  unit:'cmH₂O',group:'vent', lo:5,  hi:40},
   {key:'FiO2', label:'FiO₂',  unit:'%',    group:'vent', lo:21, hi:100},
+  {key:'FiCO2',label:'FiCO₂', unit:'mmHg', group:'vent', lo:0,  hi:10},
+  {key:'MV',   label:'MV',    unit:'L/min',group:'vent', lo:1,  hi:20},
 ];
 
-const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','BE','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','Creatinine'];
+const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','Creatinine'];
 
 /* ---------- utilities ---------- */
 const $ = s => document.querySelector(s);
@@ -998,21 +1102,164 @@ function openCapture(tpId, prefill, photo){
 }
 
 /* ---------- monitor photo → vitals via OCR ---------- */
+/* ============================================================
+   PHOTO EXTRACTION ENGINE
+   extractFromPhoto(imageDataURL, fields, tesseractMapper) → {values, method}
+   Claude vision (reads i-STAT LCD, Mindray monitors, handwriting)
+   when method=claude + API key; else Tesseract + caller mapper.
+   ============================================================ */
+function getOcrMethod(){ return ($('#ocrMethod')&&$('#ocrMethod').value)||'claude'; }
+function getApiKey(){ return ($('#apiKey')&&$('#apiKey').value.trim())||''; }
+
+/* ============================================================
+   DEVICE SCHEMAS — tuned to the three real source screens:
+   i-STAT CG4+/CG8+ printouts, Mindray BeneVision monitor,
+   Mindray V60 ventilator. Auto-detected from the photo.
+   ============================================================ */
+const DEVICE_SCHEMAS = {
+  istat: {
+    label:'i-STAT (CG4+ / CG8+)',
+    // superset of CG4+ and CG8+ analytes
+    fields:['pH','PCO2','PO2','BEecf','HCO3','TCO2','sO2','Lac','Na','K','iCa','Glu','Hct','Hb'],
+    hint:`An Abbott i-STAT printout (CG4+ or CG8+ cartridge). Read the analyte column and its value. Analytes may include: pH, PCO2 (mmHg), PO2 (mmHg), BEecf (mmol/L), HCO3 (mmol/L), TCO2 (mmol/L), sO2 (%), Lac (mmol/L), Na (mmol/L), K (mmol/L), iCa (mmol/L), Glu (mg/dL), Hct (%PCV), Hb (g/dL). Also read "cartridge" as "CG4+" or "CG8+" from the header, and "animalId" from the handwritten number near the top if present.`,
+    extra:['cartridge','animalId']
+  },
+  monitor: {
+    label:'Mindray monitor (BeneVision)',
+    fields:['HR','ABPs','ABPd','MAP','SpO2','PVC','RR','Temp','CVP'],
+    hint:`A Mindray BeneVision patient monitor. Read the large live numerics: HR (green, /min), arterial BP shown as sys/dia(MAP) in red (label Art or ABP), SpO2 (blue, %), PVC count if shown, RR, Temp, CVP. For arterial pressure return keys ABPs (systolic), ABPd (diastolic), MAP (mean, the number in parentheses).`,
+    extra:[]
+  },
+  ventilator: {
+    label:'Mindray ventilator (V60/A-series)',
+    fields:['EtCO2','FiCO2','PEAK','PLAT','PEEP','Vt','RR','FiO2','MAC','MV'],
+    hint:`A Mindray anesthesia/ventilator screen (V60 or A-series). Read: EtCO2 (mmHg), FiCO2, PEAK pressure (cmH2O), PLAT plateau (cmH2O), PEEP (cmH2O), Vt exhaled tidal volume (mL, label "Vt Exp"), RR respiratory rate, FiO2 (%), MAC, MV minute ventilation.`,
+    extra:[]
+  }
+};
+
+/* Auto-detect device type + extract values in one call. */
+async function detectAndExtract(imageDataURL){
+  const key=getApiKey();
+  if(!key) throw new Error('No API key — enter it under "Photo extraction (AI)", or switch to Tesseract.');
+  const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!m) throw new Error('Bad image');
+  const media=m[1], b64=m[2];
+  const schemaText=Object.entries(DEVICE_SCHEMAS).map(([k,s])=>`- "${k}": ${s.hint}`).join('\n');
+  const prompt=`This photo is from a preclinical swine ICU experiment (H-CARE protocol). It shows ONE of these devices:
+${schemaText}
+
+First identify which device this is. Then read every numeric value shown for that device.
+
+Return ONLY a JSON object (no prose, no markdown fences) shaped exactly:
+{"device":"istat|monitor|ventilator","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}
+
+Rules:
+- device MUST be one of: istat, monitor, ventilator.
+- values keys use EXACTLY the field names from the matching device above (e.g. pH, PCO2, ABPs, EtCO2).
+- Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
+- Omit any field you cannot read confidently. NEVER guess a value.
+- Read decimals and negatives exactly (e.g. BEecf -5, pH 7.487, Lac 1.72).`;
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':key,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:media,data:b64}},
+        {type:'text',text:prompt}]}]})
+  });
+  if(!res.ok){
+    let msg='API error '+res.status;
+    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
+    if(res.status===401) msg='Invalid API key';
+    throw new Error(msg);
+  }
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  const jsonStr=text.replace(/```json|```/g,'').trim();
+  let parsed;
+  try{ parsed=JSON.parse(jsonStr); }
+  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{device:null,values:{}}; }
+  const vals={};
+  Object.entries(parsed.values||{}).forEach(([k,v])=>{
+    if(v===null||v==='')return;
+    vals[k]=(typeof v==='string'&&/\d\/\d/.test(v))?v:(isNaN(+v)?v:+v);
+  });
+  return {device:parsed.device||null, cartridge:parsed.cartridge||null, values:vals};
+}
+
+async function claudeExtract(imageDataURL, fields){
+  const key=getApiKey();
+  if(!key) throw new Error('No API key — enter it under "Photo extraction (AI)", or switch to Tesseract.');
+  const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!m) throw new Error('Bad image');
+  const media=m[1], b64=m[2];
+  const fieldList=fields.map(f=>`"${f.key}"${f.label&&f.label!==f.key?' ('+f.label+')':''}${f.unit?' in '+f.unit:''}`).join(', ');
+  const prompt=`This photo is from a preclinical swine ICU experiment (an i-STAT analyzer screen, a Mindray patient monitor, or a handwritten data form). Read the numeric values shown and return ONLY a JSON object — no prose, no markdown fences.
+
+Extract these fields if present: ${fieldList}.
+
+Rules:
+- Keys must exactly match the field keys given above.
+- Values are numbers only (no units). For blood pressure use the string "sys/dia(MAP)" e.g. "120/80(93)".
+- Omit any field you cannot read confidently. Do not guess.
+- If two BP readings are shown (e.g. femoral and carotid), map the first to femBP and second to carBP when those keys are requested.
+Return JSON only.`;
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':key,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6', max_tokens:1024,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:media,data:b64}},
+        {type:'text',text:prompt}
+      ]}]
+    })
+  });
+  if(!res.ok){
+    let msg='API error '+res.status;
+    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
+    if(res.status===401) msg='Invalid API key';
+    throw new Error(msg);
+  }
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  const jsonStr=text.replace(/```json|```/g,'').trim();
+  let parsed;
+  try{ parsed=JSON.parse(jsonStr); }
+  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{}; }
+  const out={};
+  Object.entries(parsed).forEach(([k,v])=>{
+    if(v===null||v==='')return;
+    out[k] = (typeof v==='string' && /\d\/\d/.test(v)) ? v : (isNaN(+v)?v:+v);
+  });
+  return out;
+}
+async function extractFromPhoto(imageDataURL, fields, tesseractMapper){
+  if(getOcrMethod()==='claude'){
+    return {values: await claudeExtract(imageDataURL, fields), method:'claude'};
+  }
+  if(!window.Tesseract) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
+  const {data}=await Tesseract.recognize(imageDataURL,'eng');
+  return {values: tesseractMapper(data.text||''), method:'tesseract'};
+}
+
 async function monitorPhotoToVitals(file){
   const reader=new FileReader();
   reader.onload=async e=>{
     const img=e.target.result;
     toast('Reading monitor photo…');
     try{
-      if(!window.Tesseract) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
-      const {data}=await Tesseract.recognize(img,'eng');
-      const prefill=mapMonitorText(data.text||'');
-      openCapture('', prefill, img);
-      const n=Object.keys(prefill).length;
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const {values}=await extractFromPhoto(img, fields, mapMonitorText);
+      openCapture('', values, img);
+      const n=Object.keys(values).length;
       toast(n?`Extracted ${n} value${n>1?'s':''} — check & correct`:'No values read — enter manually');
     }catch(err){
       openCapture('', null, img);
-      toast('OCR failed — enter manually');
+      toast('Extraction failed: '+err.message);
     }
   };
   reader.readAsDataURL(file);
@@ -1116,24 +1363,20 @@ const LAB_ALIASES = {
 async function runOCR(){
   if(!pendingLabImg) return;
   const status=$('#ocrStatus');
-  status.innerHTML=`Loading OCR engine… <div class="ocr-progress"><span id="ocrBar"></span></div>`;
+  const method=getOcrMethod();
+  status.innerHTML = method==='claude'
+    ? `Reading photo with Claude…`
+    : `Loading OCR engine… <div class="ocr-progress"><span id="ocrBar"></span></div>`;
   try{
-    if(!window.Tesseract){
-      await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
-    }
-    status.querySelector('span')&&($('#ocrBar').style.width='15%');
-    const {data}=await Tesseract.recognize(pendingLabImg,'eng',{
-      logger:m=>{ if(m.status==='recognizing text'){const b=$('#ocrBar'); if(b)b.style.width=(15+m.progress*80)+'%';}}
-    });
-    const text=data.text||'';
-    const matched=mapOcrText(text);
+    const fields=((App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS).map(f=>({key:f}));
+    const {values:matched}=await extractFromPhoto(pendingLabImg, fields, mapOcrText);
     fillOcrFields(matched);
     const n=Object.keys(matched).length;
     status.innerHTML = n
       ? `<span style="color:var(--trace)">✓ Read ${n} value${n>1?'s':''}.</span> Check each against the photo before saving.`
       : `<span style="color:var(--alarm)">No values recognized.</span> Type them in, or try a sharper photo.`;
   }catch(e){
-    status.innerHTML=`<span style="color:var(--alarm)">OCR failed:</span> ${e.message}. You can still type values in.`;
+    status.innerHTML=`<span style="color:var(--alarm)">Extraction failed:</span> ${e.message}`;
   }
 }
 function mapOcrText(text){
@@ -1413,9 +1656,89 @@ $('#connectBtn').addEventListener('click',()=>{
   else connectBridge($('#wsAddr').value.trim());
 });
 $('#camBtn').addEventListener('click',toggleCamera);
+$('#ocrMethod')&&$('#ocrMethod').addEventListener('change',e=>{
+  $('#apiKeyField').style.display = e.target.value==='claude'?'block':'none';
+});
 $('#captureNow').addEventListener('click',()=>openCapture(''));
 $('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
 $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
+
+/* Unified top-bar "Upload photo": pick file/camera, then choose what it is */
+let _pendingPhoto=null;
+
+/* Auto-detect: identify device, extract, route to the right entry surface */
+async function autoDetectPhoto(file){
+  if(getOcrMethod()!=='claude'){ toast('Auto-detect needs Claude AI method'); return; }
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Detecting device & reading values…');
+    try{
+      const {device, cartridge, values}=await detectAndExtract(img);
+      const n=Object.keys(values).length;
+      if(!device){ toast('Could not identify the screen — pick the type manually'); return; }
+      if(device==='istat'){
+        // map i-STAT analytes → lab field keys, open lab modal prefilled
+        const mapped=mapIstatToLabFields(values);
+        openLabModal(img);
+        // fill after modal builds
+        setTimeout(()=>{ fillOcrFields(mapped);
+          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">✓ ${cartridge||'i-STAT'} · read ${Object.keys(mapped).length} value(s).</span> Check against the photo, then save.`;
+        },60);
+        toast(`i-STAT ${cartridge||''} detected`);
+      } else {
+        // monitor or ventilator → capture modal (vitals + vent share it)
+        const norm=normalizeVitalKeys(values);
+        openCapture('', norm, img);
+        const nn=Object.keys(norm).length;
+        toast(`${device==='ventilator'?'Ventilator':'Monitor'} detected — ${nn} value${nn>1?'s':''}, check & correct`);
+      }
+    }catch(err){ toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+/* device value keys → capture-modal param keys */
+function normalizeVitalKeys(v){
+  const map={PEAK:'PIP', Vt:'TV', VtExp:'TV'}; // ventilator aliases
+  const out={};
+  Object.entries(v).forEach(([k,val])=>{ out[map[k]||k]=val; });
+  return out;
+}
+/* i-STAT analyte names → app lab field keys */
+function mapIstatToLabFields(v){
+  const map={pH:'pH',PCO2:'pCO2',PO2:'pO2',BEecf:'BE',HCO3:'HCO3',TCO2:'TCO2',
+    sO2:'sO2',Lac:'Lactate',Na:'Na',K:'K',iCa:'iCa',Glu:'Glucose',Hct:'Hct',Hb:'Hb'};
+  const out={};
+  Object.entries(v).forEach(([k,val])=>{ const t=map[k]||k; out[t]=val; });
+  return out;
+}
+
+$('#uploadPhotoBtn').addEventListener('click',()=>$('#uploadPhotoFile').click());
+$('#uploadPhotoFile').addEventListener('change',e=>{
+  if(e.target.files[0]){ _pendingPhoto=e.target.files[0]; $('#photoChooser').classList.add('show'); }
+  e.target.value='';
+});
+$('#pcAuto').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) autoDetectPhoto(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcMonitor').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcVent').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto); // vent params live in same capture modal
+  _pendingPhoto=null;
+});
+$('#pcIstat').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) handleLabFile(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcCancel').addEventListener('click',()=>{$('#photoChooser').classList.remove('show');_pendingPhoto=null;});
 $('#addLab').addEventListener('click',()=>$('#labFile').click());
 $('#labFile').addEventListener('change',e=>{if(e.target.files[0])handleLabFile(e.target.files[0]);});
 $('#saveLab').addEventListener('click',saveLab);
