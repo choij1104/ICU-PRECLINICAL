@@ -4,26 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Swine ICU — Live Capture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  /* ============ DESIGN TOKENS ============
-     Subject: long-duration preclinical swine ICU runs. Instrument-panel
-     vernacular: amber/green phosphor readouts, dark bezel, mono data type.
-     Palette derived from bedside-monitor world, not generic dashboard. */
   :root{
-    /* Clean clinical light theme — white field, cool-gray structure,
-       monitor colors kept but darkened for legibility on white. */
-    --bezel:#eef2f5;          /* app background (very light cool gray) */
-    --panel:#ffffff;          /* cards / panels (white) */
-    --panel-2:#f4f7f9;        /* inset wells / table headers */
-    --line:#d8e0e6;           /* hairline divider */
-    --ink:#1c2b33;            /* primary text (dark slate) */
-    --ink-dim:#566872;        /* secondary text */
-    --ink-faint:#8497a0;      /* tertiary */
-    --trace:#0f9d6b;          /* live vitals OK (clinical green) */
-    --trace-amber:#c8861a;    /* amber readout / pending */
-    --trace-red:#d64535;      /* alarm */
-    --alarm:#e0392b;          /* alarm red */
-    --accent:#1f7fd1;         /* interactive medical blue */
+    --bezel:#eef2f5;
+    --panel:#ffffff;
+    --panel-2:#f4f7f9;
+    --line:#d8e0e6;
+    --ink:#1c2b33;
+    --ink-dim:#566872;
+    --ink-faint:#8497a0;
+    --trace:#0f9d6b;
+    --trace-amber:#c8861a;
+    --trace-red:#d64535;
+    --alarm:#e0392b;
+    --accent:#1f7fd1;
     --accent-deep:#1a6fb8;
     --ok:#0f9d6b;
     --radius:6px;
@@ -43,7 +40,6 @@
   button{font-family:inherit;cursor:pointer}
   input,select,textarea{font-family:inherit}
 
-  /* ============ SHELL ============ */
   .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
   header.topbar{
     display:flex;align-items:center;gap:16px;
@@ -66,7 +62,6 @@
     padding:4px 10px;background:var(--panel-2);border-radius:var(--radius);border:1px solid var(--line)}
   .runclock b{color:var(--ink)}
 
-  /* ============ TAB BAR ============ */
   .tabbar{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);
     padding:0 10px;overflow-x:auto;flex-shrink:0}
   .tabbtn{padding:12px 18px;border:none;background:none;color:var(--ink-dim);font-size:14px;
@@ -74,14 +69,12 @@
   .tabbtn:hover{color:var(--ink)}
   .tabbtn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 
-  /* ============ LAYOUT (tabbed, no frozen panels) ============ */
   .body{display:block;overflow-y:auto;min-height:0;flex:1}
   .col{padding:16px 18px;max-width:1100px;margin:0 auto;display:none}
   .col.active{display:block}
   .col.left{background:transparent}
   .col.right{background:transparent}
   .col.center{padding:16px 18px}
-  /* live vitals + data can breathe wider */
   .col.center{max-width:1400px}
 
   .col::-webkit-scrollbar{width:8px}
@@ -92,7 +85,6 @@
   .card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);
     padding:12px;margin-bottom:12px}
 
-  /* ============ BUTTONS ============ */
   .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
     padding:8px 12px;border:1px solid var(--line);border-radius:var(--radius);
     background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:500;
@@ -108,7 +100,6 @@
   .btn.cap:hover{background:#52e6b4}
   .btn-row{display:flex;gap:8px}
 
-  /* ============ PROTOCOL DROP ============ */
   .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:18px 12px;
     text-align:center;color:var(--ink-dim);transition:.15s;cursor:pointer;font-size:12.5px}
   .drop:hover,.drop.over{border-color:var(--accent);color:var(--ink);background:rgba(92,200,255,.05)}
@@ -118,7 +109,6 @@
   .proto-info .prow{display:flex;justify-content:space-between;color:var(--ink-dim);padding:2px 0}
   .proto-info .prow b{color:var(--trace);font-family:var(--mono)}
 
-  /* ============ LIVE VITALS GRID ============ */
   .vitals{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
   .vital{background:var(--panel-2);border:1px solid var(--line);
     border-radius:var(--radius);padding:12px 14px;position:relative;overflow:hidden;min-height:92px}
@@ -140,7 +130,6 @@
     margin:4px 0 10px;display:flex;align-items:center;gap:8px}
   .group-tag::after{content:"";flex:1;height:1px;background:var(--line)}
 
-  /* ============ TIMELINE ============ */
   .timeline{position:relative}
   .tp{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
   .tp:last-child{border-bottom:none}
@@ -159,14 +148,12 @@
 
   .countdown{font-family:var(--mono);font-size:12px;color:var(--trace-amber)}
 
-  /* ============ ANIMAL TABS ============ */
   .animals{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
   .atab{padding:5px 11px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);
     color:var(--ink-dim);font-size:12px;font-family:var(--mono)}
   .atab.on{border-color:var(--accent);color:#fff;background:var(--accent-deep)}
   .atab.add{color:var(--accent);border-style:dashed}
 
-  /* ============ DATA TABLE ============ */
   .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
   table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11.5px}
   th,td{padding:6px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
@@ -178,14 +165,12 @@
   tr:hover td{background:rgba(92,200,255,.04);color:var(--ink)}
   .empty{padding:24px;text-align:center;color:var(--ink-faint);font-size:12.5px}
 
-  /* ============ LABS ============ */
   .lab-thumb{display:flex;gap:10px;align-items:center;padding:8px;background:var(--panel-2);
     border:1px solid var(--line);border-radius:var(--radius);margin-bottom:8px}
   .lab-thumb img{width:46px;height:46px;object-fit:cover;border-radius:3px;border:1px solid var(--line)}
   .lab-thumb .lmeta{font-size:11px;color:var(--ink-dim);flex:1;min-width:0}
   .lab-thumb .lmeta b{color:var(--ink);display:block;font-family:var(--mono)}
 
-  /* ============ MODAL ============ */
   .modal-bg{position:fixed;inset:0;background:rgba(4,8,10,.78);display:none;align-items:center;
     justify-content:center;z-index:50;padding:20px;backdrop-filter:blur(3px)}
   .modal-bg.show{display:flex}
@@ -220,9 +205,8 @@
 
   video{width:100%;border-radius:var(--radius);background:#000;border:1px solid var(--line)}
 
-  /* OCR-filled field marker */
   .field.ocr-filled input{border-color:var(--trace-amber);background:rgba(240,181,55,.06)}
-  .field.ocr-filled label::after{content:" ⊙ OCR";color:var(--trace-amber);font-size:9px;letter-spacing:.5px}
+  .field.ocr-filled label::after{content:" \2299 OCR";color:var(--trace-amber);font-size:9px;letter-spacing:.5px}
   .ocr-progress{height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin-top:6px}
   .ocr-progress span{display:block;height:100%;background:var(--trace-amber);width:0;transition:width .2s}
 
@@ -237,10 +221,10 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Live Capture · v1.6</small>
+      Swine ICU <small>Live Capture &middot; v1.7</small>
     </div>
-    <div class="runclock" id="runclock">RUN <b id="runtime">—</b></div>
-    <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">📷 Upload photo</button>
+    <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
+    <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
     <input type="file" id="uploadPhotoFile" hidden accept="image/*">
     <div class="conn sim" id="conn">
       <span class="led"></span>
@@ -256,7 +240,6 @@
   </nav>
 
   <div class="body">
-    <!-- ============ LEFT: PROTOCOL + SOURCE ============ -->
     <aside class="col left" data-panel="setup">
       <h2 class="sec">Protocol</h2>
       <div class="card" id="protoCard">
@@ -264,13 +247,13 @@
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
             <path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
           </svg>
-          Drop protocol file<br><span style="font-size:11px">PDF · DOCX · TXT</span>
+          Drop protocol file<br><span style="font-size:11px">PDF &middot; DOCX &middot; TXT</span>
         </div>
         <input type="file" id="protoFile" hidden accept=".pdf,.docx,.txt">
-        <div class="hint">The interface rebuilds itself from the protocol — timepoints, measured parameters, and sampling events become the live timeline and input fields.</div>
+        <div class="hint">The interface rebuilds itself from the protocol &mdash; timepoints, measured parameters, and sampling events become the live timeline and input fields.</div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
           <div class="hint" style="margin:0 0 6px">Structured paper-form entry (H-CARE set):</div>
-          <button class="btn sm amber" id="hcareBtn" style="width:100%">▤ Open data sheets</button>
+          <button class="btn sm amber" id="hcareBtn" style="width:100%">Open data sheets</button>
         </div>
       </div>
 
@@ -280,7 +263,7 @@
           <label>Mindray feed</label>
           <select id="srcMode">
             <option value="sim">Simulator (demo)</option>
-            <option value="bridge">Bridge — WebSocket</option>
+            <option value="bridge">Bridge &mdash; WebSocket</option>
           </select>
         </div>
         <div class="field" id="wsField" style="display:none;margin-bottom:8px">
@@ -290,10 +273,8 @@
         <button class="btn primary" id="connectBtn">Connect</button>
         <div class="hint">Bridge runs on your laptop, reads the Mindray monitor (vitals + ventilator via BeneLink) and streams here. Simulator needs no hardware.</div>
       </div>
-
     </aside>
 
-    <!-- ============ SETTINGS: CAMERA + PHOTO EXTRACTION ============ -->
     <aside class="col left" data-panel="settings">
       <h2 class="sec">Camera (backup)</h2>
       <div class="card">
@@ -324,10 +305,9 @@
       </div>
     </aside>
 
-    <!-- ============ CENTER: LIVE + TABLE ============ -->
     <main class="col center" data-panel="live">
       <div id="liveArea">
-        <h2 class="sec">Live — <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <h2 class="sec">Live &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
         <div class="vitals" id="vitalsGrid">
           <div class="empty" style="grid-column:1/-1">Connect a source to see live values.</div>
         </div>
@@ -348,13 +328,12 @@
       </div>
     </main>
 
-    <!-- ============ RIGHT: TIMELINE + CAPTURE + LABS ============ -->
     <aside class="col right" data-panel="timeline">
       <h2 class="sec">Timeline</h2>
       <div class="card" style="padding:8px 12px">
-        <button class="btn cap" id="photoVitals">📷 Monitor photo → vitals</button>
+        <button class="btn cap" id="photoVitals">Monitor photo &rarr; vitals</button>
         <input type="file" id="vitalPhoto" hidden accept="image/*">
-        <button class="btn" id="captureNow" style="margin-top:8px">✎ Edit / enter</button>
+        <button class="btn" id="captureNow" style="margin-top:8px">Edit / enter</button>
         <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
       </div>
       <div class="timeline" id="timeline">
@@ -363,7 +342,7 @@
 
       <h2 class="sec" style="margin-top:8px">Blood labs</h2>
       <div class="card">
-        <button class="btn ghost" id="addLab">＋ Add lab photo / values</button>
+        <button class="btn ghost" id="addLab">+ Add lab photo / values</button>
         <input type="file" id="labFile" hidden accept="image/*">
         <div id="labList" style="margin-top:10px"></div>
       </div>
@@ -371,7 +350,6 @@
   </div>
 </div>
 
-<!-- ============ CAPTURE MODAL ============ -->
 <div class="modal-bg" id="captureModal">
   <div class="modal">
     <div class="modal-head">
@@ -382,7 +360,6 @@
   </div>
 </div>
 
-<!-- ============ LAB MODAL ============ -->
 <div class="modal-bg" id="labModal">
   <div class="modal">
     <div class="modal-head">
@@ -391,7 +368,7 @@
     </div>
     <div class="modal-body">
       <div id="labPreview" style="margin-bottom:12px"></div>
-      <button class="btn amber" id="ocrBtn" style="display:none;margin-bottom:10px">⊙ Read values from photo (OCR)</button>
+      <button class="btn amber" id="ocrBtn" style="display:none;margin-bottom:10px">Read values from photo (OCR)</button>
       <div id="ocrStatus" class="hint" style="margin-bottom:12px"></div>
       <div class="hint" style="margin-bottom:12px">Run OCR to auto-fill, then check each value against the photo. OCR-filled fields are marked; edit any that look wrong. Or just type the values in.</div>
       <div id="labFields"></div>
@@ -406,7 +383,6 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- ============ PHOTO TYPE CHOOSER ============ -->
 <div class="modal-bg" id="photoChooser">
   <div class="modal" style="max-width:380px">
     <div class="modal-head">
@@ -414,31 +390,29 @@
       <button class="x" data-close>&times;</button>
     </div>
     <div class="modal-body">
-      <div class="hint" style="margin-bottom:14px">Claude reads the photo and fills the values automatically. Auto-detect identifies the device; or pick the type yourself. You confirm & correct after.</div>
-      <button class="btn cap" id="pcAuto" style="margin-bottom:12px">✨ Auto-detect &amp; extract</button>
+      <div class="hint" style="margin-bottom:14px">Claude reads the photo and fills the values automatically. Auto-detect identifies the device; or pick the type yourself. You confirm &amp; correct after.</div>
+      <button class="btn cap" id="pcAuto" style="margin-bottom:12px">Auto-detect &amp; extract</button>
       <div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Or choose the type</div>
-      <button class="btn" id="pcMonitor" style="margin-bottom:8px">🖥️ Monitor screen → vitals</button>
-      <button class="btn" id="pcVent" style="margin-bottom:8px">🌬️ Ventilator screen → vitals</button>
-      <button class="btn" id="pcIstat" style="margin-bottom:12px">🧪 i-STAT printout → labs</button>
+      <button class="btn" id="pcMonitor" style="margin-bottom:8px">Monitor screen &rarr; vitals</button>
+      <button class="btn" id="pcVent" style="margin-bottom:8px">Ventilator screen &rarr; vitals</button>
+      <button class="btn" id="pcIstat" style="margin-bottom:12px">i-STAT printout &rarr; labs</button>
       <button class="btn ghost" id="pcCancel">Cancel</button>
     </div>
   </div>
 </div>
 
-<!-- ============ H-CARE FORM SHEETS OVERLAY ============ -->
 <div id="hcare" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bezel);overflow:auto">
   <div style="max-width:1300px;margin:0 auto;padding:16px 20px 60px">
     <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;position:sticky;top:0;background:var(--bezel);padding:10px 0;z-index:5;border-bottom:1px solid var(--line)">
-      <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE · IPROTO202500000107</small></div>
+      <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE &middot; IPROTO202500000107</small></div>
       <select id="hcAnimal" style="margin-left:auto;padding:7px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:13px"></select>
-      <button class="btn sm" id="hcAddAnimal" style="width:auto">＋ Animal</button>
-      <button class="btn sm amber" id="hcPhoto" style="width:auto">📷 Photo → row</button>
+      <button class="btn sm" id="hcAddAnimal" style="width:auto">+ Animal</button>
+      <button class="btn sm amber" id="hcPhoto" style="width:auto">Photo &rarr; row</button>
       <input type="file" id="hcPhotoFile" hidden accept="image/*">
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
-      <button class="btn sm ghost" id="hcClose" style="width:auto">✕ Close</button>
+      <button class="btn sm ghost" id="hcClose" style="width:auto">Close</button>
     </div>
 
-    <!-- sheet tabs -->
     <div class="animals" id="hcTabs" style="margin-bottom:14px">
       <div class="atab on" data-sheet="case">Case setup</div>
       <div class="atab" data-sheet="vitals">Vitals sheet</div>
@@ -450,19 +424,11 @@
 </div>
 
 <script>
-/* ============================================================
-   H-CARE FORM PRESET
-   Faithful digital twins of the three paper forms (Ver.6.18.26):
-   - Case setup (animal, weight, treatment arm, checklist)
-   - Vitals sheet (Baseline … 240min EOS)
-   - iSTAT sheet (T1 … T8)
-   Each BP cell records sys/dia/(MAP). Per-animal data, CSV export.
-   ============================================================ */
+/* ============ H-CARE FORM PRESET ============ */
 const HCARE = {
   sheet:'case',
   animal:null,
-  data:{},   // animalId -> {case:{}, vitals:{rowId:{col:val}}, istat:{rowId:{col:val}}}
-
+  data:{},
   vitalsRows:[
     'Baseline / Post stabilization','10 mins post shock, pre REBOA',
     '30 mins post REBOA / pre-deflation','Immediately post REBOA deflation',
@@ -470,35 +436,32 @@ const HCARE = {
     '90 mins post deflation','120 min post deflation','150 min post deflation',
     '180 min post deflation','210 min post deflation','240 min post deflation (EOS)'
   ],
-  // BP columns: top = Femoral artery, bottom = Carotid (per PI). MAP captured per BP.
   vitalsCols:[
     {k:'time',label:'Time',type:'t'},
     {k:'hr',label:'HR',type:'n'},
     {k:'femBP',label:'Fem Art BP (MAP)',type:'bp'},
     {k:'carBP',label:'Carotid BP (MAP)',type:'bp'},
     {k:'rr',label:'RR',type:'n'},
-    {k:'spo2',label:'SpO₂',type:'n'},
-    {k:'etco2',label:'etCO₂',type:'n'},
+    {k:'spo2',label:'SpO2',type:'n'},
+    {k:'etco2',label:'etCO2',type:'n'},
     {k:'temp',label:'Temp',type:'n'},
     {k:'urine',label:'Urine',type:'n'},
-    {k:'istat',label:'iSTAT ✓',type:'c'},
+    {k:'istat',label:'iSTAT check',type:'c'},
     {k:'labs',label:'Labs drawn',type:'x'},
   ],
-  // labs preprinted per row on the form
-  vitalsLabs:{0:'Chem, Coag, Plasma×5, Urine',1:'Coag, Plasma×5, Urine',4:'Coag, Plasma×5, Urine',
-    6:'Coag, Plasma×5, Urine',8:'Coag, Plasma×5, Urine',10:'Coag, Plasma×5, Urine',12:'Chem, Coag, Plasma×5, Urine'},
-
+  vitalsLabs:{0:'Chem, Coag, Plasma x5, Urine',1:'Coag, Plasma x5, Urine',4:'Coag, Plasma x5, Urine',
+    6:'Coag, Plasma x5, Urine',8:'Coag, Plasma x5, Urine',10:'Coag, Plasma x5, Urine',12:'Chem, Coag, Plasma x5, Urine'},
   istatRows:[
-    'T1 – BL / Post stabilization','T2 – 10 mins post shock, pre REBOA',
-    'T3 – 30 mins post REBOA inflation','T4 – 10 mins post REBOA deflation',
-    'T5 – 1 hr post REBOA deflation','T6 – 2 hr post deflation',
-    'T7 – 3 hr post deflation','T8 – 4 hr post deflation'
+    'T1 - BL / Post stabilization','T2 - 10 mins post shock, pre REBOA',
+    'T3 - 30 mins post REBOA inflation','T4 - 10 mins post REBOA deflation',
+    'T5 - 1 hr post REBOA deflation','T6 - 2 hr post deflation',
+    'T7 - 3 hr post deflation','T8 - 4 hr post deflation'
   ],
   istatCols:[
     {k:'lactate',label:'Lactate'},{k:'k',label:'K'},{k:'glu',label:'Glu'},
-    {k:'hgb',label:'Hgb'},{k:'ph',label:'pH'},{k:'pco2',label:'pCO₂'},
-    {k:'po2',label:'pO₂'},{k:'hco3',label:'HCO₃'},{k:'be',label:'Base Excess'},
-    {k:'so2',label:'sO₂'},{k:'notes',label:'Notes',wide:true}
+    {k:'hgb',label:'Hgb'},{k:'ph',label:'pH'},{k:'pco2',label:'pCO2'},
+    {k:'po2',label:'pO2'},{k:'hco3',label:'HCO3'},{k:'be',label:'Base Excess'},
+    {k:'so2',label:'sO2'},{k:'notes',label:'Notes',wide:true}
   ],
 };
 
@@ -534,11 +497,11 @@ function hcCaseSheet(){
   const chk=(k)=>c[k]?'checked':'';
   const checklist=[
     ['cStart','Case start time'],['t0bl','T0 Pre-Baseline drawn CG4, CG8, CBC'],
-    ['iso','Iso 1-3%, EtCO₂ 35-45, TV 7-15 mL/kg'],['bolus','250 mL 0.9% saline bolus via ear'],
+    ['iso','Iso 1-3%, EtCO2 35-45, TV 7-15 mL/kg'],['bolus','250 mL 0.9% saline bolus via ear'],
     ['cath','Catheter placements (all upsized)'],['fem','L Femoral (REBOA)'],
     ['car','Carotid (BP/sampling)'],['rfem','R Femoral (BP/hemorrhage)'],
     ['ej','EJ (resus/fluids)'],['ytube','Prime Y-tubing, keep warm'],
-    ['leak','Check REBOA for leaks'],['temp','Temp 37.5–40 °C maintained'],
+    ['leak','Check REBOA for leaks'],['temp','Temp 37.5-40 C maintained'],
     ['tbi','TBI induced'],['reboaM','REBOA measured & placed'],['tibia','Tibia fracture'],
     ['titrate','Titrate iso to 1.5% before hemorrhage']
   ];
@@ -556,7 +519,7 @@ function hcCaseSheet(){
     <div class="field" style="margin-bottom:14px">
       <label>Treatment arm</label>
       <select data-c="arm">
-        <option value="">—</option>
+        <option value="">-</option>
         <option ${c.arm==='1 unit WB'?'selected':''}>1 unit WB</option>
         <option ${c.arm==='1 unit WB + NAC (150mg/kg)'?'selected':''}>1 unit WB + NAC (150mg/kg)</option>
         <option ${c.arm==='1 unit WB + CX-01 (4.3mg/kg)'?'selected':''}>1 unit WB + CX-01 (4.3mg/kg)</option>
@@ -596,14 +559,12 @@ function hcGrid(sheet,rows,cols){
 }
 
 function hcBind(){
-  // case fields
   document.querySelectorAll('[data-c]').forEach(el=>{
     el.addEventListener('input',()=>{hcA().case[el.dataset.c]=el.value;});
   });
   document.querySelectorAll('[data-chk]').forEach(el=>{
     el.addEventListener('change',()=>{hcA().case[el.dataset.chk]=el.checked;});
   });
-  // grid cells
   document.querySelectorAll('[data-g]').forEach(el=>{
     const handler=()=>{
       const {g,r,k}=el.dataset;
@@ -617,18 +578,15 @@ function hcBind(){
 function hcExportCSV(){
   const lines=[];
   const a=HCARE.animal, A=hcA();
-  // case
   lines.push('# CASE SETUP');
   lines.push('animal,'+a);
   Object.entries(A.case).forEach(([k,v])=>lines.push(`${k},"${String(v).replace(/"/g,'""')}"`));
-  // vitals
   lines.push(''); lines.push('# VITALS');
   lines.push(['timepoint',...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>c.k)].join(','));
   HCARE.vitalsRows.forEach((r,rid)=>{
     const row=A.vitals[rid]||{};
     lines.push([`"${r}"`,...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>(row[c.k]??''))].join(','));
   });
-  // istat
   lines.push(''); lines.push('# iSTAT');
   lines.push(['timepoint',...HCARE.istatCols.map(c=>c.k)].join(','));
   HCARE.istatRows.forEach((r,rid)=>{
@@ -641,7 +599,6 @@ function hcExportCSV(){
   toast('Exported HCARE_'+a+'.csv');
 }
 
-// wiring
 document.getElementById('hcareBtn').addEventListener('click',hcInit);
 document.getElementById('hcClose').addEventListener('click',()=>document.getElementById('hcare').style.display='none');
 document.getElementById('hcAddAnimal').addEventListener('click',()=>hcAddAnimal(false));
@@ -656,11 +613,9 @@ document.getElementById('hcPhotoFile').addEventListener('change',e=>{
   e.target.value='';
 });
 
-/* Photo → fills a chosen row of the active Data sheet (vitals or iSTAT) */
 async function hcPhotoToRow(file){
-  const sheet=HCARE.sheet; // 'vitals' or 'istat'
+  const sheet=HCARE.sheet;
   const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
-  // ask which timepoint row this photo is for
   const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
   const pick=prompt('Which timepoint is this photo for? Enter the number:\n\n'+list, '1');
   if(pick===null)return;
@@ -668,7 +623,7 @@ async function hcPhotoToRow(file){
   if(isNaN(rid)||rid<0||rid>=rows.length){toast('Invalid row');return;}
   const reader=new FileReader();
   reader.onload=async ev=>{
-    toast('Reading photo…');
+    toast('Reading photo...');
     try{
       const cols = sheet==='vitals' ? HCARE.vitalsCols.filter(c=>c.type!=='x'&&c.type!=='c')
                                     : HCARE.istatCols;
@@ -680,7 +635,7 @@ async function hcPhotoToRow(file){
       d[rid]._photo=ev.target.result;
       hcRenderSheet();
       const n=Object.keys(vals).length;
-      toast(n?`Filled ${n} value${n>1?'s':''} into "${rows[rid]}" — check & correct`:'No values read — enter manually');
+      toast(n?`Filled ${n} value${n>1?'s':''} into "${rows[rid]}" - check & correct`:'No values read - enter manually');
     }catch(err){ toast('Extraction failed: '+err.message); }
   };
   reader.readAsDataURL(file);
@@ -692,7 +647,6 @@ function hcMapVitals(text){
     const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{1,6})\b[^0-9\-]{0,10}(\d{2,3}(?:\.\d)?)/);
     if(mm){const k=map[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
   });
-  // BP a/b(c) → femBP or carBP; first found → femBP, second → carBP
   const bps=[...text.matchAll(/(\d{2,3})\s*\/\s*(\d{2,3})\s*\(?(\d{2,3})?\)?/g)];
   if(bps[0]) out.femBP=`${bps[0][1]}/${bps[0][2]}${bps[0][3]?'('+bps[0][3]+')':''}`;
   if(bps[1]) out.carBP=`${bps[1][1]}/${bps[1][2]}${bps[1][3]?'('+bps[1][3]+')':''}`;
@@ -701,7 +655,7 @@ function hcMapVitals(text){
 function hcMapIstat(text){
   const out={};
   const alias={lactate:'lactate',lac:'lactate',k:'k',glu:'glu',glucose:'glu',hgb:'hgb',hb:'hgb',
-    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2',sо2:'so2'};
+    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2'};
   text.split(/\n+/).forEach(line=>{
     const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{0,7})\b[^0-9\-]{0,8}(-?\d+\.?\d*)/);
     if(mm){const k=alias[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
@@ -715,54 +669,45 @@ document.querySelectorAll('#hcTabs .atab').forEach(t=>{
   });
 });
 </script>
-</body>
 
 <script>
-/* ============================================================
-   SWINE ICU — LIVE CAPTURE
-   Protocol-adaptive preclinical data capture.
-   State is held in memory (no browser storage in artifacts).
-   ============================================================ */
-
+/* ============ SWINE ICU - LIVE CAPTURE ============ */
 const App = {
-  protocol: null,           // {name, timepoints:[{id,label,offsetMin,tasks:[],params:[]}], params:[], labFields:[]}
-  animals: [],              // [{id, rows:{tpId:{...values, _ts, _meta}}, labs:[]}]
+  protocol: null,
+  animals: [],
   activeAnimal: null,
-  source: null,             // {mode, ws, simTimer}
-  live: {},                 // current live values {param:{value,unit,ts,alarm,group}}
+  source: null,
+  live: {},
   runStart: null,
-  sparkData: {},            // param -> [values]
+  sparkData: {},
 };
 
-/* ---------- Default parameter model (used until protocol overrides) ---------- */
 const DEFAULT_VITALS = [
   {key:'HR',   label:'HR',    unit:'bpm',  group:'vital', lo:40, hi:180},
   {key:'ABPs', label:'ABP sys',unit:'mmHg',group:'vital', lo:70, hi:200},
   {key:'ABPd', label:'ABP dia',unit:'mmHg',group:'vital', lo:30, hi:120},
   {key:'MAP',  label:'MAP',   unit:'mmHg', group:'vital', lo:50, hi:120},
-  {key:'SpO2', label:'SpO₂',  unit:'%',    group:'vital', lo:88, hi:100},
+  {key:'SpO2', label:'SpO2',  unit:'%',    group:'vital', lo:88, hi:100},
   {key:'PVC',  label:'PVC',   unit:'/min', group:'vital', lo:0,  hi:30},
-  {key:'Temp', label:'Temp',  unit:'°C',   group:'vital', lo:35, hi:41},
-  {key:'EtCO2',label:'EtCO₂', unit:'mmHg', group:'vital', lo:25, hi:55},
+  {key:'Temp', label:'Temp',  unit:'C',    group:'vital', lo:35, hi:41},
+  {key:'EtCO2',label:'EtCO2', unit:'mmHg', group:'vital', lo:25, hi:55},
   {key:'CVP',  label:'CVP',   unit:'mmHg', group:'vital', lo:0,  hi:18},
-  // Ventilator (via BeneLink)
   {key:'RR',   label:'RR',    unit:'/min', group:'vent', lo:8,  hi:40},
   {key:'TV',   label:'Vt',    unit:'mL',   group:'vent', lo:200,hi:800},
-  {key:'PEEP', label:'PEEP',  unit:'cmH₂O',group:'vent', lo:0,  hi:20},
-  {key:'PIP',  label:'PIP (PEAK)',unit:'cmH₂O',group:'vent', lo:5,hi:45},
-  {key:'PLAT', label:'PLAT',  unit:'cmH₂O',group:'vent', lo:5,  hi:40},
-  {key:'FiO2', label:'FiO₂',  unit:'%',    group:'vent', lo:21, hi:100},
-  {key:'FiCO2',label:'FiCO₂', unit:'mmHg', group:'vent', lo:0,  hi:10},
+  {key:'PEEP', label:'PEEP',  unit:'cmH2O',group:'vent', lo:0,  hi:20},
+  {key:'PIP',  label:'PIP (PEAK)',unit:'cmH2O',group:'vent', lo:5,hi:45},
+  {key:'PLAT', label:'PLAT',  unit:'cmH2O',group:'vent', lo:5,  hi:40},
+  {key:'FiO2', label:'FiO2',  unit:'%',    group:'vent', lo:21, hi:100},
+  {key:'FiCO2',label:'FiCO2', unit:'mmHg', group:'vent', lo:0,  hi:10},
   {key:'MV',   label:'MV',    unit:'L/min',group:'vent', lo:1,  hi:20},
 ];
 
 const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','Creatinine'];
 
-/* ---------- utilities ---------- */
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
-function fmtClock(ms){if(ms==null)return'—';const s=Math.floor(ms/1000);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function fmtClock(ms){if(ms==null)return'-';const s=Math.floor(ms/1000);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
 function nowTs(){return new Date().toISOString();}
 function tsShort(iso){return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});}
 
@@ -771,41 +716,24 @@ function activeParams(){
     ? App.protocol.params : DEFAULT_VITALS;
 }
 
-/* ============================================================
-   PROTOCOL PARSING
-   The interface adapts to whatever the protocol defines.
-   Parser extracts timepoints (T0, T+15, 30 min, baseline, etc.)
-   and measured parameters. Falls back to sensible defaults.
-   ============================================================ */
-/* ---------- extended parameter vocabulary (recognized beyond defaults) ----------
-   Advanced hemodynamic / oxygenation / metabolic params seen in swine ICU work.
-   Anything here, plus any "Label (unit)" pattern found in the text, is added. */
 const EXTRA_PARAM_VOCAB = [
   {key:'CO',   label:'CO',   unit:'L/min',  group:'vital', pats:['cardiac output','\\bCO\\b']},
-  {key:'CI',   label:'CI',   unit:'L/min/m²',group:'vital',pats:['cardiac index','\\bCI\\b']},
+  {key:'CI',   label:'CI',   unit:'L/min/m2',group:'vital',pats:['cardiac index','\\bCI\\b']},
   {key:'SV',   label:'SV',   unit:'mL',     group:'vital', pats:['stroke volume','\\bSV\\b']},
   {key:'SVV',  label:'SVV',  unit:'%',      group:'vital', pats:['stroke volume variation','\\bSVV\\b']},
-  {key:'SVR',  label:'SVR',  unit:'dyn·s/cm⁵',group:'vital',pats:['systemic vascular resistance','\\bSVR\\b']},
-  {key:'PiCCO',label:'PiCCO',unit:'',       group:'vital', pats:['picco']},
-  {key:'ICG',  label:'ICG',  unit:'',       group:'vital', pats:['\\bICG\\b','impedance cardiography']},
-  {key:'rSO2', label:'rSO₂', unit:'%',      group:'vital', pats:['rso2','invos','cerebral oxim','tissue oxygen']},
-  {key:'ScvO2',label:'ScvO₂',unit:'%',      group:'vital', pats:['scvo2','central venous oxygen']},
-  {key:'SvO2', label:'SvO₂', unit:'%',      group:'vital', pats:['svo2','mixed venous']},
+  {key:'SVR',  label:'SVR',  unit:'dyn.s/cm5',group:'vital',pats:['systemic vascular resistance','\\bSVR\\b']},
+  {key:'rSO2', label:'rSO2', unit:'%',      group:'vital', pats:['rso2','invos','cerebral oxim','tissue oxygen']},
+  {key:'ScvO2',label:'ScvO2',unit:'%',      group:'vital', pats:['scvo2','central venous oxygen']},
+  {key:'SvO2', label:'SvO2', unit:'%',      group:'vital', pats:['svo2','mixed venous']},
   {key:'PAP',  label:'PAP',  unit:'mmHg',   group:'vital', pats:['pulmonary artery pressure','\\bPAP\\b']},
   {key:'ICP',  label:'ICP',  unit:'mmHg',   group:'vital', pats:['intracranial pressure','\\bICP\\b']},
   {key:'CPP',  label:'CPP',  unit:'mmHg',   group:'vital', pats:['cerebral perfusion pressure','\\bCPP\\b']},
   {key:'UO',   label:'Urine',unit:'mL/h',   group:'vital', pats:['urine output','\\bUO\\b']},
-  {key:'Cdyn', label:'Cdyn', unit:'mL/cmH₂O',group:'vent', pats:['compliance','cdyn']},
-  {key:'MV',   label:'MV',   unit:'L/min',  group:'vent',  pats:['minute ventilation','\\bMV\\b']},
-  {key:'Pplat',label:'Pplat',unit:'cmH₂O',  group:'vent',  pats:['plateau pressure','pplat']},
-  {key:'PF',   label:'P/F',  unit:'',       group:'vent',  pats:['p/f ratio','pao2/fio2']},
 ];
 
 function parseProtocolText(text, fname){
   const proto = {name:fname.replace(/\.[^.]+$/,''), timepoints:[], params:[], labFields:[],
                  events:[], groups:[], endpoints:[], extras:[], raw:text};
-
-  // ============ TIMEPOINTS ============
   const tpSet = new Map();
   const addTp = (offset, label, tasks) => {
     const id = 'T'+offset;
@@ -821,27 +749,21 @@ function parseProtocolText(text, fname){
   re=/\b(\d{1,2}(?:\.\d)?)\s*[- ]?(?:h|hr|hour|hours)\b/gi;
   while((m=re.exec(text))){const v=Math.round(parseFloat(m[1])*60); if(v>0&&v<=2880)addTp(v, (v/60)+' h');}
 
-  // ============ STRUCTURED TREATMENT / INJURY EVENTS ============
-  // Sentences that pair an action verb with a timepoint become structured events.
   const EVENT_VERBS = /(hemorrhage|bleed|exsanguinat|inject|infus|administ|start|begin|bolus|titrat|resuscitat|transfus|clamp|ligat|induce|injur|ventilat|extubat|euthan|sacrific|terminat)/i;
   const sentences = text.split(/(?<=[.;\n])\s+/);
   sentences.forEach(s=>{
     if(!EVENT_VERBS.test(s) || s.length>240) return;
-    // find a timepoint reference in the sentence
     let off=null, tm;
     if((tm=/\bT\s*\+?\s*(\d{1,3})\b/i.exec(s))) off=parseInt(tm[1]);
     else if((tm=/\b(\d{1,3})\s*[- ]?(?:min|minute)/i.exec(s))) off=parseInt(tm[1]);
     else if((tm=/\b(\d{1,2}(?:\.\d)?)\s*[- ]?(?:h|hr|hour)/i.exec(s))) off=Math.round(parseFloat(tm[1])*60);
     else if(/baseline|T\s*0\b/i.test(s)) off=0;
     const clean=s.trim().replace(/\s+/g,' ').slice(0,160);
-    const ev={text:clean, offsetMin:off};
-    proto.events.push(ev);
+    proto.events.push({text:clean, offsetMin:off});
     if(off!=null){ const tp=addTp(off); tp.events.push(clean); }
   });
 
   let tps=[...tpSet.values()].sort((a,b)=>a.offsetMin-b.offsetMin);
-
-  // sampling tasks
   const wantsABG = /\b(abg|blood gas|arterial gas|lactate)\b/i.test(text);
   const wantsCBC = /\b(cbc|hematocrit|hct|hemoglobin|hgb)\b/i.test(text);
   const wantsChem= /\b(chemistry|electrolyte|creatinine|bun)\b/i.test(text);
@@ -854,59 +776,42 @@ function parseProtocolText(text, fname){
     }
   });
 
-  // ============ PARAMETERS ============
   const found = new Map();
   const tryAdd = p=>{ if(!found.has(p.key)) found.set(p.key,p); };
-  // 1) default vitals mentioned
   DEFAULT_VITALS.forEach(p=>{
-    const pats=[p.key, p.label.replace(/[₂]/g,'2')];
+    const pats=[p.key, p.label.replace(/[2]/g,'2')];
     if(pats.some(x=> new RegExp('\\b'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(text))) tryAdd(p);
   });
-  // 2) extended vocab mentioned
   EXTRA_PARAM_VOCAB.forEach(p=>{
     if(p.pats.some(pat=> new RegExp(pat,'i').test(text))){
       tryAdd({key:p.key,label:p.label,unit:p.unit,group:p.group,lo:null,hi:null});
       proto.extras.push(p.label);
     }
   });
-  // 3) generic "Label (unit)" pattern — captures anything else with an explicit unit
-  const UNIT=/(mmHg|cmH2O|cmH₂O|bpm|L\/min|mL\/h|mL|%|°C|mEq\/L|mmol\/L|mg\/dL|ng\/mL|µg\/kg\/min|mcg\/kg\/min|dyn)/;
-  re=new RegExp('([A-Za-z][A-Za-z0-9/\\-]{1,14})\\s*\\(\\s*('+UNIT.source+')\\s*\\)','g');
-  while((m=re.exec(text))){
-    const key=m[1].replace(/[^A-Za-z0-9]/g,''); if(key.length<2||found.has(key))continue;
-    if(/^(the|and|for|min|max|fig|table|see|output|rate|level|index|ratio|total|mean|value|range|volume)$/i.test(key))continue;
-    tryAdd({key,label:m[1],unit:m[2],group:'vital',lo:null,hi:null});
-    proto.extras.push(m[1]+' ('+m[2]+')');
-  }
   let params=[...found.values()];
   proto.params = params.length>=3 ? params : DEFAULT_VITALS;
 
-  // ============ LAB FIELDS ============
   const labs = DEFAULT_LAB_FIELDS.filter(f=> new RegExp('\\b'+f+'\\b','i').test(text));
   proto.labFields = labs.length ? labs : DEFAULT_LAB_FIELDS;
 
-  // ============ STUDY GROUPS ============
   const grpSet=new Set();
   re=/\b(treatment|control|sham|placebo|vehicle|intervention|group\s+[A-D]|arm\s+\d)\b/gi;
   while((m=re.exec(text))){grpSet.add(m[1].replace(/\s+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));}
   proto.groups=[...grpSet];
 
-  // ============ ENDPOINT / TERMINATION CRITERIA ============
   sentences.forEach(s=>{
-    if(/\b(endpoint|euthan|sacrific|terminat|exclusion criteria|death|until.*(MAP|lactate))\b/i.test(s) && s.length<200){
+    if(/\b(endpoint|euthan|sacrific|terminat|exclusion criteria|death)\b/i.test(s) && s.length<200){
       proto.endpoints.push(s.trim().replace(/\s+/g,' ').slice(0,160));
     }
   });
   proto.endpoints=[...new Set(proto.endpoints)].slice(0,6);
-
   proto.timepoints = tps;
   return proto;
 }
 
-/* ---------- demo protocol (when no file / parse empty) ---------- */
 function demoProtocol(){
   return {
-    name:'Demo — Hemorrhagic shock + resuscitation',
+    name:'Demo - Hemorrhagic shock + resuscitation',
     params: DEFAULT_VITALS,
     labFields: DEFAULT_LAB_FIELDS,
     timepoints:[
@@ -928,34 +833,31 @@ function loadProtocol(proto){
   rebuildTable();
   populateLabFields();
   if(!App.animals.length) addAnimal({silent:true});
-  toast('Protocol loaded — interface rebuilt');
+  toast('Protocol loaded - interface rebuilt');
 }
 
-/* ============================================================
-   RENDER: protocol info
-   ============================================================ */
 function renderProtocolInfo(){
   const p=App.protocol; if(!p)return;
   const extra = (p.extras&&p.extras.length)?`<div class="prow"><span>Extra params</span><b>${p.extras.length}</b></div>`:'';
   const grp = (p.groups&&p.groups.length)?`<div class="prow" style="align-items:flex-start"><span>Groups</span><b style="text-align:right;max-width:130px">${p.groups.join(', ')}</b></div>`:'';
   const ev = (p.events&&p.events.length)?`<div class="prow"><span>Events</span><b>${p.events.length}</b></div>`:'';
-  const ep = (p.endpoints&&p.endpoints.length)?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px">Endpoint criteria (${p.endpoints.length})</summary><div style="font-size:11px;color:var(--ink-dim);margin-top:6px;line-height:1.5">${p.endpoints.map(e=>'• '+e).join('<br>')}</div></details>`:'';
-  $('#protoCard').innerHTML = `
-    <div class="proto-info">
+  const ep = (p.endpoints&&p.endpoints.length)?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px">Endpoint criteria (${p.endpoints.length})</summary><div style="font-size:11px;color:var(--ink-dim);margin-top:6px;line-height:1.5">${p.endpoints.map(e=>'- '+e).join('<br>')}</div></details>`:'';
+  const infoDiv=document.createElement('div');
+  infoDiv.className='proto-info';
+  infoDiv.innerHTML = `
       <div class="pname">${p.name}</div>
       <div class="prow"><span>Timepoints</span><b>${p.timepoints.length}</b></div>
       <div class="prow"><span>Parameters</span><b>${p.params.length}</b></div>
       ${extra}
       <div class="prow"><span>Lab fields</span><b>${p.labFields.length}</b></div>
       ${ev}${grp}${ep}
-      <button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="resetProtocol()">Change protocol</button>
-    </div>`;
+      <button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="resetProtocol()">Change protocol</button>`;
+  const card=$('#protoCard');
+  const old=card.querySelector('.proto-info'); if(old) old.remove();
+  card.appendChild(infoDiv);
 }
 function resetProtocol(){location.reload();}
 
-/* ============================================================
-   RENDER: live vitals grid (adapts to protocol params)
-   ============================================================ */
 function renderVitalsGrid(){
   const grid=$('#vitalsGrid');
   const params=activeParams();
@@ -965,14 +867,14 @@ function renderVitalsGrid(){
     const card=`
       <div class="vital ${p.group==='vent'?'vent':''} stale" id="v-${p.key}">
         <div class="vlabel">${p.label}<span class="vsrc">${p.group==='vent'?'VENT':'MON'}</span></div>
-        <div class="vval">––<span class="vunit">${p.unit}</span></div>
+        <div class="vval">--<span class="vunit">${p.unit}</span></div>
         <svg class="spark" id="spark-${p.key}" preserveAspectRatio="none" viewBox="0 0 100 22"></svg>
       </div>`;
     if(p.group==='vent') ventCards+=card; else vitalCards+=card;
   });
   grid.innerHTML =
     `<div class="group-tag" style="grid-column:1/-1">Patient monitor</div>${vitalCards}` +
-    (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator · BeneLink</div>${ventCards}`:'');
+    (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator - BeneLink</div>${ventCards}`:'');
 }
 
 function updateLiveDisplay(){
@@ -986,7 +888,6 @@ function updateLiveDisplay(){
     valEl.innerHTML = `${d.value}<span class="vunit">${p.unit}</span>`;
     const alarm = (p.lo!=null&&d.value<p.lo)||(p.hi!=null&&d.value>p.hi);
     el.classList.toggle('alarm', alarm);
-    // sparkline
     const arr=App.sparkData[p.key]=(App.sparkData[p.key]||[]);
     arr.push(d.value); if(arr.length>40)arr.shift();
     drawSpark(p);
@@ -1006,9 +907,6 @@ function drawSpark(p){
   svg.innerHTML=`<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1"/>`;
 }
 
-/* ============================================================
-   RENDER: timeline (from protocol timepoints)
-   ============================================================ */
 function renderTimeline(){
   const tl=$('#timeline'); const p=App.protocol;
   if(!p||!p.timepoints.length){tl.innerHTML='<div class="empty">Upload a protocol to build the timeline.</div>';return;}
@@ -1017,16 +915,16 @@ function renderTimeline(){
     const done = a && a.rows[tp.id];
     const cd = countdownFor(tp);
     const evHtml = (tp.events&&tp.events.length)
-      ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:4px;line-height:1.5">${tp.events.map(e=>'▸ '+e).join('<br>')}</div>` : '';
+      ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:4px;line-height:1.5">${tp.events.map(e=>'> '+e).join('<br>')}</div>` : '';
     return `
       <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}">
         <div class="tdot"></div>
         <div class="tbody">
           <div class="ttime">${tp.label}</div>
-          <div class="ttasks">${tp.tasks.join(' · ')}</div>
+          <div class="ttasks">${tp.tasks.join(' - ')}</div>
           ${evHtml}
           ${done
-            ? `<div class="twhen">✓ recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
+            ? `<div class="twhen">recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
             : cd.text?`<div class="countdown">${cd.text}</div>`:''}
           ${done?'':`<button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>`}
         </div>
@@ -1036,7 +934,7 @@ function renderTimeline(){
 
 function countdownFor(tp){
   if(!App.runStart) return {text:'', active:false};
-  const elapsed=(Date.now()-App.runStart)/60000; // minutes
+  const elapsed=(Date.now()-App.runStart)/60000;
   const diff=tp.offsetMin-elapsed;
   if(diff>0 && diff<=5) return {text:`due in ${Math.ceil(diff)} min`, active:true};
   if(diff<=0 && diff>-10) return {text:`due now`, active:true};
@@ -1044,9 +942,6 @@ function countdownFor(tp){
   return {text:'', active:false};
 }
 
-/* ============================================================
-   ANIMALS
-   ============================================================ */
 function addAnimal(opts){
   opts=opts||{};
   const n=App.animals.length+1;
@@ -1077,29 +972,23 @@ function getActiveAnimal(){return App.animals.find(a=>a.id===App.activeAnimal);}
 function renderAnimalTabs(){
   const c=$('#animalTabs');
   c.innerHTML = App.animals.map(a=>
-    `<div class="atab ${a.id===App.activeAnimal?'on':''}" onclick="selectAnimal('${a.id}')">${a.id}${a.group?' <span style="opacity:.6">·'+a.group.replace('Group ','').replace('Treatment','Tx').replace('Control','Ctl')+'</span>':''}</div>`
-  ).join('') + `<div class="atab add" onclick="addAnimal()">＋ animal</div>`;
+    `<div class="atab ${a.id===App.activeAnimal?'on':''}" onclick="selectAnimal('${a.id}')">${a.id}${a.group?' <span style="opacity:.6">-'+a.group.replace('Group ','').replace('Treatment','Tx').replace('Control','Ctl')+'</span>':''}</div>`
+  ).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
 }
 function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();}
 function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
 
-/* ============================================================
-   CAPTURE (manual "now" or specific timepoint)
-   Pre-fills with current live values; user can edit.
-   ============================================================ */
 function openCapture(tpId, prefill, photo){
   if(!App.animals.length){addAnimal({silent:true});}
   const params=activeParams();
   let tp = tpId ? App.protocol.timepoints.find(t=>t.id===tpId) : null;
   const fromPhoto = !!photo;
   $('#capTitle').textContent = tp ? `${tp.label}` : (fromPhoto?'Vitals from photo':'Edit / enter vitals');
-
   const elapsed = App.runStart ? `+${Math.round((Date.now()-App.runStart)/60000)} min` : '';
-  const srcNote = fromPhoto ? 'values extracted from photo — check & correct' :
+  const srcNote = fromPhoto ? 'values extracted from photo - check & correct' :
                   (Object.keys(App.live).length? 'values pre-filled from live feed' : 'enter values manually');
-  let body=`<div class="hint" style="margin-bottom:12px">${nowTs().replace('T',' ').slice(0,19)} ${elapsed?'· run '+elapsed:''} · ${srcNote}</div>`;
+  let body=`<div class="hint" style="margin-bottom:12px">${nowTs().replace('T',' ').slice(0,19)} ${elapsed?'- run '+elapsed:''} - ${srcNote}</div>`;
   if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
-
   const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
   const fieldFor=p=>{
     let v='';
@@ -1123,32 +1012,18 @@ function openCapture(tpId, prefill, photo){
   }
   body+=`<button class="btn primary" onclick="saveCapture('${tpId||''}')">Save timepoint</button>`;
   $('#capBody').innerHTML=body;
-  // clear OCR marker on edit
   $$('#capBody [data-k]').forEach(inp=>inp.addEventListener('input',()=>{const w=inp.closest('.field');if(w)w.classList.remove('ocr-filled');},{once:true}));
   $('#captureModal').classList.add('show');
 }
 
-/* ---------- monitor photo → vitals via OCR ---------- */
-/* ============================================================
-   PHOTO EXTRACTION ENGINE
-   extractFromPhoto(imageDataURL, fields, tesseractMapper) → {values, method}
-   Claude vision (reads i-STAT LCD, Mindray monitors, handwriting)
-   when method=claude + API key; else Tesseract + caller mapper.
-   ============================================================ */
 function getOcrMethod(){ return ($('#ocrMethod')&&$('#ocrMethod').value)||'claude'; }
 function getApiKey(){ return ($('#apiKey')&&$('#apiKey').value.trim())||''; }
 
-/* ============================================================
-   DEVICE SCHEMAS — tuned to the three real source screens:
-   i-STAT CG4+/CG8+ printouts, Mindray BeneVision monitor,
-   Mindray V60 ventilator. Auto-detected from the photo.
-   ============================================================ */
 const DEVICE_SCHEMAS = {
   istat: {
     label:'i-STAT (CG4+ / CG8+)',
-    // superset of CG4+ and CG8+ analytes
     fields:['pH','PCO2','PO2','BEecf','HCO3','TCO2','sO2','Lac','Na','K','iCa','Glu','Hct','Hb'],
-    hint:`An Abbott i-STAT printout (CG4+ or CG8+ cartridge). Read the analyte column and its value. Analytes may include: pH, PCO2 (mmHg), PO2 (mmHg), BEecf (mmol/L), HCO3 (mmol/L), TCO2 (mmol/L), sO2 (%), Lac (mmol/L), Na (mmol/L), K (mmol/L), iCa (mmol/L), Glu (mg/dL), Hct (%PCV), Hb (g/dL). Also read "cartridge" as "CG4+" or "CG8+" from the header, and "animalId" from the handwritten number near the top if present.`,
+    hint:`An Abbott i-STAT printout (CG4+ or CG8+ cartridge). Read the analyte column and its value. Analytes may include: pH, PCO2 (mmHg), PO2 (mmHg), BEecf (mmol/L), HCO3 (mmol/L), TCO2 (mmol/L), sO2 (%), Lac (mmol/L), Na (mmol/L), K (mmol/L), iCa (mmol/L), Glu (mg/dL), Hct (%PCV), Hb (g/dL). Also read cartridge as CG4+ or CG8+ from the header, and animalId from the handwritten number near the top if present.`,
     extra:['cartridge','animalId']
   },
   monitor: {
@@ -1160,15 +1035,14 @@ const DEVICE_SCHEMAS = {
   ventilator: {
     label:'Mindray ventilator (V60/A-series)',
     fields:['EtCO2','FiCO2','PEAK','PLAT','PEEP','Vt','RR','FiO2','MAC','MV'],
-    hint:`A Mindray anesthesia/ventilator screen (V60 or A-series). Read: EtCO2 (mmHg), FiCO2, PEAK pressure (cmH2O), PLAT plateau (cmH2O), PEEP (cmH2O), Vt exhaled tidal volume (mL, label "Vt Exp"), RR respiratory rate, FiO2 (%), MAC, MV minute ventilation.`,
+    hint:`A Mindray anesthesia/ventilator screen (V60 or A-series). Read: EtCO2 (mmHg), FiCO2, PEAK pressure (cmH2O), PLAT plateau (cmH2O), PEEP (cmH2O), Vt exhaled tidal volume (mL, label Vt Exp), RR respiratory rate, FiO2 (%), MAC, MV minute ventilation.`,
     extra:[]
   }
 };
 
-/* Auto-detect device type + extract values in one call. */
 async function detectAndExtract(imageDataURL){
   const key=getApiKey();
-  if(!key) throw new Error('No API key — enter it under "Photo extraction (AI)", or switch to Tesseract.');
+  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('Bad image');
   const media=m[1], b64=m[2];
@@ -1183,7 +1057,7 @@ Return ONLY a JSON object (no prose, no markdown fences) shaped exactly:
 
 Rules:
 - device MUST be one of: istat, monitor, ventilator.
-- values keys use EXACTLY the field names from the matching device above (e.g. pH, PCO2, ABPs, EtCO2).
+- values keys use EXACTLY the field names from the matching device above.
 - Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
 - Omit any field you cannot read confidently. NEVER guess a value.
 - Read decimals and negatives exactly (e.g. BEecf -5, pH 7.487, Lac 1.72).`;
@@ -1218,12 +1092,12 @@ Rules:
 
 async function claudeExtract(imageDataURL, fields){
   const key=getApiKey();
-  if(!key) throw new Error('No API key — enter it under "Photo extraction (AI)", or switch to Tesseract.');
+  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('Bad image');
   const media=m[1], b64=m[2];
   const fieldList=fields.map(f=>`"${f.key}"${f.label&&f.label!==f.key?' ('+f.label+')':''}${f.unit?' in '+f.unit:''}`).join(', ');
-  const prompt=`This photo is from a preclinical swine ICU experiment (an i-STAT analyzer screen, a Mindray patient monitor, or a handwritten data form). Read the numeric values shown and return ONLY a JSON object — no prose, no markdown fences.
+  const prompt=`This photo is from a preclinical swine ICU experiment (an i-STAT analyzer screen, a Mindray patient monitor, or a handwritten data form). Read the numeric values shown and return ONLY a JSON object - no prose, no markdown fences.
 
 Extract these fields if present: ${fieldList}.
 
@@ -1277,13 +1151,13 @@ async function monitorPhotoToVitals(file){
   const reader=new FileReader();
   reader.onload=async e=>{
     const img=e.target.result;
-    toast('Reading monitor photo…');
+    toast('Reading monitor photo...');
     try{
       const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
       const {values}=await extractFromPhoto(img, fields, mapMonitorText);
       openCapture('', values, img);
       const n=Object.keys(values).length;
-      toast(n?`Extracted ${n} value${n>1?'s':''} — check & correct`:'No values read — enter manually');
+      toast(n?`Extracted ${n} value${n>1?'s':''} - check & correct`:'No values read - enter manually');
     }catch(err){
       openCapture('', null, img);
       toast('Extraction failed: '+err.message);
@@ -1292,8 +1166,7 @@ async function monitorPhotoToVitals(file){
   reader.readAsDataURL(file);
 }
 function mapMonitorText(text){
-  // Monitor LED labels → our keys. Conservative: only same-line "LABEL ... NUMBER".
-  const map={hr:'HR',pr:'HR','spo2':'SpO2','spo2':'SpO2','spotz':'SpO2',
+  const map={hr:'HR',pr:'HR','spo2':'SpO2','spotz':'SpO2',
     'etco2':'EtCO2','etcoz':'EtCO2','co2':'EtCO2','rr':'RR','resp':'RR',
     'temp':'Temp','tblood':'Temp','cvp':'CVP','map':'MAP'};
   const out={};
@@ -1305,7 +1178,6 @@ function mapMonitorText(text){
     const val=parseFloat(mm[2]);
     if(key && params.has(key) && out[key]===undefined && !isNaN(val)) out[key]=val;
   });
-  // BP pattern "120/80" → ABPs/ABPd or femBP etc.
   const bp=text.match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
   if(bp){ if(params.has('ABPs'))out['ABPs']=+bp[1]; if(params.has('ABPd'))out['ABPd']=+bp[2]; }
   return out;
@@ -1331,9 +1203,6 @@ function saveCapture(tpId){
   toast(`Saved ${tpId||label} for ${a.id}`);
 }
 
-/* ============================================================
-   DATA TABLE (per active animal, columns = params)
-   ============================================================ */
 function rebuildTable(){
   const a=getActiveAnimal();
   const params=activeParams();
@@ -1342,43 +1211,33 @@ function rebuildTable(){
   if(!a||!Object.keys(a.rows).length){
     tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+3}">No timepoints recorded yet.</td></tr>`;return;
   }
-  // order rows: protocol order then manual
   const order=[];
   if(App.protocol) App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push([t.id,t.label]);});
   Object.keys(a.rows).forEach(k=>{if(!order.find(o=>o[0]===k))order.push([k, a.rows[k]._label||k]);});
   tbody.innerHTML=order.map(([rid,label])=>{
     const r=a.rows[rid];
-    return `<tr><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'—'}</td>`+
+    return `<tr><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
       params.map(p=>`<td>${r[p.key]??''}</td>`).join('')+
       `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td></tr>`;
   }).join('');
 }
 
-/* ============================================================
-   BLOOD LABS
-   ============================================================ */
 let pendingLabImg=null;
-function populateLabFields(){/* fields built on modal open */}
+function populateLabFields(){}
 function openLabModal(imgData){
   pendingLabImg=imgData||null;
   const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
   $('#labPreview').innerHTML = imgData?`<img src="${imgData}" style="max-width:100%;border-radius:4px;border:1px solid var(--line)">`:'';
   $('#labFields').innerHTML = `<div class="grid3">`+fields.map(f=>
     `<div class="field" data-field="${f}"><label>${f}</label><input data-lab="${f}" inputmode="decimal"></div>`).join('')+`</div>`;
-  // OCR button visible only when there's a photo
   $('#ocrBtn').style.display = imgData ? 'block' : 'none';
   $('#ocrStatus').innerHTML = '';
-  // timepoint link
-  const a=getActiveAnimal();
-  let opts='<option value="">— unlinked —</option>';
+  let opts='<option value="">- unlinked -</option>';
   if(App.protocol) App.protocol.timepoints.forEach(t=>opts+=`<option value="${t.id}">${t.label}</option>`);
   $('#labTp').innerHTML=opts;
   $('#labModal').classList.add('show');
 }
 
-/* ---------- OCR: read lab values from the photo ----------
-   Uses Tesseract.js (CDN). Recognizes "ANALYTE  VALUE" lines and
-   maps them to the known lab fields (incl. common aliases). */
 const LAB_ALIASES = {
   pH:['ph'], pCO2:['pco2','paco2'], pO2:['po2','pao2'],
   HCO3:['hco3','hco3-','bicarb','bicarbonate'], BE:['be','base excess','beecf','abe'],
@@ -1392,15 +1251,15 @@ async function runOCR(){
   const status=$('#ocrStatus');
   const method=getOcrMethod();
   status.innerHTML = method==='claude'
-    ? `Reading photo with Claude…`
-    : `Loading OCR engine… <div class="ocr-progress"><span id="ocrBar"></span></div>`;
+    ? `Reading photo with Claude...`
+    : `Loading OCR engine... <div class="ocr-progress"><span id="ocrBar"></span></div>`;
   try{
     const fields=((App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS).map(f=>({key:f}));
     const {values:matched}=await extractFromPhoto(pendingLabImg, fields, mapOcrText);
     fillOcrFields(matched);
     const n=Object.keys(matched).length;
     status.innerHTML = n
-      ? `<span style="color:var(--trace)">✓ Read ${n} value${n>1?'s':''}.</span> Check each against the photo before saving.`
+      ? `<span style="color:var(--trace)">Read ${n} value${n>1?'s':''}.</span> Check each against the photo before saving.`
       : `<span style="color:var(--alarm)">No values recognized.</span> Type them in, or try a sharper photo.`;
   }catch(e){
     status.innerHTML=`<span style="color:var(--alarm)">Extraction failed:</span> ${e.message}`;
@@ -1419,19 +1278,12 @@ function mapOcrText(text){
     return lookup[name]||lookup[name.replace(/[+]/g,'')]||null;
   };
   const lines=text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
-
-  // PASS 1 — same line: "ANALYTE  VALUE"
   lines.forEach(line=>{
     const mm=line.match(/^[\s|>*-]*([A-Za-z][A-Za-z0-9+\-]{0,11})\b[^0-9\-]{0,8}(-?\d+\.?\d*)\s*$/);
     if(!mm)return;
     const canon=canonOf(mm[1]); const val=parseFloat(mm[2]);
     if(canon&&!isNaN(val)&&out[canon]===undefined) out[canon]=val;
   });
-
-  // PASS 2 — columnar: labels block then values block, paired positionally.
-  // SAFETY: research data must not be silently mis-aligned. Only pair when the
-  // label block and value block are clean and EQUAL length with every label
-  // recognized and contiguous. Any ambiguity → skip, leave for manual entry.
   if(Object.keys(out).length < 3){
     const labelBlock=[], valueBlock=[];
     let phase='labels';
@@ -1441,10 +1293,8 @@ function mapOcrText(text){
       if(phase==='labels'){
         if(lab) labelBlock.push(lab);
         else if(isNum){phase='values'; valueBlock.push(parseFloat(l));}
-        // ignore header/garbled lines while collecting labels
       }else{
         if(isNum) valueBlock.push(parseFloat(l));
-        // a stray label after values begin = messy layout → abort pairing
         else if(lab){labelBlock.length=0;break;}
       }
     }
@@ -1464,7 +1314,6 @@ function fillOcrFields(matched){
     const inp=$(`#labFields [data-lab="${f}"]`);
     if(inp){inp.value=v; if(wrap)wrap.classList.add('ocr-filled');}
   });
-  // clear OCR marker if user edits a field
   $$('#labFields [data-lab]').forEach(inp=>{
     inp.addEventListener('input',()=>{const w=inp.closest('.field'); if(w)w.classList.remove('ocr-filled');},{once:true});
   });
@@ -1480,34 +1329,29 @@ function saveLab(){
   });
   const entry={ts:nowTs(), tp:$('#labTp').value, values:vals, src:src, img:pendingLabImg};
   a.labs.push(entry);
-  // also merge into the linked row if present
   if(entry.tp && a.rows[entry.tp]) Object.assign(a.rows[entry.tp], prefixKeys(vals));
   $('#labModal').classList.remove('show');
   renderLabList(); rebuildTable();
   const nOcr=Object.values(src).filter(s=>s==='ocr').length;
-  toast(`Lab saved · ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
+  toast(`Lab saved - ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
 }
 function prefixKeys(o){const r={};for(const k in o)r['lab_'+k]=o[k];return r;}
 function renderLabList(){
   const a=getActiveAnimal(); const c=$('#labList');
   if(!a||!a.labs.length){c.innerHTML='<div class="hint">No lab entries yet.</div>';return;}
   c.innerHTML=a.labs.map((l,i)=>{
-    const summary=Object.entries(l.values).slice(0,4).map(([k,v])=>`${k} ${v}`).join(' · ');
+    const summary=Object.entries(l.values).slice(0,4).map(([k,v])=>`${k} ${v}`).join(' - ');
     return `<div class="lab-thumb">
       ${l.img?`<img src="${l.img}">`:'<div style="width:46px;height:46px;border:1px dashed var(--line);border-radius:3px"></div>'}
-      <div class="lmeta"><b>${l.tp||'unlinked'} · ${tsShort(l.ts)}</b>${summary||'—'}</div>
+      <div class="lmeta"><b>${l.tp||'unlinked'} - ${tsShort(l.ts)}</b>${summary||'-'}</div>
     </div>`;
   }).join('');
 }
 
-/* ============================================================
-   DATA SOURCES — simulator + bridge WebSocket
-   ============================================================ */
 function startSimulator(){
   stopSource();
   App.runStart=App.runStart||Date.now();
   const params=DEFAULT_VITALS;
-  // physiologically plausible baselines
   const base={HR:95,ABPs:118,ABPd:68,MAP:84,SpO2:98,Temp:38.2,EtCO2:38,CVP:7,RR:16,TV:420,PEEP:5,PIP:18,FiO2:40};
   const tick=()=>{
     params.forEach(p=>{
@@ -1528,12 +1372,11 @@ function connectBridge(addr){
   stopSource();
   let ws;
   try{ws=new WebSocket(addr);}catch(e){toast('Bad address');return;}
-  setConn('','CONNECTING…');
+  setConn('','CONNECTING...');
   ws.onopen=()=>{App.runStart=App.runStart||Date.now();setConn('live','BRIDGE LIVE');toast('Bridge connected');};
   ws.onmessage=ev=>{
     try{
       const msg=JSON.parse(ev.data);
-      // expected: {param:{value,unit,group}} OR {key,value,unit,group}
       if(msg.key){App.live[msg.key]={value:msg.value,unit:msg.unit,ts:nowTs(),group:msg.group||'vital'};}
       else Object.entries(msg).forEach(([k,d])=>{
         if(d&&typeof d==='object')App.live[k]={value:d.value,unit:d.unit||'',ts:nowTs(),group:d.group||'vital'};
@@ -1542,7 +1385,7 @@ function connectBridge(addr){
     }catch(e){}
   };
   ws.onclose=()=>{setConn('','BRIDGE OFFLINE');};
-  ws.onerror=()=>{setConn('','BRIDGE ERROR');toast('Bridge not reachable — is it running?');};
+  ws.onerror=()=>{setConn('','BRIDGE ERROR');toast('Bridge not reachable - is it running?');};
   App.source={mode:'bridge', ws};
 }
 
@@ -1552,9 +1395,6 @@ function stopSource(){
 }
 function setConn(cls,label){const c=$('#conn');c.className='conn'+(cls?' '+cls:'');$('#connlabel').textContent=label;}
 
-/* ============================================================
-   CAMERA (backup snapshot)
-   ============================================================ */
 let camStream=null;
 async function toggleCamera(){
   const v=$('#cam');
@@ -1565,9 +1405,6 @@ async function toggleCamera(){
   }catch(e){toast('Camera unavailable: '+e.message);}
 }
 
-/* ============================================================
-   EXPORT
-   ============================================================ */
 function exportCSV(animal){
   const a=animal||getActiveAnimal(); if(!a){toast('No animal');return;}
   const params=activeParams();
@@ -1621,9 +1458,6 @@ function download(name,content,type){
   toast('Exported '+name);
 }
 
-/* ============================================================
-   FILE READING (protocol + lab image)
-   ============================================================ */
 async function handleProtocolFile(file){
   const ext=file.name.split('.').pop().toLowerCase();
   let text='';
@@ -1632,9 +1466,9 @@ async function handleProtocolFile(file){
     else if(ext==='pdf'){text=await extractPdf(file);}
     else if(ext==='docx'){text=await extractDocx(file);}
     else {toast('Unsupported file');return;}
-  }catch(e){toast('Could not read file — using demo');loadProtocol(demoProtocol());return;}
+  }catch(e){toast('Could not read file - using demo');loadProtocol(demoProtocol());return;}
   const proto=parseProtocolText(text,file.name);
-  if(!proto.timepoints.length){toast('No timepoints found — loaded demo structure');loadProtocol(demoProtocol());return;}
+  if(!proto.timepoints.length){toast('No timepoints found - loaded demo structure');loadProtocol(demoProtocol());return;}
   loadProtocol(proto);
 }
 async function extractPdf(file){
@@ -1656,21 +1490,14 @@ function handleLabFile(file){
   reader.readAsDataURL(file);
 }
 
-/* ============================================================
-   RUN CLOCK
-   ============================================================ */
 setInterval(()=>{
-  $('#runtime').textContent = App.runStart?fmtClock(Date.now()-App.runStart):'—';
-  // refresh countdown styling periodically
+  $('#runtime').textContent = App.runStart?fmtClock(Date.now()-App.runStart):'-';
   if(App.protocol && document.hidden===false){
     const tl=$('#timeline');
     if(tl && tl.querySelector('.tp')) renderTimeline();
   }
 }, 1000);
 
-/* ============================================================
-   WIRING
-   ============================================================ */
 $('#drop').addEventListener('click',()=>$('#protoFile').click());
 $('#protoFile').addEventListener('change',e=>{if(e.target.files[0])handleProtocolFile(e.target.files[0]);});
 ['dragover','dragenter'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over');}));
@@ -1690,48 +1517,41 @@ $('#captureNow').addEventListener('click',()=>openCapture(''));
 $('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
 $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
 
-/* Unified top-bar "Upload photo": pick file/camera, then choose what it is */
 let _pendingPhoto=null;
 
-/* Auto-detect: identify device, extract, route to the right entry surface */
 async function autoDetectPhoto(file){
   if(getOcrMethod()!=='claude'){ toast('Auto-detect needs Claude AI method'); return; }
   const reader=new FileReader();
   reader.onload=async e=>{
     const img=e.target.result;
-    toast('Detecting device & reading values…');
+    toast('Detecting device & reading values...');
     try{
       const {device, cartridge, values}=await detectAndExtract(img);
       const n=Object.keys(values).length;
-      if(!device){ toast('Could not identify the screen — pick the type manually'); return; }
+      if(!device){ toast('Could not identify the screen - pick the type manually'); return; }
       if(device==='istat'){
-        // map i-STAT analytes → lab field keys, open lab modal prefilled
         const mapped=mapIstatToLabFields(values);
         openLabModal(img);
-        // fill after modal builds
         setTimeout(()=>{ fillOcrFields(mapped);
-          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">✓ ${cartridge||'i-STAT'} · read ${Object.keys(mapped).length} value(s).</span> Check against the photo, then save.`;
+          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${cartridge||'i-STAT'} - read ${Object.keys(mapped).length} value(s).</span> Check against the photo, then save.`;
         },60);
         toast(`i-STAT ${cartridge||''} detected`);
       } else {
-        // monitor or ventilator → capture modal (vitals + vent share it)
         const norm=normalizeVitalKeys(values);
         openCapture('', norm, img);
         const nn=Object.keys(norm).length;
-        toast(`${device==='ventilator'?'Ventilator':'Monitor'} detected — ${nn} value${nn>1?'s':''}, check & correct`);
+        toast(`${device==='ventilator'?'Ventilator':'Monitor'} detected - ${nn} value${nn>1?'s':''}, check & correct`);
       }
     }catch(err){ toast('Extraction failed: '+err.message); }
   };
   reader.readAsDataURL(file);
 }
-/* device value keys → capture-modal param keys */
 function normalizeVitalKeys(v){
-  const map={PEAK:'PIP', Vt:'TV', VtExp:'TV'}; // ventilator aliases
+  const map={PEAK:'PIP', Vt:'TV', VtExp:'TV'};
   const out={};
   Object.entries(v).forEach(([k,val])=>{ out[map[k]||k]=val; });
   return out;
 }
-/* i-STAT analyte names → app lab field keys */
 function mapIstatToLabFields(v){
   const map={pH:'pH',PCO2:'pCO2',PO2:'pO2',BEecf:'BE',HCO3:'HCO3',TCO2:'TCO2',
     sO2:'sO2',Lac:'Lactate',Na:'Na',K:'K',iCa:'iCa',Glu:'Glucose',Hct:'Hct',Hb:'Hb'};
@@ -1757,7 +1577,7 @@ $('#pcMonitor').addEventListener('click',()=>{
 });
 $('#pcVent').addEventListener('click',()=>{
   $('#photoChooser').classList.remove('show');
-  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto); // vent params live in same capture modal
+  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto);
   _pendingPhoto=null;
 });
 $('#pcIstat').addEventListener('click',()=>{
@@ -1776,9 +1596,6 @@ $('#exportAll').addEventListener('click',exportAllCSV);
 $$('[data-close]').forEach(b=>b.addEventListener('click',()=>{b.closest('.modal-bg').classList.remove('show');}));
 $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show');}));
 
-// boot with demo protocol so the UI is alive immediately
-
-/* ---------- API key & method persistence (survives refresh) ---------- */
 (function(){
   var KEY='swineicu_apikey', METH='swineicu_ocrmethod';
   function safeGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
@@ -1789,12 +1606,12 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.clas
   if(savedMeth && $('#ocrMethod')){ $('#ocrMethod').value=savedMeth;
     $('#apiKeyField').style.display = savedMeth==='claude'?'block':'none'; }
   var st=$('#keyStatus');
-  if(st && savedKey) st.textContent='✓ saved';
+  if(st && savedKey) st.textContent='saved';
   $('#saveKeyBtn') && $('#saveKeyBtn').addEventListener('click',function(){
     var v=$('#apiKey').value.trim();
     if(!v){ if(st){st.textContent='enter a key first';st.style.color='var(--alarm)';} return; }
     var ok=safeSet(KEY,v);
-    if(st){ st.textContent= ok?'✓ saved — stays across sessions':'saved for this session only'; st.style.color= ok?'var(--trace)':'var(--trace-amber)'; }
+    if(st){ st.textContent= ok?'saved - stays across sessions':'saved for this session only'; st.style.color= ok?'var(--trace)':'var(--trace-amber)'; }
     toast(ok?'API key saved':'Saved for this session');
   });
   $('#clearKeyBtn') && $('#clearKeyBtn').addEventListener('click',function(){
@@ -1805,7 +1622,6 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.clas
   $('#ocrMethod') && $('#ocrMethod').addEventListener('change',function(e){ safeSet(METH,e.target.value); });
 })();
 
-/* ---------- tab navigation (replaces frozen 3-column panels) ---------- */
 (function(){
   function showTab(name){
     document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
