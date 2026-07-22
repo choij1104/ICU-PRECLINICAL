@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Swine ICU — Live Capture</title>
+<title>Swine ICU — Data Capture</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -221,7 +221,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Live Capture &middot; v2.1</small>
+      Swine ICU <small>Current &middot; v2.4</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -233,7 +233,7 @@
   </header>
 
   <nav class="tabbar" id="tabbar">
-    <button class="tabbtn active" data-tab="live">Live</button>
+    <button class="tabbtn active" data-tab="live">Current</button>
     <button class="tabbtn" data-tab="timeline">Timeline &amp; Labs</button>
     <button class="tabbtn" data-tab="trends">Trends</button>
     <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
@@ -308,9 +308,10 @@
 
     <main class="col center" data-panel="live">
       <div id="liveArea">
-        <h2 class="sec">Live &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <div id="currentHead" class="card" style="margin-bottom:12px"></div>
         <div class="vitals" id="vitalsGrid">
-          <div class="empty" style="grid-column:1/-1">Connect a source to see live values.</div>
+          <div class="empty" style="grid-column:1/-1">No data recorded yet. Record a timepoint to see values here.</div>
         </div>
       </div>
 
@@ -359,7 +360,10 @@
         <input type="file" id="vitalPhoto" hidden accept="image/*">
         <button class="btn" id="captureNow" style="margin-top:8px">Edit / enter</button>
         <button class="btn amber" id="eventBtn" style="margin-top:8px">&#9888; Record EVENT (between timepoints)</button>
+        <button class="btn" id="deathBtn" style="margin-top:8px;background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:700">&#10013; DEATH POINT (final sample)</button>
+        <input type="file" id="deathPhoto" hidden accept="image/*">
         <input type="file" id="eventPhoto" hidden accept="image/*">
+        <input type="file" id="tpPhoto" hidden accept="image/*">
         <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction. Timestamped automatically.</div>
         <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
       </div>
@@ -586,12 +590,23 @@ function hcGrid(sheet,rows,cols){
       <tbody>
         ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
           ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}
-          <td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button></td></tr>`).join('')}
+          <td style="white-space:nowrap">
+            <button class="btn sm cap" style="margin-right:4px" onclick="hcRowPhoto('${sheet}',${rid})">Photo</button>
+            <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button>
+          </td></tr>`).join('')}
       </tbody>
     </table>
   </div>
-  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tab between cells. Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that whole row (asks first).</div>`;
+  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap <b>Photo</b> on a row to read values straight into it. Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that row.</div>`;
 }
+
+/* Photo straight into one sheet row - no row number prompt */
+let _hcRowTarget=null;
+function hcRowPhoto(sheet, rid){
+  _hcRowTarget={sheet, rid};
+  document.getElementById('hcPhotoFile').click();
+}
+window.hcRowPhoto = hcRowPhoto;
 
 /* Rename any timepoint row in either sheet */
 function hcRenameRow(sheet, rid){
@@ -767,13 +782,19 @@ document.getElementById('hcPhotoFile').addEventListener('change',e=>{
 });
 
 async function hcPhotoToRow(file){
-  const sheet=HCARE.sheet;
+  let sheet, rid;
+  if(_hcRowTarget){
+    sheet=_hcRowTarget.sheet; rid=_hcRowTarget.rid; _hcRowTarget=null;
+  } else {
+    sheet=HCARE.sheet;
+    const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+    const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
+    const pick=prompt('Which timepoint is this photo for? Enter the number:\n\n'+list, '1');
+    if(pick===null)return;
+    rid=parseInt(pick)-1;
+    if(isNaN(rid)||rid<0||rid>=rows.length){toast('Invalid row');return;}
+  }
   const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
-  const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
-  const pick=prompt('Which timepoint is this photo for? Enter the number:\n\n'+list, '1');
-  if(pick===null)return;
-  const rid=parseInt(pick)-1;
-  if(isNaN(rid)||rid<0||rid>=rows.length){toast('Invalid row');return;}
   const reader=new FileReader();
   reader.onload=async ev=>{
     toast('Reading photo...');
@@ -985,7 +1006,7 @@ function loadProtocol(proto){
   App.protocol = proto;
   renderProtocolInfo();
   renderTimeline();
-  renderVitalsGrid();
+  renderCurrent();
   rebuildTable();
   populateLabFields();
   if(!App.animals.length) addAnimal({silent:true});
@@ -1047,8 +1068,8 @@ function updateLiveDisplay(){
     el.classList.toggle('alarm', alarm);
     const arr=App.sparkData[p.key]=(App.sparkData[p.key]||[]);
     arr.push(d.value); if(arr.length>40)arr.shift();
-    drawSpark(p);
   });
+  renderCurrent();
 }
 function drawSpark(p){
   const svg=$('#spark-'+p.key); if(!svg)return;
@@ -1084,11 +1105,15 @@ function renderTimeline(){
             ? `<div class="twhen">recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
             : cd.text?`<div class="countdown">${cd.text}</div>`:''}
           ${done
-            ? `<div style="display:flex;gap:6px;margin-top:8px">
+            ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo</button>
                  <button class="btn sm" onclick="openCapture('${tp.id}')">Edit</button>
                  <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${tp.id}')">Delete</button>
                </div>`
-            : `<button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>`}
+            : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo &rarr; ${tp.id}</button>
+                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Type ${tp.id}</button>
+               </div>`}
         </div>
       </div>`;
   }).join('');
@@ -1120,7 +1145,7 @@ function addAnimal(opts){
   }
   const a={id:id||('Pig-'+n), group:group||null, rows:{}, labs:[]};
   App.animals.push(a); App.activeAnimal=a.id;
-  renderAnimalTabs(); rebuildTable(); renderTimeline(); updateAnimalLabel();
+  renderAnimalTabs(); rebuildTable(); renderTimeline(); updateAnimalLabel(); renderCurrent();
   return a;
 }
 function renameAnimal(){
@@ -1137,7 +1162,7 @@ function renderAnimalTabs(){
     `<div class="atab ${a.id===App.activeAnimal?'on':''}" onclick="selectAnimal('${a.id}')">${a.id}${a.group?' <span style="opacity:.6">-'+a.group.replace('Group ','').replace('Treatment','Tx').replace('Control','Ctl')+'</span>':''}</div>`
   ).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
 }
-function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();}
+function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
 function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
 
 function openCapture(tpId, prefill, photo){
@@ -1209,17 +1234,26 @@ async function detectAndExtract(imageDataURL){
   if(!m) throw new Error('Bad image');
   const media=m[1], b64=m[2];
   const schemaText=Object.entries(DEVICE_SCHEMAS).map(([k,s])=>`- "${k}": ${s.hint}`).join('\n');
-  const prompt=`This photo is from a preclinical swine ICU experiment (H-CARE protocol). It shows ONE of these devices:
+  const prompt=`This photo is from a preclinical swine ICU experiment (H-CARE protocol).
+
+It may show ONE device, or SEVERAL devices/readouts in the same frame. Common combinations:
+- a patient monitor AND a ventilator screen photographed together
+- an i-STAT CG4+ result AND a CG8+ result side by side, or two printouts together
+- a monitor next to a printed lab result
+
+Possible devices:
 ${schemaText}
 
-First identify which device this is. Then read every numeric value shown for that device.
+Read EVERY device and EVERY cartridge visible. Do not stop after the first one.
 
-Return ONLY a JSON object (no prose, no markdown fences) shaped exactly:
-{"device":"istat|monitor|ventilator","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}
+Return ONLY a JSON object (no prose, no markdown fences), shaped exactly:
+{"readouts":[{"device":"istat|monitor|ventilator","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}]}
 
 Rules:
+- One entry per distinct device, and one entry per distinct i-STAT cartridge.
+- If two i-STAT cartridges are visible, return TWO entries, each with its own cartridge name and values.
 - device MUST be one of: istat, monitor, ventilator.
-- values keys use EXACTLY the field names from the matching device above.
+- values keys use EXACTLY the field names listed for that device.
 - Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
 - Omit any field you cannot read confidently. NEVER guess a value.
 - Read decimals and negatives exactly (e.g. BEecf -5, pH 7.487, Lac 1.72).`;
@@ -1227,7 +1261,7 @@ Rules:
     method:'POST',
     headers:{'Content-Type':'application/json','x-api-key':key,
       'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:1024,
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2048,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:media,data:b64}},
         {type:'text',text:prompt}]}]})
@@ -1243,13 +1277,35 @@ Rules:
   const jsonStr=text.replace(/```json|```/g,'').trim();
   let parsed;
   try{ parsed=JSON.parse(jsonStr); }
-  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{device:null,values:{}}; }
-  const vals={};
-  Object.entries(parsed.values||{}).forEach(([k,v])=>{
-    if(v===null||v==='')return;
-    vals[k]=(typeof v==='string'&&/\d\/\d/.test(v))?v:(isNaN(+v)?v:+v);
+  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{readouts:[]}; }
+
+  let list=[];
+  if(Array.isArray(parsed.readouts)) list=parsed.readouts;
+  else if(parsed.device) list=[parsed];
+
+  const cleanVals=v=>{
+    const out={};
+    Object.entries(v||{}).forEach(([k,val])=>{
+      if(val===null||val==='')return;
+      out[k]=(typeof val==='string'&&/\d\/\d/.test(val))?val:(isNaN(+val)?val:+val);
+    });
+    return out;
+  };
+  const readouts=list.map(x=>({device:x.device||null,cartridge:x.cartridge||null,values:cleanVals(x.values)}))
+                     .filter(x=>x.device && Object.keys(x.values).length);
+
+  const vitals={}, labs={};
+  readouts.forEach(rd=>{
+    if(rd.device==='istat') Object.assign(labs, mapIstatToLabFields(rd.values));
+    else Object.assign(vitals, normalizeVitalKeys(rd.values));
   });
-  return {device:parsed.device||null, cartridge:parsed.cartridge||null, values:vals};
+
+  return {
+    readouts, vitals, labs,
+    device: readouts.length===1?readouts[0].device:(readouts.length?'multi':null),
+    cartridge: readouts.filter(r=>r.cartridge).map(r=>r.cartridge).join(' + ')||null,
+    values: Object.keys(vitals).length?vitals:labs
+  };
 }
 
 async function claudeExtract(imageDataURL, fields){
@@ -1361,8 +1417,20 @@ function saveCapture(tpId){
   if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
   a.rows[rid]=row;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent();
   toast(`Saved ${tpId||label} for ${a.id}`);
+  // if the same photo also contained lab values, open the lab form next
+  if(_pendingBothLabs){
+    const pend=_pendingBothLabs; _pendingBothLabs=null;
+    setTimeout(()=>{
+      openLabModal(pend.img);
+      setTimeout(()=>{
+        fillOcrFields(pend.labs);
+        const sel=$('#labTp'); if(sel) sel.value=rid;
+        $('#ocrStatus').innerHTML='<span style="color:var(--trace)">Lab values from the same photo.</span> Check against the photo, then save.';
+      },60);
+    },250);
+  }
 }
 
 /* Rename a timepoint in the main timeline */
@@ -1413,6 +1481,115 @@ function deleteTimepoint(){
   toast('Deleted: '+tp.label);
 }
 window.deleteTimepoint = deleteTimepoint;
+
+/* ============================================================
+   DEATH POINT - final sample + vitals when an animal dies before EOS.
+   Recorded once per animal, timestamped, flagged separately in export.
+   ============================================================ */
+function recordDeath(prefill, photo){
+  if(!App.animals.length) addAnimal({silent:true});
+  const a=getActiveAnimal();
+  const existing=Object.keys(a.rows).find(k=>a.rows[k]._death);
+  if(existing && !confirm('A death point is already recorded for '+a.id+'.\n\nRecord again and replace it?')) return;
+  const elapsed=App.runStart?Math.round((Date.now()-App.runStart)/60000):null;
+  const clock=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  $('#capTitle').textContent='DEATH POINT - final sample';
+  const params=activeParams();
+  let body=`<div class="hint" style="margin-bottom:12px;color:var(--alarm)">
+    <b>Death point</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''}.
+    Record the final vitals and last sample. This is flagged separately from scheduled timepoints in the export.</div>`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  body+=`<div class="grid2" style="margin-bottom:4px">
+    <div class="field"><label>Time of death</label><input data-k="_deathTime" value="${clock}"></div>
+    <div class="field"><label>Run minute</label><input data-k="_deathRunMin" value="${elapsed!=null?elapsed:''}" inputmode="numeric"></div>
+  </div>`;
+  body+=`<div class="field"><label>Cause / circumstances (required)</label>
+    <textarea data-k="_note" rows="3" placeholder="e.g. MAP < 20 mmHg for 2 min per EOS criteria; PEA arrest 18 min after deflation"></textarea></div>`;
+  body+=`<div class="field"><label>Final sample collected</label>
+    <select data-k="_deathSample">
+      <option value="">- select -</option>
+      <option>CG4 + CG8</option>
+      <option>CG4 only</option>
+      <option>CG8 only</option>
+      <option>CG4, CG8, Coag, Plasma, Urine</option>
+      <option>None - could not draw</option>
+    </select></div>`;
+  if(!photo){
+    body+=`<button class="btn amber" style="margin-bottom:12px" onclick="document.getElementById('deathPhoto').click()">Add photo (monitor / i-STAT)</button>`;
+  }
+  const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const fieldFor=p=>{
+    let v=''; let ocr=false;
+    if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+  };
+  body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Final vitals</div>`;
+  body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
+  if(vent.length){
+    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
+    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+  }
+  body+=`<button class="btn primary" style="margin-top:14px;background:var(--alarm);border-color:var(--alarm)" onclick="saveDeath()">Save death point</button>`;
+  $('#capBody').innerHTML=body;
+  _deathPhotoData=photo||null;
+  $('#captureModal').classList.add('show');
+}
+window.recordDeath = recordDeath;
+let _deathPhotoData=null;
+
+function saveDeath(){
+  const a=getActiveAnimal(); if(!a) return;
+  const row={_ts:nowTs(), _death:true};
+  $$('#capBody [data-k]').forEach(inp=>{
+    const k=inp.dataset.k;
+    if(k==='_note'){ row._note=inp.value; return; }
+    if(k==='_deathTime'){ row._deathTime=inp.value; return; }
+    if(k==='_deathSample'){ row._deathSample=inp.value; return; }
+    if(k==='_deathRunMin'){ const n=parseInt(inp.value); row._runMin=isNaN(n)?null:n; return; }
+    const val=inp.value.trim();
+    if(val!=='') row[k]=isNaN(+val)?val:+val;
+  });
+  if(!row._note || !row._note.trim()){ toast('Please enter the cause / circumstances'); return; }
+  if(row._runMin==null) row._runMin=App.runStart?Math.round((Date.now()-App.runStart)/60000):null;
+  if(_deathPhotoData) row._photo=_deathPhotoData;
+  row._label='DEATH POINT'+(row._deathTime?' ('+row._deathTime+')':'');
+  // replace any existing death point
+  Object.keys(a.rows).forEach(k=>{ if(a.rows[k]._death) delete a.rows[k]; });
+  a.rows['DEATH']=row;
+  _deathPhotoData=null;
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent();
+  toast('Death point recorded for '+a.id);
+}
+window.saveDeath = saveDeath;
+
+async function deathPhotoToVitals(file){
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading photo...');
+    try{
+      let values={};
+      if(getOcrMethod()==='claude'){
+        const res=await detectAndExtract(img);
+        values=res.vitals||{};
+        if(Object.keys(res.labs||{}).length){
+          const a=getActiveAnimal()||addAnimal({silent:true});
+          a.labs.push({ts:nowTs(), tp:'DEATH', values:res.labs, src:{}, img:img});
+          renderLabList();
+          toast('Final labs captured: '+Object.keys(res.labs).length+' value(s)');
+        }
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        values=out.values;
+      }
+      recordDeath(values, img);
+    }catch(err){ recordDeath(null, img); toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
 
 /* ============================================================
    EVENTS - unplanned observations between scheduled timepoints
@@ -1472,7 +1649,7 @@ function saveEvent(){
   a.rows[rid]=row;
   _eventPhotoData=null;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline(); renderTrends();
+  rebuildTable(); renderTimeline(); renderTrends(); renderCurrent();
   toast('Event saved');
 }
 window.saveEvent = saveEvent;
@@ -1617,13 +1794,203 @@ function trendSVG(pts, meta){
   </svg>`;
 }
 
+/* ============================================================
+   CURRENT - shows the most recently recorded timepoint,
+   with the change since the timepoint before it.
+   Live feed values (if a source is ever connected) take priority.
+   ============================================================ */
+function orderedRows(a){
+  if(!a) return [];
+  const order=[];
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{ if(a.rows[t.id]) order.push([t.id,t.label]); });
+  Object.keys(a.rows).forEach(k=>{ if(!order.find(o=>o[0]===k)) order.push([k, a.rows[k]._label||k]); });
+  // sort by run minute when available so events land in the right place
+  order.sort((p,q)=>{
+    const rp=a.rows[p[0]], rq=a.rows[q[0]];
+    const xp=rp._runMin!=null?rp._runMin:0, xq=rq._runMin!=null?rq._runMin:0;
+    if(xp!==xq) return xp-xq;
+    return new Date(rp._ts)-new Date(rq._ts);
+  });
+  return order;
+}
+
+function renderCurrent(){
+  const head=$('#currentHead'); const grid=$('#vitalsGrid');
+  if(!head||!grid) return;
+  const a=getActiveAnimal();
+  const order=orderedRows(a);
+  const params=activeParams();
+
+  if(!a || !order.length){
+    head.innerHTML=`<div class="hint" style="margin:0">Nothing recorded yet for this animal. Use <b>Timeline &amp; Labs</b> to record a timepoint &mdash; the latest values will appear here.</div>`;
+    grid.innerHTML='<div class="empty" style="grid-column:1/-1">No data recorded yet.</div>';
+    return;
+  }
+
+  const [lastId,lastLabel]=order[order.length-1];
+  const last=a.rows[lastId];
+  const prev=order.length>1?a.rows[order[order.length-2][0]]:null;
+  const prevLabel=order.length>1?order[order.length-2][1]:null;
+
+  const when=last._ts?tsShort(last._ts):'';
+  const runMin=last._runMin!=null?`run +${last._runMin} min`:'';
+  const isEvent=!!last._event;
+  const isDeath=!!last._death;
+  const headColor=isDeath?'var(--alarm)':(isEvent?'var(--trace-amber)':'var(--ink)');
+  const headIcon=isDeath?'&#10013; ':(isEvent?'&#9888; ':'');
+  head.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">Latest recorded</div>
+        <div style="font-size:16px;font-weight:600;color:${headColor}">${headIcon}${lastLabel}</div>
+        ${isDeath&&last._deathSample?`<div class="hint" style="margin-top:2px">Final sample: <b>${last._deathSample}</b></div>`:''}
+      </div>
+      <div class="hint" style="margin:0;text-align:right">${when}${runMin?' &middot; '+runMin:''}<br>
+        ${prevLabel?'compared with: '+prevLabel:'first timepoint'}</div>
+    </div>
+    ${last._note?`<div class="hint" style="margin-top:8px;color:var(--ink-dim)"><b>Note:</b> ${last._note}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn sm" style="width:auto" onclick="openCapture('${lastId}')">Edit this timepoint</button>
+      <button class="btn sm ghost" style="width:auto" onclick="showTab('timeline')">Go to timeline</button>
+    </div>`;
+
+  // build the value cards from the latest row (live feed overrides if present)
+  let monCards='', ventCards='';
+  let shown=0;
+  params.forEach(p=>{
+    const live=App.live[p.key];
+    let val = (live&&live.value!=null) ? live.value : last[p.key];
+    const fromLive = !!(live&&live.value!=null);
+    if(val==null||val==='') return;
+    shown++;
+    const pv = prev?prev[p.key]:null;
+    let delta='';
+    if(pv!=null&&pv!==''&&!isNaN(+pv)&&!isNaN(+val)){
+      const dv=(+val)-(+pv);
+      if(Math.abs(dv)>0.001){
+        const up=dv>0;
+        const col=up?'var(--trace-red)':'var(--accent)';
+        const rounded=Math.round(dv*10)/10;
+        delta=`<span style="font-size:11px;color:${col};font-family:var(--mono)">${up?'&#9650;':'&#9660;'} ${Math.abs(rounded)}</span>`;
+      } else {
+        delta=`<span style="font-size:11px;color:var(--ink-faint);font-family:var(--mono)">no change</span>`;
+      }
+    }
+    const alarm=(p.lo!=null&&+val<p.lo)||(p.hi!=null&&+val>p.hi);
+    const card=`
+      <div class="vital ${p.group==='vent'?'vent':''} ${alarm?'alarm':''}" id="v-${p.key}">
+        <div class="vlabel">${p.label}<span class="vsrc">${fromLive?'LIVE':(p.group==='vent'?'VENT':'MON')}</span></div>
+        <div class="vval">${val}<span class="vunit">${p.unit}</span></div>
+        <div style="margin-top:2px">${delta||'<span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span>'}</div>
+      </div>`;
+    if(p.group==='vent') ventCards+=card; else monCards+=card;
+  });
+
+  // include lab values recorded at this timepoint
+  let labCards='';
+  Object.keys(last).forEach(k=>{
+    if(!k.startsWith('lab_')) return;
+    const val=last[k]; if(val==null||val==='') return;
+    const name=k.replace('lab_','');
+    const pv=prev?prev[k]:null;
+    let delta='';
+    if(pv!=null&&pv!==''&&!isNaN(+pv)&&!isNaN(+val)){
+      const dv=(+val)-(+pv);
+      if(Math.abs(dv)>0.001){
+        const up=dv>0;
+        delta=`<span style="font-size:11px;color:${up?'var(--trace-red)':'var(--accent)'};font-family:var(--mono)">${up?'&#9650;':'&#9660;'} ${Math.abs(Math.round(dv*100)/100)}</span>`;
+      }
+    }
+    labCards+=`
+      <div class="vital">
+        <div class="vlabel">${name}<span class="vsrc">LAB</span></div>
+        <div class="vval" style="color:var(--trace-amber)">${val}</div>
+        <div style="margin-top:2px">${delta||'<span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span>'}</div>
+      </div>`;
+  });
+
+  if(!shown && !labCards){
+    grid.innerHTML=`<div class="empty" style="grid-column:1/-1">No values entered at ${lastLabel}. Tap "Edit this timepoint" to add them.</div>`;
+    return;
+  }
+  grid.innerHTML =
+    (monCards?`<div class="group-tag" style="grid-column:1/-1">Vitals</div>${monCards}`:'') +
+    (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator</div>${ventCards}`:'') +
+    (labCards?`<div class="group-tag" style="grid-column:1/-1">Labs at this timepoint</div>${labCards}`:'');
+}
+window.renderCurrent = renderCurrent;
+
+/* ============================================================
+   PHOTO -> a specific timepoint
+   Tapping "Photo" on a timeline row opens the camera/library,
+   reads the values, and opens THAT timepoint's form pre-filled.
+   ============================================================ */
+let _photoTargetTp=null;
+function photoForTimepoint(tpId){
+  _photoTargetTp=tpId;
+  $('#tpPhoto').click();
+}
+window.photoForTimepoint = photoForTimepoint;
+
+async function tpPhotoToCapture(file){
+  const tpId=_photoTargetTp; _photoTargetTp=null;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    const tp=App.protocol&&App.protocol.timepoints.find(t=>t.id===tpId);
+    toast('Reading photo for '+(tp?tp.label:tpId)+'...');
+    try{
+      let values={};
+      if(getOcrMethod()==='claude'){
+        // reads EVERY device/cartridge in the frame at once
+        const res=await detectAndExtract(img);
+        const nLab=Object.keys(res.labs||{}).length;
+        const nVit=Object.keys(res.vitals||{}).length;
+        const seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+        if(nLab && !nVit){
+          // labs only -> lab modal, linked to this timepoint
+          openLabModal(img);
+          setTimeout(()=>{
+            fillOcrFields(res.labs);
+            const sel=$('#labTp'); if(sel) sel.value=tpId||'';
+            $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${seen||'i-STAT'} - read ${nLab} value(s)</span> for <b>${tp?tp.label:tpId}</b>. Check against the photo, then save.`;
+          },60);
+          toast(seen+' detected - linked to '+(tp?tp.label:tpId));
+          return;
+        }
+        if(nLab && nVit){
+          // BOTH in one photo: save labs onto this timepoint, then open vitals form
+          const a2=getActiveAnimal()||addAnimal({silent:true});
+          if(!a2.rows[tpId]) a2.rows[tpId]={_ts:nowTs(), _runMin:App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
+          Object.assign(a2.rows[tpId], prefixKeys(res.labs));
+          a2.labs.push({ts:nowTs(), tp:tpId, values:res.labs, src:{}, img:img});
+          renderLabList();
+          toast(seen+' - '+nLab+' lab + '+nVit+' vital value(s) read');
+        }
+        values=res.vitals||{};
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        values=out.values;
+      }
+      openCapture(tpId, values, img);
+      const n=Object.keys(values).length;
+      toast(n?`Extracted ${n} value${n>1?'s':''} for ${tp?tp.label:tpId} - check & correct`:'No values read - enter manually');
+    }catch(err){
+      openCapture(tpId, null, img);
+      toast('Extraction failed: '+err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
 /* Delete one recorded timepoint (asks first) */
 function deleteRow(rid){
   const a=getActiveAnimal(); if(!a||!a.rows[rid]) { toast('Nothing to delete'); return; }
   const label=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===rid)||{}).label)||a.rows[rid]._label||rid;
   if(!confirm('Delete the recorded data for:\n\n'+label+'\n\nThis cannot be undone.')) return;
   delete a.rows[rid];
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent();
   toast('Deleted '+label);
 }
 window.deleteRow = deleteRow;
@@ -1645,7 +2012,7 @@ function clearAllRows(){
   if(!n){ toast('Nothing recorded yet'); return; }
   if(!confirm('Delete ALL '+n+' recorded timepoint(s) for '+a.id+'?\n\nThis cannot be undone.')) return;
   a.rows={};
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent();
   toast('All timepoints cleared for '+a.id);
 }
 window.clearAllRows = clearAllRows;
@@ -1675,7 +2042,8 @@ function rebuildTable(){
   Object.keys(a.rows).forEach(k=>{if(!order.find(o=>o[0]===k))order.push([k, a.rows[k]._label||k]);});
   tbody.innerHTML=order.map(([rid,label])=>{
     const r=a.rows[rid];
-    return `<tr><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
+    const rowStyle = r._death?' style="background:rgba(224,57,43,.07)"':(r._event?' style="background:rgba(200,134,26,.07)"':'');
+    return `<tr${rowStyle}><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
       params.map(p=>`<td>${r[p.key]??''}</td>`).join('')+
       `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td>`+
       `<td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${rid}')">Delete</button></td></tr>`;
@@ -1791,7 +2159,7 @@ function saveLab(){
   a.labs.push(entry);
   if(entry.tp && a.rows[entry.tp]) Object.assign(a.rows[entry.tp], prefixKeys(vals));
   $('#labModal').classList.remove('show');
-  renderLabList(); rebuildTable(); renderTrendPicker(); renderTrends();
+  renderLabList(); rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent();
   const nOcr=Object.values(src).filter(s=>s==='ocr').length;
   toast(`Lab saved - ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
 }
@@ -1878,7 +2246,7 @@ function exportCSV(animal){
   Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
   order.forEach(rid=>{
     const r=a.rows[rid];
-    const row=[a.id, a.group||'', r._label||rid, r._event?'EVENT':'scheduled', r._runMin??'', r._ts,
+    const row=[a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
       ...params.map(p=>r[p.key]??''),
       ...[...labKeys].map(k=>r[k]??''),
       (r._note||'').replace(/,/g,';')];
@@ -1899,7 +2267,7 @@ function exportAllCSV(){
     Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
     order.forEach(rid=>{
       const r=a.rows[rid];
-      lines.push([a.id, a.group||'', r._label||rid, r._event?'EVENT':'scheduled', r._runMin??'', r._ts,
+      lines.push([a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
         ...params.map(p=>r[p.key]??''),
         ...[...labKeys].map(k=>r[k]??''),
         (r._note||'').replace(/,/g,';')].join(','));
@@ -1976,14 +2344,24 @@ $('#ocrMethod')&&$('#ocrMethod').addEventListener('change',e=>{
 });
 $('#captureNow').addEventListener('click',()=>openCapture(''));
 $('#eventBtn').addEventListener('click',()=>recordEvent());
+$('#deathBtn').addEventListener('click',()=>recordDeath());
+$('#deathPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) deathPhotoToVitals(e.target.files[0]);
+  e.target.value='';
+});
 $('#eventPhoto').addEventListener('change',e=>{
   if(e.target.files[0]) eventPhotoToVitals(e.target.files[0]);
+  e.target.value='';
+});
+$('#tpPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) tpPhotoToCapture(e.target.files[0]);
   e.target.value='';
 });
 $('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
 $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
 
 let _pendingPhoto=null;
+let _pendingBothLabs=null;
 
 async function autoDetectPhoto(file){
   if(getOcrMethod()!=='claude'){ toast('Auto-detect needs Claude AI method'); return; }
@@ -1992,21 +2370,25 @@ async function autoDetectPhoto(file){
     const img=e.target.result;
     toast('Detecting device & reading values...');
     try{
-      const {device, cartridge, values}=await detectAndExtract(img);
-      const n=Object.keys(values).length;
-      if(!device){ toast('Could not identify the screen - pick the type manually'); return; }
-      if(device==='istat'){
-        const mapped=mapIstatToLabFields(values);
+      const res=await detectAndExtract(img);
+      const nLab=Object.keys(res.labs||{}).length;
+      const nVit=Object.keys(res.vitals||{}).length;
+      const seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+      if(!res.readouts || !res.readouts.length){ toast('Could not identify the screen - pick the type manually'); return; }
+      if(nLab && !nVit){
         openLabModal(img);
-        setTimeout(()=>{ fillOcrFields(mapped);
-          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${cartridge||'i-STAT'} - read ${Object.keys(mapped).length} value(s).</span> Check against the photo, then save.`;
+        setTimeout(()=>{ fillOcrFields(res.labs);
+          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${seen} - read ${nLab} value(s).</span> Check against the photo, then save.`;
         },60);
-        toast(`i-STAT ${cartridge||''} detected`);
+        toast(seen+' detected - '+nLab+' value(s)');
+      } else if(nVit && !nLab){
+        openCapture('', res.vitals, img);
+        toast(seen+' detected - '+nVit+' value(s), check & correct');
       } else {
-        const norm=normalizeVitalKeys(values);
-        openCapture('', norm, img);
-        const nn=Object.keys(norm).length;
-        toast(`${device==='ventilator'?'Ventilator':'Monitor'} detected - ${nn} value${nn>1?'s':''}, check & correct`);
+        // both kinds in one photo
+        openCapture('', res.vitals, img);
+        setTimeout(()=>{ _pendingBothLabs={labs:res.labs, img:img}; },20);
+        toast(seen+' - '+nVit+' vital + '+nLab+' lab value(s); save vitals, then labs open next');
       }
     }catch(err){ toast('Extraction failed: '+err.message); }
   };
