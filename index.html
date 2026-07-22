@@ -221,7 +221,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Live Capture &middot; v1.7</small>
+      Swine ICU <small>Live Capture &middot; v2.1</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -235,6 +235,7 @@
   <nav class="tabbar" id="tabbar">
     <button class="tabbtn active" data-tab="live">Live</button>
     <button class="tabbtn" data-tab="timeline">Timeline &amp; Labs</button>
+    <button class="tabbtn" data-tab="trends">Trends</button>
     <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
     <button class="tabbtn" data-tab="settings">Photo / Settings</button>
   </nav>
@@ -325,15 +326,41 @@
         <button class="btn sm" id="exportCsv">Export CSV</button>
         <button class="btn sm" id="exportJson">Export JSON</button>
         <button class="btn sm ghost" id="exportAll">Export all animals</button>
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="clearAllRows()">Clear all rows</button>
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteAnimal()">Delete animal</button>
       </div>
+    </main>
+
+    <main class="col center" data-panel="trends">
+      <h2 class="sec">Trends &mdash; <span id="trendAnimalLabel">no animal</span></h2>
+      <div class="card">
+        <div class="field" style="margin-bottom:8px">
+          <label>Show parameters</label>
+          <div id="trendPicker" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sm" onclick="trendPreset('hemo')">Hemodynamics</button>
+          <button class="btn sm" onclick="trendPreset('gas')">Gas / vent</button>
+          <button class="btn sm" onclick="trendPreset('lab')">Labs</button>
+          <button class="btn sm ghost" onclick="trendPreset('none')">Clear</button>
+        </div>
+      </div>
+      <div id="trendCharts"></div>
     </main>
 
     <aside class="col right" data-panel="timeline">
       <h2 class="sec">Timeline</h2>
       <div class="card" style="padding:8px 12px">
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button class="btn sm" style="flex:1" onclick="addTimepoint()">+ Timepoint</button>
+          <button class="btn sm ghost" style="flex:1;color:var(--alarm);border-color:var(--alarm)" onclick="deleteTimepoint()">- Timepoint</button>
+        </div>
         <button class="btn cap" id="photoVitals">Monitor photo &rarr; vitals</button>
         <input type="file" id="vitalPhoto" hidden accept="image/*">
         <button class="btn" id="captureNow" style="margin-top:8px">Edit / enter</button>
+        <button class="btn amber" id="eventBtn" style="margin-top:8px">&#9888; Record EVENT (between timepoints)</button>
+        <input type="file" id="eventPhoto" hidden accept="image/*">
+        <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction. Timestamped automatically.</div>
         <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
       </div>
       <div class="timeline" id="timeline">
@@ -407,9 +434,14 @@
       <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE &middot; IPROTO202500000107</small></div>
       <select id="hcAnimal" style="margin-left:auto;padding:7px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:13px"></select>
       <button class="btn sm" id="hcAddAnimal" style="width:auto">+ Animal</button>
+      <button class="btn sm" style="width:auto" onclick="hcRenameAnimal()">Rename</button>
+      <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
       <button class="btn sm amber" id="hcPhoto" style="width:auto">Photo &rarr; row</button>
       <input type="file" id="hcPhotoFile" hidden accept="image/*">
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteAnimal()">Delete animal</button>
       <button class="btn sm ghost" id="hcClose" style="width:auto">Close</button>
     </div>
 
@@ -430,11 +462,12 @@ const HCARE = {
   animal:null,
   data:{},
   vitalsRows:[
-    'Baseline / Post stabilization','10 mins post shock, pre REBOA',
-    '30 mins post REBOA / pre-deflation','Immediately post REBOA deflation',
-    '10 mins post deflation','30 mins post deflation','60 mins post deflation',
-    '90 mins post deflation','120 min post deflation','150 min post deflation',
-    '180 min post deflation','210 min post deflation','240 min post deflation (EOS)'
+    'T0 - Pre-Baseline (pre-op screen)',
+    'T1 - Baseline / Post stabilization','T2 - 10 mins post shock, pre REBOA',
+    'T3 - 30 mins post REBOA / pre-deflation','Immediately post REBOA deflation',
+    'T4 - 10 mins post deflation','30 mins post deflation','T5 - 60 mins post deflation',
+    '90 mins post deflation','T6 - 120 min post deflation','150 min post deflation',
+    'T7 - 180 min post deflation','210 min post deflation','T8 - 240 min post deflation (EOS)'
   ],
   vitalsCols:[
     {k:'time',label:'Time',type:'t'},
@@ -449,9 +482,10 @@ const HCARE = {
     {k:'istat',label:'iSTAT check',type:'c'},
     {k:'labs',label:'Labs drawn',type:'x'},
   ],
-  vitalsLabs:{0:'Chem, Coag, Plasma x5, Urine',1:'Coag, Plasma x5, Urine',4:'Coag, Plasma x5, Urine',
-    6:'Coag, Plasma x5, Urine',8:'Coag, Plasma x5, Urine',10:'Coag, Plasma x5, Urine',12:'Chem, Coag, Plasma x5, Urine'},
+  vitalsLabs:{0:'Pre-op: CBC, CMP, ABG (CG4, CG8)',1:'Chem, Coag, Plasma x5, Urine',2:'Coag, Plasma x5, Urine',5:'Coag, Plasma x5, Urine',
+    7:'Coag, Plasma x5, Urine',9:'Coag, Plasma x5, Urine',11:'Coag, Plasma x5, Urine',13:'Chem, Coag, Plasma x5, Urine'},
   istatRows:[
+    'T0 - Pre-Baseline (pre-op CG4, CG8, CBC)',
     'T1 - BL / Post stabilization','T2 - 10 mins post shock, pre REBOA',
     'T3 - 30 mins post REBOA inflation','T4 - 10 mins post REBOA deflation',
     'T5 - 1 hr post REBOA deflation','T6 - 2 hr post deflation',
@@ -508,7 +542,7 @@ function hcCaseSheet(){
   return `
   <div class="card" style="max-width:760px">
     <div class="grid3" style="margin-bottom:14px">
-      <div class="field"><label>Animal #</label><input data-c="animalNo" value="${v('animalNo')}"></div>
+      <div class="field"><label>Animal # <span style="text-transform:none;color:var(--ink-faint)">(use Rename button in toolbar to change the tab name)</span></label><input data-c="animalNo" value="${v('animalNo')||HCARE.animal||''}"></div>
       <div class="field"><label>Weight (kg)</label><input data-c="weight" value="${v('weight')}" inputmode="decimal"></div>
       <div class="field"><label>Sex</label><select data-c="sex"><option ${c.sex==='M'?'selected':''}>M</option><option ${c.sex==='F'?'selected':''}>F</option></select></div>
     </div>
@@ -548,15 +582,134 @@ function hcGrid(sheet,rows,cols){
   return `
   <div class="tablewrap" style="overflow:auto">
     <table>
-      <thead><tr><th style="min-width:200px">Timepoint</th>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr></thead>
+      <thead><tr><th style="min-width:200px">Timepoint</th>${cols.map(c=>`<th>${c.label}</th>`).join('')}<th>Clear</th></tr></thead>
       <tbody>
-        ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px">${r}</td>
-          ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}</tr>`).join('')}
+        ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
+          ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}
+          <td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button></td></tr>`).join('')}
       </tbody>
     </table>
   </div>
-  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tab between cells.</div>`;
+  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tab between cells. Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that whole row (asks first).</div>`;
 }
+
+/* Rename any timepoint row in either sheet */
+function hcRenameRow(sheet, rid){
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const cur = rows[rid];
+  const next = prompt('Rename this timepoint:', cur);
+  if(next===null) return;
+  const name = next.trim();
+  if(!name){ toast('Name cannot be empty'); return; }
+  rows[rid] = name;
+  hcRenderSheet();
+  toast('Renamed to: '+name);
+}
+window.hcRenameRow = hcRenameRow;
+
+/* Add an extra timepoint row to the active sheet */
+function hcAddRow(){
+  if(HCARE.sheet==='case'){ toast('Switch to Vitals or iSTAT sheet first'); return; }
+  const rows = HCARE.sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const name = prompt('Name of the new timepoint:', 'Extra timepoint');
+  if(name===null) return;
+  const n=name.trim(); if(!n){ toast('Name cannot be empty'); return; }
+  rows.push(n);
+  hcRenderSheet();
+  toast('Added row: '+n);
+}
+window.hcAddRow = hcAddRow;
+
+/* Delete a timepoint row entirely (removes the row, not just its values) */
+function hcDeleteRow(){
+  if(HCARE.sheet==='case'){ toast('Switch to Vitals or iSTAT sheet first'); return; }
+  const sheet=HCARE.sheet;
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
+  const pick=prompt('Delete which timepoint row? Enter the number:\n\n'+list,'');
+  if(pick===null) return;
+  const rid=parseInt(pick)-1;
+  if(isNaN(rid)||rid<0||rid>=rows.length){ toast('Invalid row number'); return; }
+  if(!confirm('Delete the entire row:\n\n'+rows[rid]+'\n\nIts data will be removed too. This cannot be undone.')) return;
+  const label=rows[rid];
+  rows.splice(rid,1);
+  // reindex stored data above the removed row
+  const d=hcA()[sheet]; const shifted={};
+  Object.keys(d).forEach(k=>{
+    const i=parseInt(k);
+    if(i<rid) shifted[i]=d[k];
+    else if(i>rid) shifted[i-1]=d[k];
+  });
+  hcA()[sheet]=shifted;
+  hcRenderSheet();
+  toast('Deleted row: '+label);
+}
+window.hcDeleteRow = hcDeleteRow;
+
+/* Rename the current animal - keeps all its data */
+function hcRenameAnimal(){
+  const old=HCARE.animal;
+  if(!old){ toast('No animal selected'); return; }
+  const next=prompt('Change animal # / ID:', old);
+  if(next===null) return;
+  const id=next.trim();
+  if(!id){ toast('Name cannot be empty'); return; }
+  if(id===old) return;
+  if(HCARE.data[id]){ toast('An animal named "'+id+'" already exists'); return; }
+  // rebuild preserving key order
+  const rebuilt={};
+  Object.keys(HCARE.data).forEach(k=>{ rebuilt[k===old?id:k]=HCARE.data[k]; });
+  HCARE.data=rebuilt;
+  HCARE.animal=id;
+  // keep the case-sheet Animal # field in sync
+  if(HCARE.data[id] && HCARE.data[id].case) HCARE.data[id].case.animalNo=id;
+  hcRenderAnimals(); hcRenderSheet();
+  toast('Renamed to '+id);
+}
+window.hcRenameAnimal = hcRenameAnimal;
+
+/* Clear one row of a data sheet (asks for confirmation first) */
+function hcClearRow(sheet, rid){
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const label = rows[rid]||('row '+(rid+1));
+  const d = hcA()[sheet];
+  if(!d[rid] || !Object.keys(d[rid]).length){ toast('That row is already empty'); return; }
+  if(!confirm('Clear all values in:\n\n'+label+'\n\nThis cannot be undone.')) return;
+  delete d[rid];
+  hcRenderSheet();
+  toast('Cleared: '+label);
+}
+window.hcClearRow = hcClearRow;
+
+/* Clear the entire active sheet for this animal */
+function hcClearSheet(){
+  const sheet = HCARE.sheet;
+  if(sheet==='case'){
+    if(!confirm('Clear ALL case setup fields for '+HCARE.animal+'?\n\nThis cannot be undone.')) return;
+    hcA().case={};
+  } else {
+    const name = sheet==='vitals'?'Vitals sheet':'iSTAT sheet';
+    if(!confirm('Clear the ENTIRE '+name+' for '+HCARE.animal+'?\n\nThis cannot be undone.')) return;
+    hcA()[sheet]={};
+  }
+  hcRenderSheet();
+  toast('Sheet cleared');
+}
+window.hcClearSheet = hcClearSheet;
+
+/* Delete the current animal entirely */
+function hcDeleteAnimal(){
+  const id=HCARE.animal;
+  if(!id) return;
+  const ids=Object.keys(HCARE.data);
+  if(ids.length<=1){ toast('Cannot delete the only animal - clear the sheets instead'); return; }
+  if(!confirm('Delete animal "'+id+'" and ALL its data?\n\nThis cannot be undone.')) return;
+  delete HCARE.data[id];
+  HCARE.animal=Object.keys(HCARE.data)[0];
+  hcRenderAnimals(); hcRenderSheet();
+  toast('Deleted '+id);
+}
+window.hcDeleteAnimal = hcDeleteAnimal;
 
 function hcBind(){
   document.querySelectorAll('[data-c]').forEach(el=>{
@@ -811,16 +964,19 @@ function parseProtocolText(text, fname){
 
 function demoProtocol(){
   return {
-    name:'Demo - Hemorrhagic shock + resuscitation',
+    name:'H-CARE - REBOA polytrauma (IPROTO202500000107)',
     params: DEFAULT_VITALS,
     labFields: DEFAULT_LAB_FIELDS,
     timepoints:[
-      {id:'T0', label:'Baseline / T0', offsetMin:0, tasks:['Record vitals + ventilator','ABG / lactate','CBC']},
-      {id:'T15',label:'T+15 (hemorrhage)',offsetMin:15,tasks:['Record vitals + ventilator','ABG / lactate']},
-      {id:'T30',label:'T+30 (shock)',offsetMin:30,tasks:['Record vitals + ventilator','ABG / lactate']},
-      {id:'T60',label:'T+60 (resuscitation)',offsetMin:60,tasks:['Record vitals + ventilator','ABG / lactate','CBC','Chemistry']},
-      {id:'T120',label:'T+120',offsetMin:120,tasks:['Record vitals + ventilator','ABG / lactate']},
-      {id:'T240',label:'T+240 (endpoint)',offsetMin:240,tasks:['Record vitals + ventilator','ABG / lactate','CBC','Chemistry']},
+      {id:'T0', label:'T0 - Pre-Baseline (pre-op screen)', offsetMin:-30, tasks:['Pre-op CG4, CG8, CBC, CMP, ABG']},
+      {id:'T1', label:'T1 - Baseline / Post stabilization', offsetMin:0, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
+      {id:'T2', label:'T2 - 10 min post shock, pre REBOA', offsetMin:10, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T3', label:'T3 - 30 min post REBOA inflation', offsetMin:40, tasks:['Record vitals + ventilator','CG4, CG8']},
+      {id:'T4', label:'T4 - 10 min post REBOA deflation', offsetMin:80, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T5', label:'T5 - 1 hr post deflation', offsetMin:130, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T6', label:'T6 - 2 hr post deflation', offsetMin:190, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T7', label:'T7 - 3 hr post deflation', offsetMin:250, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T8', label:'T8 - 4 hr post deflation (EOS)', offsetMin:310, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
     ]
   };
 }
@@ -833,6 +989,7 @@ function loadProtocol(proto){
   rebuildTable();
   populateLabFields();
   if(!App.animals.length) addAnimal({silent:true});
+  renderTrendPicker(); renderTrends();
   toast('Protocol loaded - interface rebuilt');
 }
 
@@ -920,13 +1077,18 @@ function renderTimeline(){
       <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}">
         <div class="tdot"></div>
         <div class="tbody">
-          <div class="ttime">${tp.label}</div>
+          <div class="ttime"><span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${tp.label}</span></div>
           <div class="ttasks">${tp.tasks.join(' - ')}</div>
           ${evHtml}
           ${done
             ? `<div class="twhen">recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
             : cd.text?`<div class="countdown">${cd.text}</div>`:''}
-          ${done?'':`<button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>`}
+          ${done
+            ? `<div style="display:flex;gap:6px;margin-top:8px">
+                 <button class="btn sm" onclick="openCapture('${tp.id}')">Edit</button>
+                 <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${tp.id}')">Delete</button>
+               </div>`
+            : `<button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>`}
         </div>
       </div>`;
   }).join('');
@@ -975,7 +1137,7 @@ function renderAnimalTabs(){
     `<div class="atab ${a.id===App.activeAnimal?'on':''}" onclick="selectAnimal('${a.id}')">${a.id}${a.group?' <span style="opacity:.6">-'+a.group.replace('Group ','').replace('Treatment','Tx').replace('Control','Ctl')+'</span>':''}</div>`
   ).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
 }
-function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();}
+function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();}
 function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
 
 function openCapture(tpId, prefill, photo){
@@ -1199,17 +1361,314 @@ function saveCapture(tpId){
   if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
   a.rows[rid]=row;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
   toast(`Saved ${tpId||label} for ${a.id}`);
 }
+
+/* Rename a timepoint in the main timeline */
+function renameTimepoint(id){
+  if(!App.protocol) return;
+  const tp=App.protocol.timepoints.find(t=>t.id===id); if(!tp) return;
+  const next=prompt('Rename this timepoint:', tp.label);
+  if(next===null) return;
+  const name=next.trim(); if(!name){ toast('Name cannot be empty'); return; }
+  tp.label=name;
+  renderTimeline(); rebuildTable();
+  toast('Renamed to: '+name);
+}
+window.renameTimepoint = renameTimepoint;
+
+/* Add a new timepoint to the timeline */
+function addTimepoint(){
+  if(!App.protocol) return;
+  const name=prompt('Name of the new timepoint:','Extra timepoint');
+  if(name===null) return;
+  const n=name.trim(); if(!n){ toast('Name cannot be empty'); return; }
+  const offRaw=prompt('Minutes from start (number, can be negative for pre-op):','0');
+  if(offRaw===null) return;
+  const off=parseInt(offRaw);
+  if(isNaN(off)){ toast('Enter a number for the minutes'); return; }
+  let id='X'+Date.now().toString().slice(-5);
+  App.protocol.timepoints.push({id, label:n, offsetMin:off, tasks:['Record vitals + ventilator'], events:[]});
+  App.protocol.timepoints.sort((a,b)=>a.offsetMin-b.offsetMin);
+  renderTimeline(); rebuildTable();
+  toast('Added: '+n);
+}
+window.addTimepoint = addTimepoint;
+
+/* Remove a timepoint from the timeline (and its recorded data) */
+function deleteTimepoint(){
+  if(!App.protocol) return;
+  const tps=App.protocol.timepoints;
+  const list=tps.map((t,i)=>`${i+1}. ${t.label}`).join('\n');
+  const pick=prompt('Delete which timepoint? Enter the number:\n\n'+list,'');
+  if(pick===null) return;
+  const i=parseInt(pick)-1;
+  if(isNaN(i)||i<0||i>=tps.length){ toast('Invalid number'); return; }
+  const tp=tps[i];
+  if(!confirm('Delete the timepoint:\n\n'+tp.label+'\n\nAny data recorded at it will be removed. This cannot be undone.')) return;
+  tps.splice(i,1);
+  App.animals.forEach(a=>{ if(a.rows[tp.id]) delete a.rows[tp.id]; });
+  renderTimeline(); rebuildTable();
+  toast('Deleted: '+tp.label);
+}
+window.deleteTimepoint = deleteTimepoint;
+
+/* ============================================================
+   EVENTS - unplanned observations between scheduled timepoints
+   ============================================================ */
+function recordEvent(prefill, photo){
+  if(!App.animals.length) addAnimal({silent:true});
+  const a=getActiveAnimal();
+  const elapsed = App.runStart ? Math.round((Date.now()-App.runStart)/60000) : null;
+  const clock = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  $('#capTitle').textContent = 'EVENT - unplanned observation';
+  const params=activeParams();
+  let body=`<div class="hint" style="margin-bottom:12px;color:var(--trace-amber)">
+    <b>Unplanned event</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''} -
+    recorded between scheduled timepoints.</div>`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  body+=`<div class="field"><label>What happened? (required)</label>
+    <textarea data-k="_note" rows="3" placeholder="e.g. runs of PVCs after REBOA deflation; MAP fell to 28; gave 250 mL WB"></textarea></div>`;
+  if(!photo){
+    body+=`<button class="btn amber" style="margin-bottom:12px" onclick="document.getElementById('eventPhoto').click()">Add a photo (monitor / animal)</button>`;
+  }
+  const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const fieldFor=p=>{
+    let v=''; let ocr=false;
+    if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    else { const live=App.live[p.key]; if(live&&live.value!=null&&!photo) v=live.value; }
+    return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+  };
+  body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Vitals at this moment (optional)</div>`;
+  body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
+  if(vent.length){
+    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
+    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+  }
+  body+=`<button class="btn primary" style="margin-top:14px" onclick="saveEvent()">Save event</button>`;
+  $('#capBody').innerHTML=body;
+  _eventPhotoData = photo||null;
+  $('#captureModal').classList.add('show');
+}
+window.recordEvent = recordEvent;
+let _eventPhotoData=null;
+
+function saveEvent(){
+  const a=getActiveAnimal(); if(!a) return;
+  const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null, _event:true};
+  $$('#capBody [data-k]').forEach(inp=>{
+    const k=inp.dataset.k;
+    if(k==='_note'){ row._note=inp.value; return; }
+    const val=inp.value.trim();
+    if(val!=='') row[k]=isNaN(+val)?val:+val;
+  });
+  if(!row._note || !row._note.trim()){ toast('Please describe what happened'); return; }
+  if(_eventPhotoData) row._photo=_eventPhotoData;
+  const n=Object.keys(a.rows).filter(k=>k.startsWith('EV')).length+1;
+  const rid='EV'+n;
+  row._label='EVENT '+n+' - '+row._note.trim().slice(0,40);
+  a.rows[rid]=row;
+  _eventPhotoData=null;
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderTrends();
+  toast('Event saved');
+}
+window.saveEvent = saveEvent;
+
+async function eventPhotoToVitals(file){
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading photo...');
+    try{
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const {values}=await extractFromPhoto(img, fields, mapMonitorText);
+      recordEvent(values, img);
+      const n=Object.keys(values).length;
+      toast(n?`Extracted ${n} value${n>1?'s':''} - add your note`:'No values read - enter manually');
+    }catch(err){ recordEvent(null, img); toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ============================================================
+   TRENDS - charts that redraw every time data is entered
+   ============================================================ */
+const TREND_PRESETS = {
+  hemo:['HR','MAP','ABPs','ABPd'],
+  gas:['SpO2','EtCO2','Temp','RR'],
+  lab:['lab_Lactate','lab_pH','lab_HCO3','lab_BE','lab_Hb'],
+  none:[]
+};
+let TREND_SEL = ['HR','MAP','SpO2','lab_Lactate'];
+
+function trendSeriesOptions(){
+  const opts=[];
+  activeParams().forEach(p=>opts.push({key:p.key,label:p.label,unit:p.unit}));
+  const a=getActiveAnimal();
+  const labKeys=new Set();
+  if(a) Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{ if(k.startsWith('lab_')) labKeys.add(k); }));
+  [...labKeys].forEach(k=>opts.push({key:k,label:k.replace('lab_','')+' (lab)',unit:''}));
+  return opts;
+}
+
+function renderTrendPicker(){
+  const host=$('#trendPicker'); if(!host) return;
+  const opts=trendSeriesOptions();
+  host.innerHTML=opts.map(o=>{
+    const on=TREND_SEL.includes(o.key);
+    return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto" onclick="toggleTrend('${o.key}')">${o.label}</button>`;
+  }).join('');
+}
+function toggleTrend(key){
+  const i=TREND_SEL.indexOf(key);
+  if(i>=0) TREND_SEL.splice(i,1); else TREND_SEL.push(key);
+  renderTrendPicker(); renderTrends();
+}
+window.toggleTrend = toggleTrend;
+function trendPreset(name){
+  TREND_SEL = (TREND_PRESETS[name]||[]).slice();
+  renderTrendPicker(); renderTrends();
+}
+window.trendPreset = trendPreset;
+
+/* Collect ordered data points for one series from the active animal */
+function trendPoints(key){
+  const a=getActiveAnimal(); if(!a) return [];
+  const order=[];
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{ if(a.rows[t.id]) order.push([t.id,t.label]); });
+  Object.keys(a.rows).forEach(k=>{ if(!order.find(o=>o[0]===k)) order.push([k, a.rows[k]._label||k]); });
+  const pts=[];
+  order.forEach(([rid,label])=>{
+    const r=a.rows[rid];
+    const v=r[key];
+    if(v==null||v==='') return;
+    const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
+    if(isNaN(num)) return;
+    pts.push({x: r._runMin!=null?r._runMin:pts.length, y:num, label, event:!!r._event, ts:r._ts});
+  });
+  pts.sort((p,q)=>p.x-q.x);
+  return pts;
+}
+
+function renderTrends(){
+  const host=$('#trendCharts'); if(!host) return;
+  const lbl=$('#trendAnimalLabel'); if(lbl) lbl.textContent=App.activeAnimal||'no animal';
+  if(!TREND_SEL.length){
+    host.innerHTML='<div class="card"><div class="empty">Pick one or more parameters above to plot.</div></div>';
+    return;
+  }
+  const opts=trendSeriesOptions();
+  let html='';
+  TREND_SEL.forEach(key=>{
+    const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
+    const pts=trendPoints(key);
+    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <b style="font-size:13px">${meta.label}</b>
+      <span class="hint" style="margin:0">${pts.length} point${pts.length===1?'':'s'}${meta.unit?' &middot; '+meta.unit:''}</span></div>`;
+    html+= pts.length<1
+      ? `<div class="empty" style="padding:14px">No data yet for ${meta.label}.</div>`
+      : trendSVG(pts, meta);
+    html+=`</div>`;
+  });
+  host.innerHTML=html;
+}
+window.renderTrends = renderTrends;
+
+function trendSVG(pts, meta){
+  const W=680,H=200,PL=48,PR=14,PT=14,PB=32;
+  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+  let xMin=Math.min(...xs), xMax=Math.max(...xs);
+  let yMin=Math.min(...ys), yMax=Math.max(...ys);
+  if(xMax===xMin){ xMax=xMin+1; }
+  const pad=(yMax-yMin)*0.15 || (Math.abs(yMax)*0.1 || 1);
+  yMin-=pad; yMax+=pad;
+  const sx=v=>PL+((v-xMin)/(xMax-xMin))*(W-PL-PR);
+  const sy=v=>PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB);
+  const line=pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
+  // y gridlines
+  let grid='';
+  for(let i=0;i<=4;i++){
+    const v=yMin+(yMax-yMin)*i/4, y=sy(v);
+    grid+=`<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    grid+=`<text x="${PL-6}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--ink-faint)" font-family="monospace">${(Math.round(v*10)/10)}</text>`;
+  }
+  // points; events drawn in amber with a marker
+  const dots=pts.map(p=>{
+    const c=p.event?'var(--trace-amber)':'var(--accent)';
+    const rr=p.event?4.5:3.2;
+    return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${rr}" fill="${c}"><title>${p.label}: ${p.y}${meta.unit?' '+meta.unit:''}</title></circle>`;
+  }).join('');
+  // x labels: first, middle, last
+  const idxs=[...new Set([0,Math.floor(pts.length/2),pts.length-1])];
+  const xlab=idxs.map(i=>{
+    const p=pts[i]; if(!p) return '';
+    const t=(p.x>=0?'+':'')+p.x+'m';
+    return `<text x="${sx(p.x).toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="9" fill="var(--ink-faint)" font-family="monospace">${t}</text>`;
+  }).join('');
+  const hasEvent=pts.some(p=>p.event);
+  const legend=hasEvent?`<text x="${W-PR}" y="${PT+4}" text-anchor="end" font-size="9" fill="var(--trace-amber)">&#9679; event</text>`:'';
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${grid}
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>
+    ${dots}${xlab}${legend}
+  </svg>`;
+}
+
+/* Delete one recorded timepoint (asks first) */
+function deleteRow(rid){
+  const a=getActiveAnimal(); if(!a||!a.rows[rid]) { toast('Nothing to delete'); return; }
+  const label=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===rid)||{}).label)||a.rows[rid]._label||rid;
+  if(!confirm('Delete the recorded data for:\n\n'+label+'\n\nThis cannot be undone.')) return;
+  delete a.rows[rid];
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+  toast('Deleted '+label);
+}
+window.deleteRow = deleteRow;
+
+/* Delete a saved lab entry (asks first) */
+function deleteLab(i){
+  const a=getActiveAnimal(); if(!a||!a.labs[i]) return;
+  if(!confirm('Delete this lab entry?\n\nThis cannot be undone.')) return;
+  a.labs.splice(i,1);
+  renderLabList(); renderTrendPicker(); renderTrends();
+  toast('Lab entry deleted');
+}
+window.deleteLab = deleteLab;
+
+/* Clear every recorded timepoint for the active animal */
+function clearAllRows(){
+  const a=getActiveAnimal(); if(!a) return;
+  const n=Object.keys(a.rows).length;
+  if(!n){ toast('Nothing recorded yet'); return; }
+  if(!confirm('Delete ALL '+n+' recorded timepoint(s) for '+a.id+'?\n\nThis cannot be undone.')) return;
+  a.rows={};
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+  toast('All timepoints cleared for '+a.id);
+}
+window.clearAllRows = clearAllRows;
+
+/* Delete the active animal entirely */
+function deleteAnimal(){
+  const a=getActiveAnimal(); if(!a) return;
+  if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all instead'); return; }
+  if(!confirm('Delete animal "'+a.id+'" and ALL its data?\n\nThis cannot be undone.')) return;
+  App.animals=App.animals.filter(x=>x.id!==a.id);
+  App.activeAnimal=App.animals[0].id;
+  renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel();
+  toast('Animal deleted');
+}
+window.deleteAnimal = deleteAnimal;
 
 function rebuildTable(){
   const a=getActiveAnimal();
   const params=activeParams();
   const thead=$('#dataTable thead'), tbody=$('#dataTable tbody');
-  thead.innerHTML='<tr><th>Timepoint</th><th>Run</th>'+params.map(p=>`<th>${p.label}</th>`).join('')+'<th>Note</th></tr>';
+  thead.innerHTML='<tr><th>Timepoint</th><th>Run</th>'+params.map(p=>`<th>${p.label}</th>`).join('')+'<th>Note</th><th>Delete</th></tr>';
   if(!a||!Object.keys(a.rows).length){
-    tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+3}">No timepoints recorded yet.</td></tr>`;return;
+    tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+4}">No timepoints recorded yet.</td></tr>`;return;
   }
   const order=[];
   if(App.protocol) App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push([t.id,t.label]);});
@@ -1218,7 +1677,8 @@ function rebuildTable(){
     const r=a.rows[rid];
     return `<tr><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
       params.map(p=>`<td>${r[p.key]??''}</td>`).join('')+
-      `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td></tr>`;
+      `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td>`+
+      `<td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${rid}')">Delete</button></td></tr>`;
   }).join('');
 }
 
@@ -1331,7 +1791,7 @@ function saveLab(){
   a.labs.push(entry);
   if(entry.tp && a.rows[entry.tp]) Object.assign(a.rows[entry.tp], prefixKeys(vals));
   $('#labModal').classList.remove('show');
-  renderLabList(); rebuildTable();
+  renderLabList(); rebuildTable(); renderTrendPicker(); renderTrends();
   const nOcr=Object.values(src).filter(s=>s==='ocr').length;
   toast(`Lab saved - ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
 }
@@ -1344,6 +1804,7 @@ function renderLabList(){
     return `<div class="lab-thumb">
       ${l.img?`<img src="${l.img}">`:'<div style="width:46px;height:46px;border:1px dashed var(--line);border-radius:3px"></div>'}
       <div class="lmeta"><b>${l.tp||'unlinked'} - ${tsShort(l.ts)}</b>${summary||'-'}</div>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="deleteLab(${i})">Delete</button>
     </div>`;
   }).join('');
 }
@@ -1410,14 +1871,14 @@ function exportCSV(animal){
   const params=activeParams();
   const labKeys=new Set();
   Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);}));
-  const cols=['animal','group','timepoint','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
   const lines=[cols.join(',')];
   const order=[];
   if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
   Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
   order.forEach(rid=>{
     const r=a.rows[rid];
-    const row=[a.id, a.group||'', r._label||rid, r._runMin??'', r._ts,
+    const row=[a.id, a.group||'', r._label||rid, r._event?'EVENT':'scheduled', r._runMin??'', r._ts,
       ...params.map(p=>r[p.key]??''),
       ...[...labKeys].map(k=>r[k]??''),
       (r._note||'').replace(/,/g,';')];
@@ -1430,7 +1891,7 @@ function exportAllCSV(){
   const params=activeParams();
   const labKeys=new Set();
   App.animals.forEach(a=>Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);})));
-  const cols=['animal','group','timepoint','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
   const lines=[cols.join(',')];
   App.animals.forEach(a=>{
     const order=[];
@@ -1438,7 +1899,7 @@ function exportAllCSV(){
     Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
     order.forEach(rid=>{
       const r=a.rows[rid];
-      lines.push([a.id, a.group||'', r._label||rid, r._runMin??'', r._ts,
+      lines.push([a.id, a.group||'', r._label||rid, r._event?'EVENT':'scheduled', r._runMin??'', r._ts,
         ...params.map(p=>r[p.key]??''),
         ...[...labKeys].map(k=>r[k]??''),
         (r._note||'').replace(/,/g,';')].join(','));
@@ -1514,6 +1975,11 @@ $('#ocrMethod')&&$('#ocrMethod').addEventListener('change',e=>{
   $('#apiKeyField').style.display = e.target.value==='claude'?'block':'none';
 });
 $('#captureNow').addEventListener('click',()=>openCapture(''));
+$('#eventBtn').addEventListener('click',()=>recordEvent());
+$('#eventPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) eventPhotoToVitals(e.target.files[0]);
+  e.target.value='';
+});
 $('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
 $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
 
