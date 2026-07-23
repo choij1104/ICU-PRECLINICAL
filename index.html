@@ -7,7 +7,3150 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" co<!DOCTYPE html>
+<!--
+  Swine ICU - Preclinical Data Capture
+  Copyright (c) 2026 HAKOYA LLC. All rights reserved.
+  H-CARE study support tool (IPROTO202500000107).
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Swine ICU — Data Capture</title>
+<meta name="author" content="HAKOYA LLC">
+<meta name="copyright" content="Copyright (c) 2026 HAKOYA LLC. All rights reserved.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bezel:#eef2f5;
+    --panel:#ffffff;
+    --panel-2:#f4f7f9;
+    --line:#d8e0e6;
+    --ink:#1c2b33;
+    --ink-dim:#566872;
+    --ink-faint:#8497a0;
+    --trace:#0f9d6b;
+    --trace-amber:#c8861a;
+    --trace-red:#d64535;
+    --alarm:#e0392b;
+    --accent:#1f7fd1;
+    --accent-deep:#1a6fb8;
+    --ok:#0f9d6b;
+    --radius:6px;
+    --mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Inter",system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    font-family:var(--sans);
+    background:var(--bezel);
+    color:var(--ink);
+    font-size:14px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit}
+
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  header.topbar{
+    display:flex;align-items:center;gap:16px;
+    padding:10px 18px;background:var(--panel);
+    border-bottom:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:10px;font-weight:600;letter-spacing:.3px}
+  .brand .dot{width:9px;height:9px;border-radius:50%;background:var(--trace);
+    box-shadow:0 0 10px var(--trace);animation:pulse 2.4s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .brand small{color:var(--ink-faint);font-weight:400;font-size:11px;letter-spacing:.5px;text-transform:uppercase}
+
+  .conn{display:flex;align-items:center;gap:8px;margin-left:auto;font-family:var(--mono);font-size:12px}
+  .conn .led{width:8px;height:8px;border-radius:50%;background:var(--ink-faint)}
+  .conn.live .led{background:var(--trace);box-shadow:0 0 8px var(--trace)}
+  .conn.sim .led{background:var(--trace-amber);box-shadow:0 0 8px var(--trace-amber)}
+  .conn .label{color:var(--ink-dim)}
+
+  .runclock{font-family:var(--mono);font-size:13px;color:var(--ink-dim);
+    padding:4px 10px;background:var(--panel-2);border-radius:var(--radius);border:1px solid var(--line)}
+  .runclock b{color:var(--ink)}
+
+  .tabbar{display:flex;gap:2px;background:var(--panel);border-bottom:1px solid var(--line);
+    padding:0 10px;overflow-x:auto;flex-shrink:0}
+  .tabbtn{padding:12px 18px;border:none;background:none;color:var(--ink-dim);font-size:14px;
+    font-weight:500;border-bottom:2.5px solid transparent;white-space:nowrap;transition:.12s}
+  .tabbtn:hover{color:var(--ink)}
+  .tabbtn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+
+  .body{display:block;overflow-y:auto;min-height:0;flex:1}
+  .col{padding:16px 18px;max-width:1100px;margin:0 auto;display:none}
+  .col.active{display:block}
+  .col.left{background:transparent}
+  .col.right{background:transparent}
+  .col.center{padding:16px 18px}
+  .col.center{max-width:1400px}
+
+  .col::-webkit-scrollbar{width:8px}
+  .col::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+  h2.sec{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--ink-faint);
+    margin:0 0 10px;font-weight:600}
+  .card{background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);
+    padding:12px;margin-bottom:12px}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+    padding:8px 12px;border:1px solid var(--line);border-radius:var(--radius);
+    background:var(--panel-2);color:var(--ink);font-size:13px;font-weight:500;
+    transition:.12s;width:100%}
+  .btn:hover{border-color:var(--accent);color:var(--accent)}
+  .btn.primary{background:var(--accent-deep);border-color:var(--accent-deep);color:#fff}
+  .btn.primary:hover{background:var(--accent)}
+  .btn.amber{background:transparent;border-color:var(--trace-amber);color:var(--trace-amber)}
+  .btn.amber:hover{background:rgba(240,181,55,.12)}
+  .btn.ghost{background:transparent}
+  .btn.sm{padding:5px 9px;font-size:12px;width:auto}
+  .btn.cap{background:var(--trace);border-color:var(--trace);color:#fff;font-weight:700}
+  .btn.cap:hover{background:#52e6b4}
+  .btn-row{display:flex;gap:8px}
+
+  .drop{border:1.5px dashed var(--line);border-radius:var(--radius);padding:18px 12px;
+    text-align:center;color:var(--ink-dim);transition:.15s;cursor:pointer;font-size:12.5px}
+  .drop:hover,.drop.over{border-color:var(--accent);color:var(--ink);background:rgba(92,200,255,.05)}
+  .drop svg{display:block;margin:0 auto 8px;opacity:.6}
+  .proto-info{font-size:12px}
+  .proto-info .pname{color:var(--ink);font-weight:600;margin-bottom:4px;word-break:break-word}
+  .proto-info .prow{display:flex;justify-content:space-between;color:var(--ink-dim);padding:2px 0}
+  .proto-info .prow b{color:var(--trace);font-family:var(--mono)}
+
+  .vitals{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:16px}
+  .vital{background:var(--panel-2);border:1px solid var(--line);
+    border-radius:var(--radius);padding:12px 14px;position:relative;overflow:hidden;min-height:92px}
+  .vital .vlabel{font-size:10.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint);
+    display:flex;justify-content:space-between;align-items:center}
+  .vital .vsrc{font-size:8.5px;padding:1px 5px;border-radius:3px;background:var(--panel-2);color:var(--ink-faint);
+    border:1px solid var(--line)}
+  .vital .vval{font-family:var(--mono);font-size:34px;font-weight:600;line-height:1.1;margin-top:6px;
+    color:var(--trace);letter-spacing:-1px}
+  .vital.vent .vval{color:var(--accent)}
+  .vital .vunit{font-size:12px;color:var(--ink-dim);margin-left:4px;font-weight:400}
+  .vital.stale .vval{color:var(--ink-faint)}
+  .vital.alarm{border-color:var(--alarm);animation:alarmpulse 1s infinite}
+  .vital.alarm .vval{color:var(--alarm)}
+  @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 rgba(255,90,82,0)}50%{box-shadow:0 0 14px rgba(255,90,82,.4)}}
+  .spark{position:absolute;bottom:0;left:0;right:0;height:22px;opacity:.5}
+
+  /* Current-tab timepoint strip */
+  .tpstrip{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tpchip{padding:5px 10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);
+    color:var(--ink-faint);font-size:11.5px;font-family:var(--mono);cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px;transition:.12s;white-space:nowrap}
+  .tpchip:hover{border-color:var(--accent);color:var(--accent)}
+  .tpchip .dotm{width:7px;height:7px;border-radius:50%;background:var(--line);flex-shrink:0}
+  .tpchip.done{color:var(--ink);border-color:#bfe3d3;background:#f2fbf7}
+  .tpchip.done .dotm{background:var(--trace)}
+  .tpchip.event{color:var(--trace-amber);border-color:#e8d3a6;background:#fdf8ef}
+  .tpchip.event .dotm{background:var(--trace-amber)}
+  .tpchip.death{color:var(--alarm);border-color:#f0bdb7;background:#fdf2f1}
+  .tpchip.death .dotm{background:var(--alarm)}
+  .tpchip.sel{border-color:var(--accent-deep);background:var(--accent-deep);color:#fff;font-weight:600;
+    box-shadow:0 0 0 2px rgba(31,127,209,.18)}
+  .tpchip.sel .dotm{background:#fff}
+  .tpchip.pending{border-style:dashed}
+
+  .group-tag{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-faint);
+    margin:4px 0 10px;display:flex;align-items:center;gap:8px}
+  .group-tag::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .timeline{position:relative}
+  .tp{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line);align-items:flex-start}
+  .tp:last-child{border-bottom:none}
+  .tp .tdot{width:10px;height:10px;border-radius:50%;background:var(--panel-2);border:2px solid var(--line);
+    margin-top:4px;flex-shrink:0}
+  .tp.done .tdot{background:var(--trace);border-color:var(--trace)}
+  .tp.active .tdot{background:var(--trace-amber);border-color:var(--trace-amber);
+    box-shadow:0 0 10px var(--trace-amber);animation:pulse 1.6s infinite}
+  .tp .tbody{flex:1;min-width:0}
+  .tp .ttime{font-family:var(--mono);font-size:13px;color:var(--ink);font-weight:600}
+  .tp.done .ttime{color:var(--trace)}
+  .tp.active .ttime{color:var(--trace-amber)}
+  .tp .ttasks{font-size:12px;color:var(--ink-dim);margin-top:2px}
+  .tp .twhen{font-family:var(--mono);font-size:11px;color:var(--ink-faint);margin-top:3px}
+  .tp .btn{margin-top:8px}
+
+  .countdown{font-family:var(--mono);font-size:12px;color:var(--trace-amber)}
+
+  .animals{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+  .atab{padding:5px 11px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel-2);
+    color:var(--ink-dim);font-size:12px;font-family:var(--mono)}
+  .atab.on{border-color:var(--accent);color:#fff;background:var(--accent-deep)}
+  .atab.add{color:var(--accent);border-style:dashed}
+
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11.5px}
+  th,td{padding:6px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
+  th{background:var(--panel-2);color:var(--ink-faint);font-weight:600;text-transform:uppercase;
+    font-size:10px;letter-spacing:.5px;position:sticky;top:0}
+  th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--panel)}
+  th:first-child{background:var(--panel-2);z-index:2}
+  td{color:var(--ink-dim)}
+  tr:hover td{background:rgba(92,200,255,.04);color:var(--ink)}
+  .empty{padding:24px;text-align:center;color:var(--ink-faint);font-size:12.5px}
+
+  .lab-thumb{display:flex;gap:10px;align-items:center;padding:8px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:var(--radius);margin-bottom:8px}
+  .lab-thumb img{width:46px;height:46px;object-fit:cover;border-radius:3px;border:1px solid var(--line)}
+  .lab-thumb .lmeta{font-size:11px;color:var(--ink-dim);flex:1;min-width:0}
+  .lab-thumb .lmeta b{color:var(--ink);display:block;font-family:var(--mono)}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(4,8,10,.78);display:none;align-items:center;
+    justify-content:center;z-index:50;padding:20px;backdrop-filter:blur(3px)}
+  .modal-bg.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:6px;width:100%;
+    max-width:520px;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .modal-head{padding:14px 18px;border-bottom:1px solid var(--line);display:flex;
+    align-items:center;justify-content:space-between}
+  .modal-head h3{font-size:15px}
+  .modal-head .x{background:none;border:none;color:var(--ink-faint);font-size:20px;cursor:pointer}
+  .modal-body{padding:18px}
+  .field{margin-bottom:12px}
+  .field label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.6px;
+    color:var(--ink-faint);margin-bottom:5px}
+  .field input,.field select,.field textarea{width:100%;padding:8px 10px;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:var(--radius);color:var(--ink);font-size:13px;
+    font-family:var(--mono)}
+  .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+  .snapshot-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px}
+  .snapshot-row .src{font-size:10px;color:var(--ink-faint);font-family:var(--mono)}
+
+  .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--panel);
+    border:1px solid var(--accent);color:var(--ink);padding:10px 18px;border-radius:var(--radius);
+    font-size:13px;z-index:60;opacity:0;transition:.25s;pointer-events:none}
+  .toast.show{opacity:1;bottom:30px}
+
+  .hint{font-size:11px;color:var(--ink-faint);margin-top:6px;line-height:1.5}
+  .pill{display:inline-block;padding:2px 7px;border-radius:10px;font-size:10px;font-family:var(--mono);
+    background:var(--panel-2);border:1px solid var(--line);color:var(--ink-dim)}
+
+  video{width:100%;border-radius:var(--radius);background:#000;border:1px solid var(--line)}
+
+  .field.ocr-filled input{border-color:var(--trace-amber);background:rgba(240,181,55,.06)}
+  .field.ocr-filled label::after{content:" \2299 OCR";color:var(--trace-amber);font-size:9px;letter-spacing:.5px}
+  .ocr-progress{height:3px;background:var(--panel-2);border-radius:2px;overflow:hidden;margin-top:6px}
+  .ocr-progress span{display:block;height:100%;background:var(--trace-amber);width:0;transition:width .2s}
+
+  @media(max-width:700px){
+    .tabbtn{padding:11px 13px;font-size:13px}
+    .col{padding:12px}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="brand">
+      <span class="dot"></span>
+      Swine ICU <small>Current &middot; v3.4</small>
+    </div>
+    <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
+    <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
+    <input type="file" id="uploadPhotoFile" hidden accept="image/*">
+    <div class="conn sim" id="conn">
+      <span class="led"></span>
+      <span class="label" id="connlabel">SIMULATOR</span>
+    </div>
+  </header>
+
+  <nav class="tabbar" id="tabbar">
+    <button class="tabbtn active" data-tab="live">Current</button>
+    <button class="tabbtn" data-tab="timeline">Timeline &amp; Labs</button>
+    <button class="tabbtn" data-tab="trends">Trends</button>
+    <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
+    <button class="tabbtn" data-tab="settings">Photo / Settings</button>
+  </nav>
+
+  <div class="body">
+    <aside class="col left" data-panel="setup">
+      <h2 class="sec">Protocol</h2>
+      <div class="card" id="protoCard">
+        <div class="drop" id="drop">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
+            <path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2"/>
+          </svg>
+          Drop protocol file<br><span style="font-size:11px">PDF &middot; DOCX &middot; TXT</span>
+        </div>
+        <input type="file" id="protoFile" hidden accept=".pdf,.docx,.txt">
+        <div class="hint">The interface rebuilds itself from the protocol &mdash; timepoints, measured parameters, and sampling events become the live timeline and input fields.</div>
+        <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+          <div class="hint" style="margin:0 0 6px">Structured paper-form entry (H-CARE set):</div>
+          <button class="btn sm amber" id="hcareBtn" style="width:100%">Open data sheets</button>
+        </div>
+      </div>
+
+      <h2 class="sec">Data source</h2>
+      <div class="card">
+        <div class="field" style="margin-bottom:8px">
+          <label>Mindray feed</label>
+          <select id="srcMode">
+            <option value="sim">Simulator (demo)</option>
+            <option value="bridge">Bridge &mdash; WebSocket</option>
+          </select>
+        </div>
+        <div class="field" id="wsField" style="display:none;margin-bottom:8px">
+          <label>Bridge address</label>
+          <input id="wsAddr" value="ws://localhost:8765" spellcheck="false">
+        </div>
+        <button class="btn primary" id="connectBtn">Connect</button>
+        <div class="hint">Bridge runs on your laptop, reads the Mindray monitor (vitals + ventilator via BeneLink) and streams here. Simulator needs no hardware.</div>
+      </div>
+    </aside>
+
+    <aside class="col left" data-panel="settings">
+      <h2 class="sec">Camera (backup)</h2>
+      <div class="card">
+        <button class="btn ghost" id="camBtn">Start monitor camera</button>
+        <video id="cam" style="display:none;margin-top:8px" muted playsinline></video>
+        <div class="hint">Point at the monitor as a visual backup. Snapshots are timestamped to match recorded video.</div>
+      </div>
+
+      <h2 class="sec">Photo extraction (AI)</h2>
+      <div class="card">
+        <div class="field" style="margin-bottom:8px">
+          <label>Method</label>
+          <select id="ocrMethod">
+            <option value="claude">Claude AI (reads LCD, handwriting)</option>
+            <option value="tesseract">Tesseract (offline, print only)</option>
+          </select>
+        </div>
+        <div class="field" id="apiKeyField" style="margin-bottom:8px">
+          <label>Anthropic API key</label>
+          <input id="apiKey" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
+          <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
+            <button class="btn sm primary" id="saveKeyBtn" style="width:auto">Save key</button>
+            <button class="btn sm ghost" id="clearKeyBtn" style="width:auto">Clear</button>
+            <span id="keyStatus" style="font-size:11px;color:var(--ink-faint)"></span>
+          </div>
+        </div>
+        <div class="hint">Claude reads i-STAT screens, Mindray monitors, and handwritten forms accurately. Your key is saved in this browser only (never uploaded or shared) and stays across sessions until you clear it. Get a key at console.anthropic.com. Tesseract is free/offline but cannot read LCD screens.</div>
+      </div>
+    </aside>
+
+    <main class="col center" data-panel="live">
+      <div id="liveArea">
+        <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <div id="tpStrip" style="margin-bottom:10px"></div>
+        <div id="currentHead" class="card" style="margin-bottom:12px"></div>
+        <div class="vitals" id="vitalsGrid">
+          <div class="empty" style="grid-column:1/-1">No data recorded yet. Record a timepoint to see values here.</div>
+        </div>
+      </div>
+
+      <h2 class="sec" style="margin-top:8px">Recorded data</h2>
+      <div class="animals" id="animalTabs"></div>
+      <div class="hint" style="margin:-4px 0 10px">Tap an animal to open its data. Tap the <b>name of the open animal</b> to rename it.</div>
+      <div class="tablewrap">
+        <table id="dataTable">
+          <thead><tr><th>Timepoint</th></tr></thead>
+          <tbody><tr><td class="empty">No timepoints recorded yet.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="btn-row" style="margin-top:12px">
+        <button class="btn sm" id="exportCsv">Export CSV</button>
+        <button class="btn sm" id="exportJson">Export JSON</button>
+        <button class="btn sm ghost" id="exportAll">Export all animals</button>
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="clearAllRows()">Clear all rows</button>
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteAnimal()">Delete animal</button>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <b style="font-size:12px">Saved data</b>
+          <span id="saveStatus" class="hint" style="margin:0">not saved yet</span>
+        </div>
+        <div class="hint" style="margin:0 0 8px">Your data is saved in this browser automatically as you type. Save a file as well for backup or to move to another device.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sm primary" style="width:auto" onclick="saveSessionFile()">Save file</button>
+          <button class="btn sm" style="width:auto" onclick="document.getElementById('sessionFile').click()">Load file</button>
+          <input type="file" id="sessionFile" hidden accept=".json,application/json">
+          <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="clearSavedData()">Erase everything</button>
+        </div>
+      </div>
+      <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
+        &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.4
+      </div>
+    </main>
+
+    <main class="col center" data-panel="trends">
+      <h2 class="sec">Trends &mdash; <span id="trendAnimalLabel">no animal</span></h2>
+      <div class="card">
+        <div class="field" style="margin-bottom:8px">
+          <label>Show parameters</label>
+          <div id="trendPicker" style="display:flex;flex-wrap:wrap;gap:6px"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sm" onclick="trendPreset('hemo')">Hemodynamics</button>
+          <button class="btn sm" onclick="trendPreset('bloodgas')">Blood gas</button>
+          <button class="btn sm" onclick="trendPreset('perfusion')">Perfusion (Lac/BE)</button>
+          <button class="btn sm" onclick="trendPreset('chem')">Chemistry</button>
+          <button class="btn sm" onclick="trendPreset('gas')">Vent / SpO2</button>
+          <button class="btn sm ghost" onclick="trendPreset('none')">Clear</button>
+        </div>
+      </div>
+      <div id="trendCharts"></div>
+    </main>
+
+    <aside class="col right" data-panel="timeline">
+      <h2 class="sec">Timeline</h2>
+      <div class="card" style="padding:8px 12px">
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button class="btn sm" style="flex:1" onclick="addTimepoint()">+ Timepoint</button>
+          <button class="btn sm ghost" style="flex:1;color:var(--alarm);border-color:var(--alarm)" onclick="deleteTimepoint()">- Timepoint</button>
+        </div>
+        <button class="btn cap" id="photoVitals">Monitor photo &rarr; vitals</button>
+        <input type="file" id="vitalPhoto" hidden accept="image/*">
+        <button class="btn" id="captureNow" style="margin-top:8px">Edit / enter</button>
+        <button class="btn amber" id="eventBtn" style="margin-top:8px">&#9888; Record EVENT (between timepoints)</button>
+        <button class="btn" id="deathBtn" style="margin-top:8px;background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:700">&#10013; DEATH POINT (final sample)</button>
+        <input type="file" id="deathPhoto" hidden accept="image/*">
+        <input type="file" id="eventPhoto" hidden accept="image/*">
+        <input type="file" id="tpPhoto" hidden accept="image/*">
+        <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction. Timestamped automatically.</div>
+        <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
+      </div>
+      <div class="timeline" id="timeline">
+        <div class="empty">Upload a protocol to build the timeline.</div>
+      </div>
+
+      <h2 class="sec" style="margin-top:8px">Blood labs</h2>
+      <div class="card">
+        <button class="btn ghost" id="addLab">+ Add lab photo / values</button>
+        <input type="file" id="labFile" hidden accept="image/*">
+        <div id="labList" style="margin-top:10px"></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<div class="modal-bg" id="captureModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="capTitle">Capture timepoint</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body" id="capBody"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="labModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3>Blood lab entry</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="labPreview" style="margin-bottom:12px"></div>
+      <button class="btn amber" id="ocrBtn" style="display:none;margin-bottom:10px">Read values from photo (OCR)</button>
+      <div id="ocrStatus" class="hint" style="margin-bottom:12px"></div>
+      <div class="hint" style="margin-bottom:12px">Run OCR to auto-fill, then check each value against the photo. OCR-filled fields are marked; edit any that look wrong. Or just type the values in.</div>
+      <div id="labFields"></div>
+      <div class="field">
+        <label>Link to timepoint</label>
+        <select id="labTp"></select>
+      </div>
+      <button class="btn primary" id="saveLab">Save lab entry</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="photoChooser">
+  <div class="modal" style="max-width:380px">
+    <div class="modal-head">
+      <h3>What's in this photo?</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:14px">Claude reads the photo and fills the values automatically. Auto-detect identifies the device; or pick the type yourself. You confirm &amp; correct after.</div>
+      <button class="btn cap" id="pcAuto" style="margin-bottom:12px">Auto-detect &amp; extract</button>
+      <div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Or choose the type</div>
+      <button class="btn" id="pcMonitor" style="margin-bottom:8px">Monitor screen &rarr; vitals</button>
+      <button class="btn" id="pcVent" style="margin-bottom:8px">Ventilator screen &rarr; vitals</button>
+      <button class="btn" id="pcIstat" style="margin-bottom:12px">i-STAT printout &rarr; labs</button>
+      <button class="btn ghost" id="pcCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="hcare" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bezel);overflow:auto">
+  <div style="max-width:1300px;margin:0 auto;padding:16px 20px 60px">
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;position:sticky;top:0;background:var(--bezel);padding:10px 0;z-index:5;border-bottom:1px solid var(--line)">
+      <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE &middot; IPROTO202500000107</small></div>
+      <select id="hcAnimal" style="margin-left:auto;padding:7px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:13px"></select>
+      <button class="btn sm" id="hcAddAnimal" style="width:auto">+ Animal</button>
+      <button class="btn sm" style="width:auto" onclick="hcRenameAnimal()">Rename</button>
+      <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
+      <button class="btn sm amber" id="hcPhoto" style="width:auto">Photo &rarr; row</button>
+      <input type="file" id="hcPhotoFile" hidden accept="image/*">
+      <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteAnimal()">Delete animal</button>
+      <button class="btn sm ghost" id="hcClose" style="width:auto">Close</button>
+    </div>
+
+    <div class="animals" id="hcTabs" style="margin-bottom:14px">
+      <div class="atab on" data-sheet="case">Case setup</div>
+      <div class="atab" data-sheet="vitals">Vitals sheet</div>
+      <div class="atab" data-sheet="istat">iSTAT sheet</div>
+    </div>
+
+    <div id="hcSheet"></div>
+    <div style="text-align:center;padding:22px 0 8px;color:var(--ink-faint);font-size:11px">
+      &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ H-CARE FORM PRESET ============ */
+const HCARE = {
+  sheet:'case',
+  animal:null,
+  data:{},
+  vitalsRows:[
+    'T0 - Pre-Baseline (pre-op screen)',
+    'T1 - Baseline / Post stabilization','T2 - 10 mins post shock, pre REBOA',
+    'T3 - 30 mins post REBOA / pre-deflation','Immediately post REBOA deflation',
+    'T4 - 10 mins post deflation','30 mins post deflation','T5 - 60 mins post deflation',
+    '90 mins post deflation','T6 - 120 min post deflation','150 min post deflation',
+    'T7 - 180 min post deflation','210 min post deflation','T8 - 240 min post deflation (EOS)'
+  ],
+  vitalsCols:[
+    {k:'time',label:'Time',type:'t'},
+    {k:'hr',label:'HR',type:'n'},
+    {k:'femBP',label:'Fem Art BP (MAP)',type:'bp'},
+    {k:'carBP',label:'Carotid BP (MAP)',type:'bp'},
+    {k:'rr',label:'RR',type:'n'},
+    {k:'spo2',label:'SpO2',type:'n'},
+    {k:'etco2',label:'etCO2',type:'n'},
+    {k:'temp',label:'Temp',type:'n'},
+    {k:'urine',label:'Urine',type:'n'},
+    {k:'istat',label:'iSTAT check',type:'c'},
+    {k:'labs',label:'Labs drawn',type:'x'},
+  ],
+  vitalsLabs:{0:'Pre-op: CBC, CMP, ABG (CG4, CG8)',1:'Chem, Coag, Plasma x5, Urine',2:'Coag, Plasma x5, Urine',5:'Coag, Plasma x5, Urine',
+    7:'Coag, Plasma x5, Urine',9:'Coag, Plasma x5, Urine',11:'Coag, Plasma x5, Urine',13:'Chem, Coag, Plasma x5, Urine'},
+  istatRows:[
+    'T0 - Pre-Baseline (pre-op CG4, CG8, CBC)',
+    'T1 - BL / Post stabilization','T2 - 10 mins post shock, pre REBOA',
+    'T3 - 30 mins post REBOA inflation','T4 - 10 mins post REBOA deflation',
+    'T5 - 1 hr post REBOA deflation','T6 - 2 hr post deflation',
+    'T7 - 3 hr post deflation','T8 - 4 hr post deflation'
+  ],
+  istatCols:[
+    {k:'lactate',label:'Lactate'},{k:'k',label:'K'},{k:'glu',label:'Glu'},
+    {k:'hgb',label:'Hgb'},{k:'ph',label:'pH'},{k:'pco2',label:'pCO2'},
+    {k:'po2',label:'pO2'},{k:'hco3',label:'HCO3'},{k:'be',label:'Base Excess'},
+    {k:'so2',label:'sO2'},{k:'notes',label:'Notes',wide:true}
+  ],
+};
+
+function hcInit(){
+  if(!HCARE.animal) hcAddAnimal(true);
+  document.getElementById('hcare').style.display='block';
+  hcRenderAnimals(); hcRenderSheet();
+}
+function hcAddAnimal(silent){
+  const n=Object.keys(HCARE.data).length+1;
+  const id = silent ? ('Animal-'+n) : (prompt('Animal #','Animal-'+n)||('Animal-'+n));
+  HCARE.data[id]={case:{}, vitals:{}, istat:{}};
+  HCARE.animal=id;
+  if(!silent){hcRenderAnimals();hcRenderSheet();}
+}
+function hcRenderAnimals(){
+  const sel=document.getElementById('hcAnimal');
+  sel.innerHTML=Object.keys(HCARE.data).map(id=>`<option ${id===HCARE.animal?'selected':''}>${id}</option>`).join('');
+}
+function hcA(){return HCARE.data[HCARE.animal];}
+
+function hcRenderSheet(){
+  const host=document.getElementById('hcSheet');
+  if(HCARE.sheet==='case') host.innerHTML=hcCaseSheet();
+  else if(HCARE.sheet==='vitals') host.innerHTML=hcGrid('vitals',HCARE.vitalsRows,HCARE.vitalsCols);
+  else host.innerHTML=hcGrid('istat',HCARE.istatRows,HCARE.istatCols);
+  hcBind();
+}
+
+function hcCaseSheet(){
+  const c=hcA().case;
+  const v=(k)=>c[k]!=null?String(c[k]).replace(/"/g,'&quot;'):'';
+  const chk=(k)=>c[k]?'checked':'';
+  const checklist=[
+    ['cStart','Case start time'],['t0bl','T0 Pre-Baseline drawn CG4, CG8, CBC'],
+    ['iso','Iso 1-3%, EtCO2 35-45, TV 7-15 mL/kg'],['bolus','250 mL 0.9% saline bolus via ear'],
+    ['cath','Catheter placements (all upsized)'],['fem','L Femoral (REBOA)'],
+    ['car','Carotid (BP/sampling)'],['rfem','R Femoral (BP/hemorrhage)'],
+    ['ej','EJ (resus/fluids)'],['ytube','Prime Y-tubing, keep warm'],
+    ['leak','Check REBOA for leaks'],['temp','Temp 37.5-40 C maintained'],
+    ['tbi','TBI induced'],['reboaM','REBOA measured & placed'],['tibia','Tibia fracture'],
+    ['titrate','Titrate iso to 1.5% before hemorrhage']
+  ];
+  return `
+  <div class="card" style="max-width:760px">
+    <div class="grid3" style="margin-bottom:14px">
+      <div class="field"><label>Animal # <span style="text-transform:none;color:var(--ink-faint)">(use Rename button in toolbar to change the tab name)</span></label><input data-c="animalNo" value="${v('animalNo')||HCARE.animal||''}"></div>
+      <div class="field"><label>Weight (kg)</label><input data-c="weight" value="${v('weight')}" inputmode="decimal"></div>
+      <div class="field"><label>Sex</label><select data-c="sex"><option ${c.sex==='M'?'selected':''}>M</option><option ${c.sex==='F'?'selected':''}>F</option></select></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+      <div class="field"><label>Date</label><input data-c="date" value="${v('date')}" placeholder="MM/DD/YY"></div>
+      <div class="field"><label>Experiment #</label><input data-c="expNo" value="${v('expNo')}"></div>
+    </div>
+    <div class="field" style="margin-bottom:14px">
+      <label>Treatment arm</label>
+      <select data-c="arm">
+        <option value="">-</option>
+        <option ${c.arm==='1 unit WB'?'selected':''}>1 unit WB</option>
+        <option ${c.arm==='1 unit WB + NAC (150mg/kg)'?'selected':''}>1 unit WB + NAC (150mg/kg)</option>
+        <option ${c.arm==='1 unit WB + CX-01 (4.3mg/kg)'?'selected':''}>1 unit WB + CX-01 (4.3mg/kg)</option>
+      </select>
+    </div>
+    <div class="field" style="margin-bottom:16px"><label>Treatment plan / notes</label>
+      <textarea data-c="plan" rows="2">${v('plan')}</textarea></div>
+    <h2 class="sec">Checklist</h2>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px 18px">
+      ${checklist.map(([k,lab])=>`<label style="display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--ink-dim);cursor:pointer">
+        <input type="checkbox" data-chk="${k}" ${chk(k)}> ${lab}</label>`).join('')}
+    </div>
+  </div>`;
+}
+
+function hcGrid(sheet,rows,cols){
+  const d=hcA()[sheet];
+  const cell=(rid,col)=>{
+    const val=(d[rid]&&d[rid][col.k]!=null)?String(d[rid][col.k]).replace(/"/g,'&quot;'):'';
+    if(col.type==='c') return `<input type="checkbox" data-g="${sheet}" data-r="${rid}" data-k="${col.k}" ${val?'checked':''}>`;
+    if(col.type==='x') return `<span style="font-size:10px;color:var(--ink-faint)">${HCARE.vitalsLabs[rid]||''}</span>`;
+    if(col.type==='bp') return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${val}" placeholder="120/80(93)" style="width:108px">`;
+    const w = col.wide?'width:160px':'width:62px';
+    return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${val}" inputmode="${col.type==='t'?'numeric':'decimal'}" style="${w}">`;
+  };
+  return `
+  <div class="tablewrap" style="overflow:auto">
+    <table>
+      <thead><tr><th style="min-width:200px">Timepoint</th>${cols.map(c=>`<th>${c.label}</th>`).join('')}<th>Clear</th></tr></thead>
+      <tbody>
+        ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
+          ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}
+          <td style="white-space:nowrap">
+            <button class="btn sm cap" style="margin-right:4px" onclick="hcRowPhoto('${sheet}',${rid})">Photo</button>
+            <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button>
+          </td></tr>`).join('')}
+      </tbody>
+    </table>
+  </div>
+  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap <b>Photo</b> on a row to read values straight into it. Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that row.</div>`;
+}
+
+/* Photo straight into one sheet row - no row number prompt */
+let _hcRowTarget=null;
+function hcRowPhoto(sheet, rid){
+  _hcRowTarget={sheet, rid};
+  document.getElementById('hcPhotoFile').click();
+}
+window.hcRowPhoto = hcRowPhoto;
+
+/* Rename any timepoint row in either sheet */
+function hcRenameRow(sheet, rid){
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const cur = rows[rid];
+  const next = prompt('Rename this timepoint:', cur);
+  if(next===null) return;
+  const name = next.trim();
+  if(!name){ toast('Name cannot be empty'); return; }
+  rows[rid] = name;
+  hcRenderSheet();
+  toast('Renamed to: '+name);
+}
+window.hcRenameRow = hcRenameRow;
+
+/* Add an extra timepoint row to the active sheet */
+function hcAddRow(){
+  if(HCARE.sheet==='case'){ toast('Switch to Vitals or iSTAT sheet first'); return; }
+  const rows = HCARE.sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const name = prompt('Name of the new timepoint:', 'Extra timepoint');
+  if(name===null) return;
+  const n=name.trim(); if(!n){ toast('Name cannot be empty'); return; }
+  rows.push(n);
+  hcRenderSheet();
+  toast('Added row: '+n);
+}
+window.hcAddRow = hcAddRow;
+
+/* Delete a timepoint row entirely (removes the row, not just its values) */
+function hcDeleteRow(){
+  if(HCARE.sheet==='case'){ toast('Switch to Vitals or iSTAT sheet first'); return; }
+  const sheet=HCARE.sheet;
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
+  const pick=prompt('Delete which timepoint row? Enter the number:\n\n'+list,'');
+  if(pick===null) return;
+  const rid=parseInt(pick)-1;
+  if(isNaN(rid)||rid<0||rid>=rows.length){ toast('Invalid row number'); return; }
+  if(!confirm('Delete the entire row:\n\n'+rows[rid]+'\n\nIts data will be removed too. This cannot be undone.')) return;
+  const label=rows[rid];
+  rows.splice(rid,1);
+  // reindex stored data above the removed row
+  const d=hcA()[sheet]; const shifted={};
+  Object.keys(d).forEach(k=>{
+    const i=parseInt(k);
+    if(i<rid) shifted[i]=d[k];
+    else if(i>rid) shifted[i-1]=d[k];
+  });
+  hcA()[sheet]=shifted;
+  hcRenderSheet();
+  toast('Deleted row: '+label);
+}
+window.hcDeleteRow = hcDeleteRow;
+
+/* Rename the current animal - keeps all its data */
+function hcRenameAnimal(){
+  const old=HCARE.animal;
+  if(!old){ toast('No animal selected'); return; }
+  const next=prompt('Change animal # / ID:', old);
+  if(next===null) return;
+  const id=next.trim();
+  if(!id){ toast('Name cannot be empty'); return; }
+  if(id===old) return;
+  if(HCARE.data[id]){ toast('An animal named "'+id+'" already exists'); return; }
+  // rebuild preserving key order
+  const rebuilt={};
+  Object.keys(HCARE.data).forEach(k=>{ rebuilt[k===old?id:k]=HCARE.data[k]; });
+  HCARE.data=rebuilt;
+  HCARE.animal=id;
+  // keep the case-sheet Animal # field in sync
+  if(HCARE.data[id] && HCARE.data[id].case) HCARE.data[id].case.animalNo=id;
+  hcRenderAnimals(); hcRenderSheet();
+  toast('Renamed to '+id);
+}
+window.hcRenameAnimal = hcRenameAnimal;
+
+/* Clear one row of a data sheet (asks for confirmation first) */
+function hcClearRow(sheet, rid){
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const label = rows[rid]||('row '+(rid+1));
+  const d = hcA()[sheet];
+  if(!d[rid] || !Object.keys(d[rid]).length){ toast('That row is already empty'); return; }
+  if(!confirm('Clear all values in:\n\n'+label+'\n\nThis cannot be undone.')) return;
+  delete d[rid];
+  hcRenderSheet();
+  toast('Cleared: '+label);
+}
+window.hcClearRow = hcClearRow;
+
+/* Clear the entire active sheet for this animal */
+function hcClearSheet(){
+  const sheet = HCARE.sheet;
+  if(sheet==='case'){
+    if(!confirm('Clear ALL case setup fields for '+HCARE.animal+'?\n\nThis cannot be undone.')) return;
+    hcA().case={};
+  } else {
+    const name = sheet==='vitals'?'Vitals sheet':'iSTAT sheet';
+    if(!confirm('Clear the ENTIRE '+name+' for '+HCARE.animal+'?\n\nThis cannot be undone.')) return;
+    hcA()[sheet]={};
+  }
+  hcRenderSheet();
+  toast('Sheet cleared');
+}
+window.hcClearSheet = hcClearSheet;
+
+/* Delete the current animal entirely */
+function hcDeleteAnimal(){
+  const id=HCARE.animal;
+  if(!id) return;
+  const ids=Object.keys(HCARE.data);
+  if(ids.length<=1){ toast('Cannot delete the only animal - clear the sheets instead'); return; }
+  if(!confirm('Delete animal "'+id+'" and ALL its data?\n\nThis cannot be undone.')) return;
+  delete HCARE.data[id];
+  HCARE.animal=Object.keys(HCARE.data)[0];
+  hcRenderAnimals(); hcRenderSheet();
+  toast('Deleted '+id);
+}
+window.hcDeleteAnimal = hcDeleteAnimal;
+
+function hcBind(){
+  document.querySelectorAll('[data-c]').forEach(el=>{
+    el.addEventListener('input',()=>{hcA().case[el.dataset.c]=el.value; if(window.autosave) autosave();});
+  });
+  document.querySelectorAll('[data-chk]').forEach(el=>{
+    el.addEventListener('change',()=>{hcA().case[el.dataset.chk]=el.checked; if(window.autosave) autosave();});
+  });
+  document.querySelectorAll('[data-g]').forEach(el=>{
+    const handler=()=>{
+      const {g,r,k}=el.dataset;
+      const d=hcA()[g]; if(!d[r])d[r]={};
+      d[r][k]= el.type==='checkbox'?el.checked:el.value;
+      if(g==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(parseInt(r));
+      if(window.autosave) autosave();
+    };
+    el.addEventListener(el.type==='checkbox'?'change':'input',handler);
+  });
+}
+
+
+/* Mirror a row of the iSTAT data sheet into the main record so the values
+   show up on Current and in Trends. Sheet row 0 = T0, row 1 = T1, etc. */
+function hcMirrorIstatRow(rid){
+  try{
+    const label=HCARE.istatRows[rid]||'';
+    const m=label.match(/\bT(\d+)\b/i);
+    if(!m) return;                       // custom rows are not mirrored
+    const tpId='T'+m[1];
+    if(!App.protocol || !App.protocol.timepoints.find(t=>t.id===tpId)) return;
+    const src=(hcA().istat||{})[rid]; if(!src) return;
+    const map={lactate:'Lactate',k:'K',glu:'Glucose',hgb:'Hb',ph:'pH',
+               pco2:'pCO2',po2:'pO2',hco3:'HCO3',be:'BE',so2:'sO2'};
+    const vals={};
+    Object.entries(src).forEach(([k,v])=>{
+      if(k.startsWith('_')||k==='notes') return;
+      if(v===''||v==null) return;
+      const name=map[k]; if(!name) return;
+      const num=isNaN(+v)?v:+v;
+      vals[name]=num;
+    });
+    if(!Object.keys(vals).length) return;
+    // find the animal in the main record with this name, else the active one
+    let a=App.animals.find(x=>x.id===HCARE.animal) || getActiveAnimal();
+    if(!a) a=addAnimal({silent:true});
+    if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:null};
+    Object.assign(a.rows[tpId], prefixKeys(vals));
+    // keep one lab entry per sheet row so Trends/Current can read it
+    const existing=(a.labs||[]).find(l=>l._fromSheet===rid);
+    if(existing){ existing.values=vals; existing.ts=nowTs(); }
+    else { a.labs.push({ts:nowTs(), tp:tpId, values:vals, src:{}, img:(src._photo||null), _fromSheet:rid}); }
+    rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent(); renderLabList();
+  }catch(e){ /* mirroring must never break sheet entry */ }
+}
+function hcExportCSV(){
+  const lines=[];
+  const a=HCARE.animal, A=hcA();
+  lines.push('# (c) 2026 HAKOYA LLC. All rights reserved.');
+  lines.push('# CASE SETUP');
+  lines.push('animal,'+a);
+  Object.entries(A.case).forEach(([k,v])=>lines.push(`${k},"${String(v).replace(/"/g,'""')}"`));
+  lines.push(''); lines.push('# VITALS');
+  lines.push(['timepoint',...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>c.k)].join(','));
+  HCARE.vitalsRows.forEach((r,rid)=>{
+    const row=A.vitals[rid]||{};
+    lines.push([`"${r}"`,...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>(row[c.k]??''))].join(','));
+  });
+  lines.push(''); lines.push('# iSTAT');
+  lines.push(['timepoint',...HCARE.istatCols.map(c=>c.k)].join(','));
+  HCARE.istatRows.forEach((r,rid)=>{
+    const row=A.istat[rid]||{};
+    lines.push([`"${r}"`,...HCARE.istatCols.map(c=>{const x=row[c.k]??'';return c.k==='notes'?`"${String(x).replace(/"/g,'""')}"`:x;})].join(','));
+  });
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);const el=document.createElement('a');
+  el.href=url;el.download=`HCARE_${a}.csv`;el.click();URL.revokeObjectURL(url);
+  toast('Exported HCARE_'+a+'.csv');
+}
+
+document.getElementById('hcareBtn').addEventListener('click',hcInit);
+document.getElementById('hcClose').addEventListener('click',()=>document.getElementById('hcare').style.display='none');
+document.getElementById('hcAddAnimal').addEventListener('click',()=>hcAddAnimal(false));
+document.getElementById('hcAnimal').addEventListener('change',e=>{HCARE.animal=e.target.value;hcRenderSheet();});
+document.getElementById('hcExport').addEventListener('click',hcExportCSV);
+document.getElementById('hcPhoto').addEventListener('click',()=>{
+  if(HCARE.sheet==='case'){toast('Switch to Vitals or iSTAT sheet to read a photo into a row');return;}
+  document.getElementById('hcPhotoFile').click();
+});
+document.getElementById('hcPhotoFile').addEventListener('change',e=>{
+  if(e.target.files[0]) hcPhotoToRow(e.target.files[0]);
+  e.target.value='';
+});
+
+async function hcPhotoToRow(file){
+  let sheet, rid;
+  if(_hcRowTarget){
+    sheet=_hcRowTarget.sheet; rid=_hcRowTarget.rid; _hcRowTarget=null;
+  } else {
+    sheet=HCARE.sheet;
+    const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+    const list=rows.map((r,i)=>`${i+1}. ${r}`).join('\n');
+    const pick=prompt('Which timepoint is this photo for? Enter the number:\n\n'+list, '1');
+    if(pick===null)return;
+    rid=parseInt(pick)-1;
+    if(isNaN(rid)||rid<0||rid>=rows.length){toast('Invalid row');return;}
+  }
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    toast('Reading photo...');
+    try{
+      const cols = sheet==='vitals' ? HCARE.vitalsCols.filter(c=>c.type!=='x'&&c.type!=='c')
+                                    : HCARE.istatCols;
+      const fields = cols.map(c=>({key:c.k, label:c.label}));
+      const mapper = sheet==='vitals' ? hcMapVitals : hcMapIstat;
+      const {values:vals} = await extractFromPhoto(ev.target.result, fields, mapper);
+      const d=hcA()[sheet]; if(!d[rid])d[rid]={};
+      Object.assign(d[rid], vals);
+      d[rid]._photo=ev.target.result;
+      hcRenderSheet();
+      if(sheet==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(rid);
+      const n=Object.keys(vals).length;
+      toast(n?`Filled ${n} value${n>1?'s':''} into "${rows[rid]}" - check & correct`:'No values read - enter manually');
+    }catch(err){ toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+function hcMapVitals(text){
+  const out={};
+  const map={hr:'hr',pr:'hr',spo2:'spo2',etco2:'etco2',co2:'etco2',rr:'rr',resp:'rr',temp:'temp'};
+  text.split(/\n+/).forEach(line=>{
+    const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{1,6})\b[^0-9\-]{0,10}(\d{2,3}(?:\.\d)?)/);
+    if(mm){const k=map[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
+  });
+  const bps=[...text.matchAll(/(\d{2,3})\s*\/\s*(\d{2,3})\s*\(?(\d{2,3})?\)?/g)];
+  if(bps[0]) out.femBP=`${bps[0][1]}/${bps[0][2]}${bps[0][3]?'('+bps[0][3]+')':''}`;
+  if(bps[1]) out.carBP=`${bps[1][1]}/${bps[1][2]}${bps[1][3]?'('+bps[1][3]+')':''}`;
+  return out;
+}
+function hcMapIstat(text){
+  const out={};
+  const alias={lactate:'lactate',lac:'lactate',k:'k',glu:'glu',glucose:'glu',hgb:'hgb',hb:'hgb',
+    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2'};
+  text.split(/\n+/).forEach(line=>{
+    const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{0,7})\b[^0-9\-]{0,8}(-?\d+\.?\d*)/);
+    if(mm){const k=alias[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
+  });
+  return out;
+}
+document.querySelectorAll('#hcTabs .atab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('#hcTabs .atab').forEach(x=>x.classList.remove('on'));
+    t.classList.add('on'); HCARE.sheet=t.dataset.sheet; hcRenderSheet();
+  });
+});
+</script>
+
+<script>
+/* ============ SWINE ICU - LIVE CAPTURE ============ */
+const App = {
+  protocol: null,
+  animals: [],
+  activeAnimal: null,
+  source: null,
+  live: {},
+  runStart: null,
+  sparkData: {},
+};
+
+const DEFAULT_VITALS = [
+  {key:'HR',   label:'HR',    unit:'bpm',  group:'vital', lo:40, hi:180},
+  {key:'ABPs', label:'ABP sys',unit:'mmHg',group:'vital', lo:70, hi:200},
+  {key:'ABPd', label:'ABP dia',unit:'mmHg',group:'vital', lo:30, hi:120},
+  {key:'MAP',  label:'MAP',   unit:'mmHg', group:'vital', lo:50, hi:120},
+  {key:'SpO2', label:'SpO2',  unit:'%',    group:'vital', lo:88, hi:100},
+  {key:'PVC',  label:'PVC',   unit:'/min', group:'vital', lo:0,  hi:30},
+  {key:'Temp', label:'Temp',  unit:'C',    group:'vital', lo:35, hi:41},
+  {key:'EtCO2',label:'EtCO2', unit:'mmHg', group:'vital', lo:25, hi:55},
+  {key:'CVP',  label:'CVP',   unit:'mmHg', group:'vital', lo:0,  hi:18},
+  {key:'RR',   label:'RR',    unit:'/min', group:'vent', lo:8,  hi:40},
+  {key:'TV',   label:'Vt',    unit:'mL',   group:'vent', lo:200,hi:800},
+  {key:'PEEP', label:'PEEP',  unit:'cmH2O',group:'vent', lo:0,  hi:20},
+  {key:'PIP',  label:'PIP (PEAK)',unit:'cmH2O',group:'vent', lo:5,hi:45},
+  {key:'PLAT', label:'PLAT',  unit:'cmH2O',group:'vent', lo:5,  hi:40},
+  {key:'FiO2', label:'FiO2',  unit:'%',    group:'vent', lo:21, hi:100},
+  {key:'FiCO2',label:'FiCO2', unit:'mmHg', group:'vent', lo:0,  hi:10},
+  {key:'MV',   label:'MV',    unit:'L/min',group:'vent', lo:1,  hi:20},
+];
+
+const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','Creatinine'];
+
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200);}
+function fmtClock(ms){if(ms==null)return'-';const s=Math.floor(ms/1000);const h=Math.floor(s/3600),m=Math.floor(s%3600/60),sec=s%60;return`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;}
+function nowTs(){return new Date().toISOString();}
+function tsShort(iso){return new Date(iso).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',second:'2-digit'});}
+
+function activeParams(){
+  return App.protocol && App.protocol.params && App.protocol.params.length
+    ? App.protocol.params : DEFAULT_VITALS;
+}
+
+const EXTRA_PARAM_VOCAB = [
+  {key:'CO',   label:'CO',   unit:'L/min',  group:'vital', pats:['cardiac output','\\bCO\\b']},
+  {key:'CI',   label:'CI',   unit:'L/min/m2',group:'vital',pats:['cardiac index','\\bCI\\b']},
+  {key:'SV',   label:'SV',   unit:'mL',     group:'vital', pats:['stroke volume','\\bSV\\b']},
+  {key:'SVV',  label:'SVV',  unit:'%',      group:'vital', pats:['stroke volume variation','\\bSVV\\b']},
+  {key:'SVR',  label:'SVR',  unit:'dyn.s/cm5',group:'vital',pats:['systemic vascular resistance','\\bSVR\\b']},
+  {key:'rSO2', label:'rSO2', unit:'%',      group:'vital', pats:['rso2','invos','cerebral oxim','tissue oxygen']},
+  {key:'ScvO2',label:'ScvO2',unit:'%',      group:'vital', pats:['scvo2','central venous oxygen']},
+  {key:'SvO2', label:'SvO2', unit:'%',      group:'vital', pats:['svo2','mixed venous']},
+  {key:'PAP',  label:'PAP',  unit:'mmHg',   group:'vital', pats:['pulmonary artery pressure','\\bPAP\\b']},
+  {key:'ICP',  label:'ICP',  unit:'mmHg',   group:'vital', pats:['intracranial pressure','\\bICP\\b']},
+  {key:'CPP',  label:'CPP',  unit:'mmHg',   group:'vital', pats:['cerebral perfusion pressure','\\bCPP\\b']},
+  {key:'UO',   label:'Urine',unit:'mL/h',   group:'vital', pats:['urine output','\\bUO\\b']},
+];
+
+function parseProtocolText(text, fname){
+  const proto = {name:fname.replace(/\.[^.]+$/,''), timepoints:[], params:[], labFields:[],
+                 events:[], groups:[], endpoints:[], extras:[], raw:text};
+  const tpSet = new Map();
+  const addTp = (offset, label, tasks) => {
+    const id = 'T'+offset;
+    if(!tpSet.has(id)) tpSet.set(id, {id, label:label||('T'+(offset>=0?'+':'')+offset), offsetMin:offset, tasks:tasks?[tasks]:[], events:[]});
+    else if(tasks) tpSet.get(id).tasks.push(tasks);
+    return tpSet.get(id);
+  };
+  if(/baseline|pre[- ]?injury|T\s*0\b/i.test(text)) addTp(0,'Baseline / T0');
+  let m, re=/\bT\s*\+?\s*(\d{1,3})\b/gi;
+  while((m=re.exec(text))){addTp(parseInt(m[1]),'T+'+m[1]);}
+  re=/\b(\d{1,3})\s*[- ]?(?:min|minute|minutes)\b/gi;
+  while((m=re.exec(text))){const v=parseInt(m[1]); if(v>0&&v<=1440)addTp(v, v+' min');}
+  re=/\b(\d{1,2}(?:\.\d)?)\s*[- ]?(?:h|hr|hour|hours)\b/gi;
+  while((m=re.exec(text))){const v=Math.round(parseFloat(m[1])*60); if(v>0&&v<=2880)addTp(v, (v/60)+' h');}
+
+  const EVENT_VERBS = /(hemorrhage|bleed|exsanguinat|inject|infus|administ|start|begin|bolus|titrat|resuscitat|transfus|clamp|ligat|induce|injur|ventilat|extubat|euthan|sacrific|terminat)/i;
+  const sentences = text.split(/(?<=[.;\n])\s+/);
+  sentences.forEach(s=>{
+    if(!EVENT_VERBS.test(s) || s.length>240) return;
+    let off=null, tm;
+    if((tm=/\bT\s*\+?\s*(\d{1,3})\b/i.exec(s))) off=parseInt(tm[1]);
+    else if((tm=/\b(\d{1,3})\s*[- ]?(?:min|minute)/i.exec(s))) off=parseInt(tm[1]);
+    else if((tm=/\b(\d{1,2}(?:\.\d)?)\s*[- ]?(?:h|hr|hour)/i.exec(s))) off=Math.round(parseFloat(tm[1])*60);
+    else if(/baseline|T\s*0\b/i.test(s)) off=0;
+    const clean=s.trim().replace(/\s+/g,' ').slice(0,160);
+    proto.events.push({text:clean, offsetMin:off});
+    if(off!=null){ const tp=addTp(off); tp.events.push(clean); }
+  });
+
+  let tps=[...tpSet.values()].sort((a,b)=>a.offsetMin-b.offsetMin);
+  const wantsABG = /\b(abg|blood gas|arterial gas|lactate)\b/i.test(text);
+  const wantsCBC = /\b(cbc|hematocrit|hct|hemoglobin|hgb)\b/i.test(text);
+  const wantsChem= /\b(chemistry|electrolyte|creatinine|bun)\b/i.test(text);
+  tps.forEach(tp=>{
+    if(!tp.tasks.length){
+      tp.tasks.push('Record vitals + ventilator');
+      if(wantsABG) tp.tasks.push('ABG / lactate');
+      if(wantsCBC) tp.tasks.push('CBC');
+      if(wantsChem)tp.tasks.push('Chemistry');
+    }
+  });
+
+  const found = new Map();
+  const tryAdd = p=>{ if(!found.has(p.key)) found.set(p.key,p); };
+  DEFAULT_VITALS.forEach(p=>{
+    const pats=[p.key, p.label.replace(/[2]/g,'2')];
+    if(pats.some(x=> new RegExp('\\b'+x.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','i').test(text))) tryAdd(p);
+  });
+  EXTRA_PARAM_VOCAB.forEach(p=>{
+    if(p.pats.some(pat=> new RegExp(pat,'i').test(text))){
+      tryAdd({key:p.key,label:p.label,unit:p.unit,group:p.group,lo:null,hi:null});
+      proto.extras.push(p.label);
+    }
+  });
+  let params=[...found.values()];
+  proto.params = params.length>=3 ? params : DEFAULT_VITALS;
+
+  const labs = DEFAULT_LAB_FIELDS.filter(f=> new RegExp('\\b'+f+'\\b','i').test(text));
+  proto.labFields = labs.length ? labs : DEFAULT_LAB_FIELDS;
+
+  const grpSet=new Set();
+  re=/\b(treatment|control|sham|placebo|vehicle|intervention|group\s+[A-D]|arm\s+\d)\b/gi;
+  while((m=re.exec(text))){grpSet.add(m[1].replace(/\s+/g,' ').replace(/\b\w/g,c=>c.toUpperCase()));}
+  proto.groups=[...grpSet];
+
+  sentences.forEach(s=>{
+    if(/\b(endpoint|euthan|sacrific|terminat|exclusion criteria|death)\b/i.test(s) && s.length<200){
+      proto.endpoints.push(s.trim().replace(/\s+/g,' ').slice(0,160));
+    }
+  });
+  proto.endpoints=[...new Set(proto.endpoints)].slice(0,6);
+  proto.timepoints = tps;
+  return proto;
+}
+
+function demoProtocol(){
+  return {
+    name:'H-CARE - REBOA polytrauma (IPROTO202500000107)',
+    params: DEFAULT_VITALS,
+    labFields: DEFAULT_LAB_FIELDS,
+    timepoints:[
+      {id:'T0', label:'T0 - Pre-Baseline (pre-op screen)', offsetMin:-30, tasks:['Pre-op CG4, CG8, CBC, CMP, ABG']},
+      {id:'T1', label:'T1 - Baseline / Post stabilization', offsetMin:0, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
+      {id:'T2', label:'T2 - 10 min post shock, pre REBOA', offsetMin:10, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T3', label:'T3 - 30 min post REBOA inflation', offsetMin:40, tasks:['Record vitals + ventilator','CG4, CG8']},
+      {id:'T4', label:'T4 - 10 min post REBOA deflation', offsetMin:80, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T5', label:'T5 - 1 hr post deflation', offsetMin:130, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T6', label:'T6 - 2 hr post deflation', offsetMin:190, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T7', label:'T7 - 3 hr post deflation', offsetMin:250, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T8', label:'T8 - 4 hr post deflation (EOS)', offsetMin:310, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
+    ]
+  };
+}
+
+function loadProtocol(proto){
+  App.protocol = proto;
+  renderProtocolInfo();
+  renderTimeline();
+  renderCurrent();
+  rebuildTable();
+  populateLabFields();
+  if(!App.animals.length) addAnimal({silent:true});
+  renderTrendPicker(); renderTrends();
+  toast('Protocol loaded - interface rebuilt');
+}
+
+function renderProtocolInfo(){
+  const p=App.protocol; if(!p)return;
+  const extra = (p.extras&&p.extras.length)?`<div class="prow"><span>Extra params</span><b>${p.extras.length}</b></div>`:'';
+  const grp = (p.groups&&p.groups.length)?`<div class="prow" style="align-items:flex-start"><span>Groups</span><b style="text-align:right;max-width:130px">${p.groups.join(', ')}</b></div>`:'';
+  const ev = (p.events&&p.events.length)?`<div class="prow"><span>Events</span><b>${p.events.length}</b></div>`:'';
+  const ep = (p.endpoints&&p.endpoints.length)?`<details style="margin-top:8px"><summary style="cursor:pointer;font-size:11px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.5px">Endpoint criteria (${p.endpoints.length})</summary><div style="font-size:11px;color:var(--ink-dim);margin-top:6px;line-height:1.5">${p.endpoints.map(e=>'- '+e).join('<br>')}</div></details>`:'';
+  const infoDiv=document.createElement('div');
+  infoDiv.className='proto-info';
+  infoDiv.innerHTML = `
+      <div class="pname">${p.name}</div>
+      <div class="prow"><span>Timepoints</span><b>${p.timepoints.length}</b></div>
+      <div class="prow"><span>Parameters</span><b>${p.params.length}</b></div>
+      ${extra}
+      <div class="prow"><span>Lab fields</span><b>${p.labFields.length}</b></div>
+      ${ev}${grp}${ep}
+      <button class="btn sm ghost" style="width:100%;margin-top:10px" onclick="resetProtocol()">Change protocol</button>`;
+  const card=$('#protoCard');
+  const old=card.querySelector('.proto-info'); if(old) old.remove();
+  card.appendChild(infoDiv);
+}
+function resetProtocol(){location.reload();}
+
+function renderVitalsGrid(){
+  const grid=$('#vitalsGrid');
+  const params=activeParams();
+  if(!params.length){grid.innerHTML='<div class="empty" style="grid-column:1/-1">No parameters.</div>';return;}
+  let vitalCards='', ventCards='';
+  params.forEach(p=>{
+    const card=`
+      <div class="vital ${p.group==='vent'?'vent':''} stale" id="v-${p.key}">
+        <div class="vlabel">${p.label}<span class="vsrc">${p.group==='vent'?'VENT':'MON'}</span></div>
+        <div class="vval">--<span class="vunit">${p.unit}</span></div>
+        <svg class="spark" id="spark-${p.key}" preserveAspectRatio="none" viewBox="0 0 100 22"></svg>
+      </div>`;
+    if(p.group==='vent') ventCards+=card; else vitalCards+=card;
+  });
+  grid.innerHTML =
+    `<div class="group-tag" style="grid-column:1/-1">Patient monitor</div>${vitalCards}` +
+    (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator - BeneLink</div>${ventCards}`:'');
+}
+
+function updateLiveDisplay(){
+  const params=activeParams();
+  params.forEach(p=>{
+    const el=$('#v-'+p.key); if(!el)return;
+    const d=App.live[p.key];
+    const valEl=el.querySelector('.vval');
+    if(!d||d.value==null){return;}
+    el.classList.remove('stale');
+    valEl.innerHTML = `${d.value}<span class="vunit">${p.unit}</span>`;
+    const alarm = (p.lo!=null&&d.value<p.lo)||(p.hi!=null&&d.value>p.hi);
+    el.classList.toggle('alarm', alarm);
+    const arr=App.sparkData[p.key]=(App.sparkData[p.key]||[]);
+    arr.push(d.value); if(arr.length>40)arr.shift();
+  });
+  renderCurrent();
+}
+function drawSpark(p){
+  const svg=$('#spark-'+p.key); if(!svg)return;
+  const arr=App.sparkData[p.key]||[]; if(arr.length<2){svg.innerHTML='';return;}
+  const lo=p.lo??Math.min(...arr), hi=p.hi??Math.max(...arr);
+  const range=(hi-lo)||1;
+  const pts=arr.map((v,i)=>{
+    const x=i/(arr.length-1)*100;
+    const y=22-((Math.max(lo,Math.min(hi,v))-lo)/range)*20-1;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const color=p.group==='vent'?'var(--accent)':'var(--trace)';
+  svg.innerHTML=`<polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1"/>`;
+}
+
+function renderTimeline(){
+  const tl=$('#timeline'); const p=App.protocol;
+  if(!p||!p.timepoints.length){tl.innerHTML='<div class="empty">Upload a protocol to build the timeline.</div>';return;}
+  const a=getActiveAnimal();
+  tl.innerHTML = p.timepoints.map(tp=>{
+    const done = a && a.rows[tp.id];
+    const cd = countdownFor(tp);
+    const evHtml = (tp.events&&tp.events.length)
+      ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:4px;line-height:1.5">${tp.events.map(e=>'> '+e).join('<br>')}</div>` : '';
+    return `
+      <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}">
+        <div class="tdot"></div>
+        <div class="tbody">
+          <div class="ttime"><span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${tp.label}</span></div>
+          <div class="ttasks">${tp.tasks.join(' - ')}</div>
+          ${evHtml}
+          ${done
+            ? `<div class="twhen">recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
+            : cd.text?`<div class="countdown">${cd.text}</div>`:''}
+          ${done
+            ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo</button>
+                 <button class="btn sm" onclick="openCapture('${tp.id}')">Edit</button>
+                 <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${tp.id}')">Delete</button>
+               </div>`
+            : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo &rarr; ${tp.id}</button>
+                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Type ${tp.id}</button>
+               </div>`}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function countdownFor(tp){
+  if(!App.runStart) return {text:'', active:false};
+  const elapsed=(Date.now()-App.runStart)/60000;
+  const diff=tp.offsetMin-elapsed;
+  if(diff>0 && diff<=5) return {text:`due in ${Math.ceil(diff)} min`, active:true};
+  if(diff<=0 && diff>-10) return {text:`due now`, active:true};
+  if(diff>5) return {text:`at +${tp.offsetMin} min (${Math.ceil(diff)} min away)`, active:false};
+  return {text:'', active:false};
+}
+
+function addAnimal(opts){
+  opts=opts||{};
+  const n=App.animals.length+1;
+  let id, group=null;
+  if(opts.silent){
+    id='Pig-'+String(n).padStart(2,'0');
+  }else{
+    id=prompt('Animal ID', 'Pig-'+String(n).padStart(2,'0'));
+    if(id===null)return;
+    const groups=App.protocol&&App.protocol.groups;
+    if(groups&&groups.length){
+      group=prompt('Group ('+groups.join(' / ')+')', groups[(n-1)%groups.length]);
+    }
+  }
+  const a={id:id||('Pig-'+n), group:group||null, rows:{}, labs:[]};
+  App.animals.push(a); App.activeAnimal=a.id;
+  renderAnimalTabs(); rebuildTable(); renderTimeline(); updateAnimalLabel(); renderCurrent(); autosave();
+  return a;
+}
+function renameAnimal(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  const next=prompt('Animal # / ID:', a.id);
+  if(next===null)return;
+  const id=next.trim();
+  if(!id){ toast('Name cannot be empty'); return; }
+  if(id===a.id) return;
+  if(App.animals.some(x=>x!==a && x.id===id)){ toast('An animal named "'+id+'" already exists'); return; }
+  const old=a.id;
+  a.id=id; App.activeAnimal=id;
+  // keep the data-sheet animal in sync if it had the same name
+  if(HCARE.data[old]){
+    const rebuilt={};
+    Object.keys(HCARE.data).forEach(k=>{ rebuilt[k===old?id:k]=HCARE.data[k]; });
+    HCARE.data=rebuilt;
+    if(HCARE.animal===old) HCARE.animal=id;
+    if(HCARE.data[id]&&HCARE.data[id].case) HCARE.data[id].case.animalNo=id;
+    if(document.getElementById('hcare').style.display==='block'){ hcRenderAnimals(); hcRenderSheet(); }
+  }
+  renderAnimalTabs(); updateAnimalLabel(); renderCurrent(); autosave();
+  toast('Renamed to '+id);
+}
+function getActiveAnimal(){return App.animals.find(a=>a.id===App.activeAnimal);}
+function renderAnimalTabs(){
+  const c=$('#animalTabs');
+  c.innerHTML = App.animals.map(a=>{
+    const on=a.id===App.activeAnimal;
+    const nRows=Object.keys(a.rows||{}).length;
+    const grp=a.group?' <span style="opacity:.6">-'+a.group.replace('Group ','').replace('Treatment','Tx').replace('Control','Ctl')+'</span>':'';
+    // active tab: tapping the name renames it; inactive tab: tapping selects it
+    const count = nRows ? `<span style="opacity:.6;font-size:10px;margin-left:7px">&middot; ${nRows}</span>` : '';
+    const inner = on
+      ? `<span onclick="event.stopPropagation();renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${a.id}</span>${grp}${count}`
+      : `${a.id}${grp}${count}`;
+    return `<div class="atab ${on?'on':''}" onclick="selectAnimal('${a.id}')" title="${on?'Tap the name to rename':'Tap to open '+a.id}">${inner}</div>`;
+  }).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
+}
+function selectAnimal(id){App.activeAnimal=id;CURRENT_SEL=null;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
+function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
+
+function openCapture(tpId, prefill, photo){
+  if(!App.animals.length){addAnimal({silent:true});}
+  const params=activeParams();
+  let tp = tpId ? App.protocol.timepoints.find(t=>t.id===tpId) : null;
+  const fromPhoto = !!photo;
+  $('#capTitle').textContent = tp ? `${tp.label}` : (fromPhoto?'Vitals from photo':'Edit / enter vitals');
+  const elapsed = App.runStart ? `+${Math.round((Date.now()-App.runStart)/60000)} min` : '';
+  const srcNote = fromPhoto ? 'values extracted from photo - check & correct' :
+                  (Object.keys(App.live).length? 'values pre-filled from live feed' : 'enter values manually');
+  let body=`<div class="hint" style="margin-bottom:12px">${nowTs().replace('T',' ').slice(0,19)} ${elapsed?'- run '+elapsed:''} - ${srcNote}</div>`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const fieldFor=p=>{
+    let v='';
+    let ocr=false;
+    if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    else { const live=App.live[p.key]; if(live&&live.value!=null && !fromPhoto) v=live.value; }
+    return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+  };
+  body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Patient monitor</div>`;
+  body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
+  if(vent.length){
+    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
+    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+  }
+  body+=`<div class="field" style="margin-top:14px"><label>Note / intervention</label>
+    <textarea data-k="_note" rows="2" placeholder="e.g. started norepi 0.1 mcg/kg/min"></textarea></div>`;
+  if(!tp){
+    body+=`<div class="field"><label>Label this timepoint</label>
+      <input data-k="_label" value="${elapsed||'manual'}"></div>`;
+  }
+  body+=`<button class="btn primary" onclick="saveCapture('${tpId||''}')">Save timepoint</button>`;
+  $('#capBody').innerHTML=body;
+  $$('#capBody [data-k]').forEach(inp=>inp.addEventListener('input',()=>{const w=inp.closest('.field');if(w)w.classList.remove('ocr-filled');},{once:true}));
+  $('#captureModal').classList.add('show');
+}
+
+function getOcrMethod(){ return ($('#ocrMethod')&&$('#ocrMethod').value)||'claude'; }
+function getApiKey(){ return ($('#apiKey')&&$('#apiKey').value.trim())||''; }
+
+const DEVICE_SCHEMAS = {
+  istat: {
+    label:'i-STAT (CG4+ / CG8+)',
+    fields:['pH','PCO2','PO2','BEecf','HCO3','TCO2','sO2','Lac','Na','K','iCa','Glu','Hct','Hb'],
+    hint:`An Abbott i-STAT printout (CG4+ or CG8+ cartridge). Read the analyte column and its value. Analytes may include: pH, PCO2 (mmHg), PO2 (mmHg), BEecf (mmol/L), HCO3 (mmol/L), TCO2 (mmol/L), sO2 (%), Lac (mmol/L), Na (mmol/L), K (mmol/L), iCa (mmol/L), Glu (mg/dL), Hct (%PCV), Hb (g/dL). Also read cartridge as CG4+ or CG8+ from the header, and animalId from the handwritten number near the top if present.`,
+    extra:['cartridge','animalId']
+  },
+  monitor: {
+    label:'Mindray monitor (BeneVision)',
+    fields:['HR','ABPs','ABPd','MAP','SpO2','PVC','RR','Temp','CVP'],
+    hint:`A Mindray BeneVision patient monitor. Read the large live numerics: HR (green, /min), arterial BP shown as sys/dia(MAP) in red (label Art or ABP), SpO2 (blue, %), PVC count if shown, RR, Temp, CVP. For arterial pressure return keys ABPs (systolic), ABPd (diastolic), MAP (mean, the number in parentheses).`,
+    extra:[]
+  },
+  ventilator: {
+    label:'Mindray ventilator (V60/A-series)',
+    fields:['EtCO2','FiCO2','PEAK','PLAT','PEEP','Vt','RR','FiO2','MAC','MV'],
+    hint:`A Mindray anesthesia/ventilator screen (V60 or A-series). Read: EtCO2 (mmHg), FiCO2, PEAK pressure (cmH2O), PLAT plateau (cmH2O), PEEP (cmH2O), Vt exhaled tidal volume (mL, label Vt Exp), RR respiratory rate, FiO2 (%), MAC, MV minute ventilation.`,
+    extra:[]
+  }
+};
+
+async function detectAndExtract(imageDataURL){
+  const key=getApiKey();
+  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!m) throw new Error('Bad image');
+  const media=m[1], b64=m[2];
+  const schemaText=Object.entries(DEVICE_SCHEMAS).map(([k,s])=>`- "${k}": ${s.hint}`).join('\n');
+  const prompt=`This photo is from a preclinical swine ICU experiment (H-CARE protocol).
+
+It may show ONE device, or SEVERAL devices/readouts in the same frame. Common combinations:
+- a patient monitor AND a ventilator screen photographed together
+- an i-STAT CG4+ result AND a CG8+ result side by side, or two printouts together
+- a monitor next to a printed lab result
+
+Possible devices:
+${schemaText}
+
+Read EVERY device and EVERY cartridge visible. Do not stop after the first one.
+
+Return ONLY a JSON object (no prose, no markdown fences), shaped exactly:
+{"readouts":[{"device":"istat|monitor|ventilator","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}]}
+
+Rules:
+- One entry per distinct device, and one entry per distinct i-STAT cartridge.
+- If two i-STAT cartridges are visible, return TWO entries, each with its own cartridge name and values.
+- device MUST be one of: istat, monitor, ventilator.
+- values keys use EXACTLY the field names listed for that device.
+- Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
+- Omit any field you cannot read confidently. NEVER guess a value.
+- Read decimals and negatives exactly (e.g. BEecf -5, pH 7.487, Lac 1.72).`;
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':key,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2048,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:media,data:b64}},
+        {type:'text',text:prompt}]}]})
+  });
+  if(!res.ok){
+    let msg='API error '+res.status;
+    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
+    if(res.status===401) msg='Invalid API key';
+    throw new Error(msg);
+  }
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  const jsonStr=text.replace(/```json|```/g,'').trim();
+  let parsed;
+  try{ parsed=JSON.parse(jsonStr); }
+  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{readouts:[]}; }
+
+  let list=[];
+  if(Array.isArray(parsed.readouts)) list=parsed.readouts;
+  else if(parsed.device) list=[parsed];
+
+  const cleanVals=v=>{
+    const out={};
+    Object.entries(v||{}).forEach(([k,val])=>{
+      if(val===null||val==='')return;
+      out[k]=(typeof val==='string'&&/\d\/\d/.test(val))?val:(isNaN(+val)?val:+val);
+    });
+    return out;
+  };
+  const readouts=list.map(x=>({device:x.device||null,cartridge:x.cartridge||null,values:cleanVals(x.values)}))
+                     .filter(x=>x.device && Object.keys(x.values).length);
+
+  const vitals={}, labs={};
+  readouts.forEach(rd=>{
+    if(rd.device==='istat') Object.assign(labs, mapIstatToLabFields(rd.values));
+    else Object.assign(vitals, normalizeVitalKeys(rd.values));
+  });
+
+  return {
+    readouts, vitals, labs,
+    device: readouts.length===1?readouts[0].device:(readouts.length?'multi':null),
+    cartridge: readouts.filter(r=>r.cartridge).map(r=>r.cartridge).join(' + ')||null,
+    values: Object.keys(vitals).length?vitals:labs
+  };
+}
+
+async function claudeExtract(imageDataURL, fields){
+  const key=getApiKey();
+  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!m) throw new Error('Bad image');
+  const media=m[1], b64=m[2];
+  const fieldList=fields.map(f=>`"${f.key}"${f.label&&f.label!==f.key?' ('+f.label+')':''}${f.unit?' in '+f.unit:''}`).join(', ');
+  const prompt=`This photo is from a preclinical swine ICU experiment (an i-STAT analyzer screen, a Mindray patient monitor, or a handwritten data form). Read the numeric values shown and return ONLY a JSON object - no prose, no markdown fences.
+
+Extract these fields if present: ${fieldList}.
+
+Rules:
+- Keys must exactly match the field keys given above.
+- Values are numbers only (no units). For blood pressure use the string "sys/dia(MAP)" e.g. "120/80(93)".
+- Omit any field you cannot read confidently. Do not guess.
+- If two BP readings are shown (e.g. femoral and carotid), map the first to femBP and second to carBP when those keys are requested.
+Return JSON only.`;
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':key,
+      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({
+      model:'claude-sonnet-4-6', max_tokens:1024,
+      messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:media,data:b64}},
+        {type:'text',text:prompt}
+      ]}]
+    })
+  });
+  if(!res.ok){
+    let msg='API error '+res.status;
+    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
+    if(res.status===401) msg='Invalid API key';
+    throw new Error(msg);
+  }
+  const data=await res.json();
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  const jsonStr=text.replace(/```json|```/g,'').trim();
+  let parsed;
+  try{ parsed=JSON.parse(jsonStr); }
+  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{}; }
+  const out={};
+  Object.entries(parsed).forEach(([k,v])=>{
+    if(v===null||v==='')return;
+    out[k] = (typeof v==='string' && /\d\/\d/.test(v)) ? v : (isNaN(+v)?v:+v);
+  });
+  return out;
+}
+async function extractFromPhoto(imageDataURL, fields, tesseractMapper){
+  if(getOcrMethod()==='claude'){
+    return {values: await claudeExtract(imageDataURL, fields), method:'claude'};
+  }
+  if(!window.Tesseract) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
+  const {data}=await Tesseract.recognize(imageDataURL,'eng');
+  return {values: tesseractMapper(data.text||''), method:'tesseract'};
+}
+
+async function monitorPhotoToVitals(file){
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading monitor photo...');
+    try{
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const {values}=await extractFromPhoto(img, fields, mapMonitorText);
+      openCapture('', values, img);
+      const n=Object.keys(values).length;
+      toast(n?`Extracted ${n} value${n>1?'s':''} - check & correct`:'No values read - enter manually');
+    }catch(err){
+      openCapture('', null, img);
+      toast('Extraction failed: '+err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+function mapMonitorText(text){
+  const map={hr:'HR',pr:'HR','spo2':'SpO2','spotz':'SpO2',
+    'etco2':'EtCO2','etcoz':'EtCO2','co2':'EtCO2','rr':'RR','resp':'RR',
+    'temp':'Temp','tblood':'Temp','cvp':'CVP','map':'MAP'};
+  const out={};
+  const params=new Set(activeParams().map(p=>p.key));
+  text.split(/\n+/).forEach(line=>{
+    const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{1,6})\b[^0-9\-]{0,10}(\d{2,3}(?:\.\d)?)/);
+    if(!mm)return;
+    const key=map[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')];
+    const val=parseFloat(mm[2]);
+    if(key && params.has(key) && out[key]===undefined && !isNaN(val)) out[key]=val;
+  });
+  const bp=text.match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
+  if(bp){ if(params.has('ABPs'))out['ABPs']=+bp[1]; if(params.has('ABPd'))out['ABPd']=+bp[2]; }
+  return out;
+}
+
+function saveCapture(tpId){
+  const a=getActiveAnimal(); if(!a)return;
+  const inputs=$$('#capBody [data-k]');
+  const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
+  let label=tpId;
+  inputs.forEach(inp=>{
+    const k=inp.dataset.k;
+    if(k==='_label'){label=inp.value||'manual';return;}
+    if(k==='_note'){row._note=inp.value;return;}
+    const val=inp.value.trim();
+    if(val!=='') row[k]=isNaN(+val)?val:+val;
+  });
+  let rid = tpId;
+  if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
+  a.rows[rid]=row;
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  toast(`Saved ${tpId||label} for ${a.id}`);
+  // if the same photo also contained lab values, open the lab form next
+  if(_pendingBothLabs){
+    const pend=_pendingBothLabs; _pendingBothLabs=null;
+    setTimeout(()=>{
+      openLabModal(pend.img);
+      setTimeout(()=>{
+        fillOcrFields(pend.labs);
+        const sel=$('#labTp'); if(sel) sel.value=rid;
+        $('#ocrStatus').innerHTML='<span style="color:var(--trace)">Lab values from the same photo.</span> Check against the photo, then save.';
+      },60);
+    },250);
+  }
+}
+
+/* Rename a timepoint in the main timeline */
+function renameTimepoint(id){
+  if(!App.protocol) return;
+  const tp=App.protocol.timepoints.find(t=>t.id===id); if(!tp) return;
+  const next=prompt('Rename this timepoint:', tp.label);
+  if(next===null) return;
+  const name=next.trim(); if(!name){ toast('Name cannot be empty'); return; }
+  tp.label=name;
+  renderTimeline(); rebuildTable();
+  toast('Renamed to: '+name);
+}
+window.renameTimepoint = renameTimepoint;
+
+/* Add a new timepoint to the timeline */
+function addTimepoint(){
+  if(!App.protocol) return;
+  const name=prompt('Name of the new timepoint:','Extra timepoint');
+  if(name===null) return;
+  const n=name.trim(); if(!n){ toast('Name cannot be empty'); return; }
+  const offRaw=prompt('Minutes from start (number, can be negative for pre-op):','0');
+  if(offRaw===null) return;
+  const off=parseInt(offRaw);
+  if(isNaN(off)){ toast('Enter a number for the minutes'); return; }
+  let id='X'+Date.now().toString().slice(-5);
+  App.protocol.timepoints.push({id, label:n, offsetMin:off, tasks:['Record vitals + ventilator'], events:[]});
+  App.protocol.timepoints.sort((a,b)=>a.offsetMin-b.offsetMin);
+  renderTimeline(); rebuildTable();
+  toast('Added: '+n);
+}
+window.addTimepoint = addTimepoint;
+
+/* Remove a timepoint from the timeline (and its recorded data) */
+function deleteTimepoint(){
+  if(!App.protocol) return;
+  const tps=App.protocol.timepoints;
+  const list=tps.map((t,i)=>`${i+1}. ${t.label}`).join('\n');
+  const pick=prompt('Delete which timepoint? Enter the number:\n\n'+list,'');
+  if(pick===null) return;
+  const i=parseInt(pick)-1;
+  if(isNaN(i)||i<0||i>=tps.length){ toast('Invalid number'); return; }
+  const tp=tps[i];
+  if(!confirm('Delete the timepoint:\n\n'+tp.label+'\n\nAny data recorded at it will be removed. This cannot be undone.')) return;
+  tps.splice(i,1);
+  App.animals.forEach(a=>{ if(a.rows[tp.id]) delete a.rows[tp.id]; });
+  renderTimeline(); rebuildTable();
+  toast('Deleted: '+tp.label);
+}
+window.deleteTimepoint = deleteTimepoint;
+
+
+/* Re-run extraction on the photo already attached to the open form.
+   Keeps whatever the user has already typed in the note field. */
+async function rereadFromPhoto(kind){
+  const img = kind==='death' ? _deathPhotoData : _eventPhotoData;
+  if(!img){ toast('No photo attached yet'); return; }
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    toast('No API key on this device - add it under Photo / Settings');
+    return;
+  }
+  const noteEl=$('#capBody textarea[data-k="_note"]');
+  const keptNote=noteEl?noteEl.value:'';
+  toast('Reading photo again...');
+  try{
+    let values={};
+    if(getOcrMethod()==='claude'){
+      const res=await detectAndExtract(img);
+      values=res.vitals||{};
+      const nLab=Object.keys(res.labs||{}).length;
+      if(nLab){
+        const a=getActiveAnimal()||addAnimal({silent:true});
+        a.labs.push({ts:nowTs(), tp:kind==='death'?'DEATH':'', values:res.labs, src:{}, img:img});
+        renderLabList(); autosave();
+        toast('Labs captured: '+nLab+' value(s)');
+      }
+      if(!Object.keys(values).length && !nLab){
+        toast('No values could be read from this photo');
+        return;
+      }
+    } else {
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const out=await extractFromPhoto(img, fields, mapMonitorText);
+      values=out.values;
+      if(!Object.keys(values).length){ toast('No values could be read'); return; }
+    }
+    if(kind==='death') recordDeath(values, img); else recordEvent(values, img);
+    // restore the note the user had already typed
+    setTimeout(()=>{
+      const n2=$('#capBody textarea[data-k="_note"]');
+      if(n2 && keptNote) n2.value=keptNote;
+    },30);
+    const n=Object.keys(values).length;
+    if(n) toast('Read '+n+' value(s) - check & correct');
+  }catch(err){ toast('Extraction failed: '+err.message); }
+}
+function rereadDeathPhoto(){ return rereadFromPhoto('death'); }
+function rereadEventPhoto(){ return rereadFromPhoto('event'); }
+window.rereadDeathPhoto = rereadDeathPhoto;
+window.rereadEventPhoto = rereadEventPhoto;
+
+/* ============================================================
+   DEATH POINT - final sample + vitals when an animal dies before EOS.
+   Recorded once per animal, timestamped, flagged separately in export.
+   ============================================================ */
+function recordDeath(prefill, photo){
+  if(!App.animals.length) addAnimal({silent:true});
+  const a=getActiveAnimal();
+  const existing=Object.keys(a.rows).find(k=>a.rows[k]._death);
+  if(existing && !confirm('A death point is already recorded for '+a.id+'.\n\nRecord again and replace it?')) return;
+  const elapsed=App.runStart?Math.round((Date.now()-App.runStart)/60000):null;
+  const clock=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  $('#capTitle').textContent='DEATH POINT - final sample';
+  const params=activeParams();
+  let body=`<div class="hint" style="margin-bottom:12px;color:var(--alarm)">
+    <b>Death point</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''}.
+    Record the final vitals and last sample. This is flagged separately from scheduled timepoints in the export.</div>`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
+  body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('deathPhoto').click()">${photo?'Replace photo':'Add photo (monitor / i-STAT)'}</button>
+    ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadDeathPhoto()">Read values again</button>`:''}
+  </div>`;
+  body+=`<div class="grid2" style="margin-bottom:4px">
+    <div class="field"><label>Time of death</label><input data-k="_deathTime" value="${clock}"></div>
+    <div class="field"><label>Run minute</label><input data-k="_deathRunMin" value="${elapsed!=null?elapsed:''}" inputmode="numeric"></div>
+  </div>`;
+  body+=`<div class="field"><label>Cause / circumstances (required)</label>
+    <textarea data-k="_note" rows="3" placeholder="e.g. MAP < 20 mmHg for 2 min per EOS criteria; PEA arrest 18 min after deflation"></textarea></div>`;
+  // let the death be filed against a scheduled timepoint, or stand alone
+  const tpOpts=(App.protocol?App.protocol.timepoints:[]).map(t=>{
+    const taken = a.rows[t.id] && !a.rows[t.id]._death;
+    return `<option value="${t.id}">${t.label}${taken?' (has data - will be merged)':''}</option>`;
+  }).join('');
+  body+=`<div class="field"><label>Record as timepoint</label>
+    <select data-k="_deathTp">
+      <option value="">Standalone death point (not a scheduled timepoint)</option>
+      ${tpOpts}
+    </select>
+    <div class="hint" style="margin-top:4px">Pick a timepoint if the animal died at or just after one (e.g. died right after the T5 draw). Otherwise leave it standalone.</div>
+  </div>`;
+  body+=`<div class="field"><label>Final sample collected</label>
+    <select data-k="_deathSample">
+      <option value="">- select -</option>
+      <option>CG4 + CG8</option>
+      <option>CG4 only</option>
+      <option>CG8 only</option>
+      <option>CG4, CG8, Coag, Plasma, Urine</option>
+      <option>None - could not draw</option>
+    </select></div>`;
+  const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const fieldFor=p=>{
+    let v=''; let ocr=false;
+    if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+  };
+  body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Final vitals</div>`;
+  body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
+  if(vent.length){
+    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
+    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+  }
+  body+=`<button class="btn primary" style="margin-top:14px;background:var(--alarm);border-color:var(--alarm)" onclick="saveDeath()">Save death point</button>`;
+  $('#capBody').innerHTML=body;
+  _deathPhotoData=photo||null;
+  $('#captureModal').classList.add('show');
+}
+window.recordDeath = recordDeath;
+let _deathPhotoData=null;
+
+function saveDeath(){
+  const a=getActiveAnimal(); if(!a) return;
+  const row={_ts:nowTs(), _death:true};
+  let tpChoice='';
+  $$('#capBody [data-k]').forEach(inp=>{
+    const k=inp.dataset.k;
+    if(k==='_note'){ row._note=inp.value; return; }
+    if(k==='_deathTime'){ row._deathTime=inp.value; return; }
+    if(k==='_deathSample'){ row._deathSample=inp.value; return; }
+    if(k==='_deathTp'){ tpChoice=inp.value; return; }
+    if(k==='_deathRunMin'){ const n=parseInt(inp.value); row._runMin=isNaN(n)?null:n; return; }
+    const val=inp.value.trim();
+    if(val!=='') row[k]=isNaN(+val)?val:+val;
+  });
+  if(!row._note || !row._note.trim()){ toast('Please enter the cause / circumstances'); return; }
+  if(row._runMin==null) row._runMin=App.runStart?Math.round((Date.now()-App.runStart)/60000):null;
+  if(_deathPhotoData) row._photo=_deathPhotoData;
+
+  // remove any previous death record, wherever it was filed
+  Object.keys(a.rows).forEach(k=>{
+    if(!a.rows[k]._death) return;
+    if(k==='DEATH') delete a.rows[k];
+    else {                                  // it was merged into a timepoint - unmerge the flags
+      delete a.rows[k]._death; delete a.rows[k]._deathTime;
+      delete a.rows[k]._deathSample; delete a.rows[k]._deathTp;
+      if(a.rows[k]._label && a.rows[k]._label.indexOf('DEATH')===0) delete a.rows[k]._label;
+    }
+  });
+
+  let rid;
+  if(tpChoice && App.protocol && App.protocol.timepoints.find(t=>t.id===tpChoice)){
+    // file the death against that scheduled timepoint, keeping any data already there
+    const tp=App.protocol.timepoints.find(t=>t.id===tpChoice);
+    rid=tpChoice;
+    const existing=a.rows[rid]||{};
+    if(row._runMin==null && tp.offsetMin!=null) row._runMin=tp.offsetMin;
+    a.rows[rid]=Object.assign({}, existing, row);
+    a.rows[rid]._deathTp=tpChoice;
+    a.rows[rid]._label=tp.label+' - DEATH'+(row._deathTime?' ('+row._deathTime+')':'');
+  } else {
+    rid='DEATH';
+    row._label='DEATH POINT'+(row._deathTime?' ('+row._deathTime+')':'');
+    a.rows[rid]=row;
+  }
+  _deathPhotoData=null;
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  toast('Death point recorded for '+a.id);
+}
+window.saveDeath = saveDeath;
+
+async function deathPhotoToVitals(file){
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    const reader0=new FileReader();
+    reader0.onload=ev=>{ recordDeath(null, ev.target.result);
+      toast('No API key on this device - photo attached, enter values by hand'); };
+    reader0.readAsDataURL(file);
+    return;
+  }
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading photo...');
+    try{
+      let values={};
+      if(getOcrMethod()==='claude'){
+        const res=await detectAndExtract(img);
+        values=res.vitals||{};
+        if(Object.keys(res.labs||{}).length){
+          const a=getActiveAnimal()||addAnimal({silent:true});
+          a.labs.push({ts:nowTs(), tp:'DEATH', values:res.labs, src:{}, img:img});
+          renderLabList();
+          toast('Final labs captured: '+Object.keys(res.labs).length+' value(s)');
+        }
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        values=out.values;
+      }
+      recordDeath(values, img);
+    }catch(err){ recordDeath(null, img); toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ============================================================
+   EVENTS - unplanned observations between scheduled timepoints
+   ============================================================ */
+function recordEvent(prefill, photo){
+  if(!App.animals.length) addAnimal({silent:true});
+  const a=getActiveAnimal();
+  const elapsed = App.runStart ? Math.round((Date.now()-App.runStart)/60000) : null;
+  const clock = new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  $('#capTitle').textContent = 'EVENT - unplanned observation';
+  const params=activeParams();
+  let body=`<div class="hint" style="margin-bottom:12px;color:var(--trace-amber)">
+    <b>Unplanned event</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''} -
+    recorded between scheduled timepoints.</div>`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
+  body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('eventPhoto').click()">${photo?'Replace photo':'Add a photo (monitor / animal)'}</button>
+    ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadEventPhoto()">Read values again</button>`:''}
+  </div>`;
+  body+=`<div class="field"><label>What happened? (required)</label>
+    <textarea data-k="_note" rows="3" placeholder="e.g. runs of PVCs after REBOA deflation; MAP fell to 28; gave 250 mL WB"></textarea></div>`;
+  const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const fieldFor=p=>{
+    let v=''; let ocr=false;
+    if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    else { const live=App.live[p.key]; if(live&&live.value!=null&&!photo) v=live.value; }
+    return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+  };
+  body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Vitals at this moment (optional)</div>`;
+  body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
+  if(vent.length){
+    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
+    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+  }
+  body+=`<button class="btn primary" style="margin-top:14px" onclick="saveEvent()">Save event</button>`;
+  $('#capBody').innerHTML=body;
+  _eventPhotoData = photo||null;
+  $('#captureModal').classList.add('show');
+}
+window.recordEvent = recordEvent;
+let _eventPhotoData=null;
+
+function saveEvent(){
+  const a=getActiveAnimal(); if(!a) return;
+  const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null, _event:true};
+  $$('#capBody [data-k]').forEach(inp=>{
+    const k=inp.dataset.k;
+    if(k==='_note'){ row._note=inp.value; return; }
+    const val=inp.value.trim();
+    if(val!=='') row[k]=isNaN(+val)?val:+val;
+  });
+  if(!row._note || !row._note.trim()){ toast('Please describe what happened'); return; }
+  if(_eventPhotoData) row._photo=_eventPhotoData;
+  const n=Object.keys(a.rows).filter(k=>k.startsWith('EV')).length+1;
+  const rid='EV'+n;
+  row._label='EVENT '+n+' - '+row._note.trim().slice(0,40);
+  a.rows[rid]=row;
+  _eventPhotoData=null;
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  toast('Event saved');
+}
+window.saveEvent = saveEvent;
+
+async function eventPhotoToVitals(file){
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    const reader0=new FileReader();
+    reader0.onload=ev=>{ recordEvent(null, ev.target.result);
+      toast('No API key on this device - photo attached, enter values by hand'); };
+    reader0.readAsDataURL(file);
+    return;
+  }
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading photo...');
+    try{
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const {values}=await extractFromPhoto(img, fields, mapMonitorText);
+      recordEvent(values, img);
+      const n=Object.keys(values).length;
+      toast(n?`Extracted ${n} value${n>1?'s':''} - add your note`:'No values read - enter manually');
+    }catch(err){ recordEvent(null, img); toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* ============================================================
+   TRENDS - charts that redraw every time data is entered
+   ============================================================ */
+const TREND_PRESETS = {
+  hemo:['HR','MAP','ABPs','ABPd'],
+  gas:['SpO2','EtCO2','Temp','RR'],
+  bloodgas:['lab_pH','lab_pCO2','lab_pO2','lab_HCO3','lab_BE','lab_Lactate','lab_sO2'],
+  perfusion:['lab_Lactate','lab_BE','lab_HCO3','MAP'],
+  chem:['lab_Na','lab_K','lab_Glucose','lab_iCa','lab_Hb','lab_Hct'],
+  lab:['lab_Lactate','lab_pH','lab_HCO3','lab_BE','lab_Hb'],
+  none:[]
+};
+let TREND_SEL = ['HR','MAP','SpO2','lab_Lactate'];
+
+function trendSeriesOptions(){
+  const opts=[];
+  activeParams().forEach(p=>opts.push({key:p.key,label:p.label,unit:p.unit}));
+  const a=getActiveAnimal();
+  const labKeys=new Set();
+  if(a) Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{ if(k.startsWith('lab_')) labKeys.add(k); }));
+  [...labKeys].forEach(k=>opts.push({key:k,label:k.replace('lab_','')+' (lab)',unit:''}));
+  return opts;
+}
+
+function renderTrendPicker(){
+  const host=$('#trendPicker'); if(!host) return;
+  const opts=trendSeriesOptions();
+  host.innerHTML=opts.map(o=>{
+    const on=TREND_SEL.includes(o.key);
+    return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto" onclick="toggleTrend('${o.key}')">${o.label}</button>`;
+  }).join('');
+}
+function toggleTrend(key){
+  const i=TREND_SEL.indexOf(key);
+  if(i>=0) TREND_SEL.splice(i,1); else TREND_SEL.push(key);
+  renderTrendPicker(); renderTrends();
+}
+window.toggleTrend = toggleTrend;
+function trendPreset(name){
+  TREND_SEL = (TREND_PRESETS[name]||[]).slice();
+  renderTrendPicker(); renderTrends();
+}
+window.trendPreset = trendPreset;
+
+/* Collect ordered data points for one series from the active animal.
+   Reads recorded rows AND standalone lab entries so blood gas plots
+   even when a lab was saved without being merged into a row. */
+function trendPoints(key){
+  const a=getActiveAnimal(); if(!a) return [];
+  const order=orderedRows(a);
+  const pts=[];
+  const seen=new Set();
+  order.forEach(([rid,label])=>{
+    const r=a.rows[rid];
+    const v=r[key];
+    if(v==null||v==='') return;
+    const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
+    if(isNaN(num)) return;
+    // x position: real run minute if the clock was started; otherwise fall back
+    // to the timepoint's planned offset so points don't all stack at 0.
+    let x=r._runMin;
+    if(x==null && App.protocol){
+      const tp=App.protocol.timepoints.find(t=>t.id===rid);
+      if(tp && tp.offsetMin!=null) x=tp.offsetMin;
+    }
+    if(x==null && (r._death||r._event)){
+      // events and death have no planned offset: place them after the last
+      // scheduled point recorded so far, in the order they happened
+      const maxSoFar=pts.reduce((m,p)=>Math.max(m,p.x),0);
+      x=maxSoFar+(r._death?10:5);
+    }
+    if(x==null) x=pts.length;   // last resort: keep them in entry order
+    pts.push({x, y:num, label, event:!!r._event, death:!!r._death, ts:r._ts});
+    seen.add(rid);
+  });
+  // lab entries not already merged into a row
+  if(key.startsWith('lab_') && a.labs && a.labs.length){
+    const name=key.replace('lab_','');
+    a.labs.forEach(l=>{
+      if(l.tp && seen.has(l.tp)) return;              // already plotted via its row
+      const v=l.values?l.values[name]:null;
+      if(v==null||v==='') return;
+      const num=typeof v==='number'?v:parseFloat(v);
+      if(isNaN(num)) return;
+      let x=0, label=l.tp||'lab';
+      if(l.tp && a.rows[l.tp] && a.rows[l.tp]._runMin!=null){ x=a.rows[l.tp]._runMin; }
+      else if(App.runStart && l.ts){ x=Math.round((new Date(l.ts)-App.runStart)/60000); }
+      if(l.tp && App.protocol){
+        const tp=App.protocol.timepoints.find(t=>t.id===l.tp);
+        if(tp){ label=tp.label; if(tp.offsetMin!=null && x===0) x=tp.offsetMin; }
+      }
+      pts.push({x, y:num, label, event:false, death:false, ts:l.ts});
+    });
+  }
+  pts.sort((p,q)=>p.x-q.x);
+  return pts;
+}
+
+function renderTrends(){
+  const host=$('#trendCharts'); if(!host) return;
+  const lbl=$('#trendAnimalLabel'); if(lbl) lbl.textContent=App.activeAnimal||'no animal';
+  if(!TREND_SEL.length){
+    host.innerHTML='<div class="card"><div class="empty">Pick one or more parameters above to plot.</div></div>';
+    return;
+  }
+  const opts=trendSeriesOptions();
+  let html='';
+  TREND_SEL.forEach(key=>{
+    const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
+    const pts=trendPoints(key);
+    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+      <b style="font-size:13px">${meta.label}</b>
+      <span class="hint" style="margin:0">${pts.length} point${pts.length===1?'':'s'}${meta.unit?' &middot; '+meta.unit:''}</span></div>`;
+    html+= pts.length<1
+      ? `<div class="empty" style="padding:14px">No data yet for ${meta.label}.</div>`
+      : trendSVG(pts, meta);
+    html+=`</div>`;
+  });
+  host.innerHTML=html;
+}
+window.renderTrends = renderTrends;
+
+function trendSVG(pts, meta){
+  const W=680,PL=48,PR=14,PT=14;
+  const manyPts=pts.length>7;
+  const PB=manyPts?54:38, H=manyPts?226:210;
+  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+  let xMin=Math.min(...xs), xMax=Math.max(...xs);
+  let yMin=Math.min(...ys), yMax=Math.max(...ys);
+  if(xMax===xMin){ xMax=xMin+1; }
+  const pad=(yMax-yMin)*0.15 || (Math.abs(yMax)*0.1 || 1);
+  yMin-=pad; yMax+=pad;
+  const sx=v=>PL+((v-xMin)/(xMax-xMin))*(W-PL-PR);
+  const sy=v=>PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB);
+  const line=pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
+  // y gridlines
+  let grid='';
+  for(let i=0;i<=4;i++){
+    const v=yMin+(yMax-yMin)*i/4, y=sy(v);
+    grid+=`<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/>`;
+    grid+=`<text x="${PL-6}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--ink-faint)" font-family="monospace">${(Math.round(v*10)/10)}</text>`;
+  }
+  // points; events drawn in amber with a marker
+  const dots=pts.map(p=>{
+    const c=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':'var(--accent)');
+    const rr=(p.death||p.event)?4.5:3.2;
+    return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${rr}" fill="${c}"><title>${p.label}: ${p.y}${meta.unit?' '+meta.unit:''}</title></circle>`;
+  }).join('');
+  // x labels: first, middle, last
+  // X axis: label EVERY point with its timepoint name (T1, T2, EVENT...).
+  // Names are shortened to a tag and rotated when they would collide.
+  const tagOf=p=>{
+    if(p.death) return 'DEATH';
+    const L=String(p.label||'');
+    if(p.event){
+      const mE=L.match(/EVENT\s*(\d+)/i);
+      return mE?('EV'+mE[1]):'EVENT';
+    }
+    const mT=L.match(/\bT(\d+)\b/i);          // "T3 - 30 min post..." -> T3
+    if(mT) return 'T'+mT[1];
+    const mM=L.match(/(\d+)\s*min/i);          // "120 min post deflation" -> 120m
+    if(mM) return mM[1]+'m';
+    const word=L.split(/[-–(]/)[0].trim();
+    return word.length>8?word.slice(0,8):(word||((p.x>=0?'+':'')+p.x+'m'));
+  };
+  // Decide rotation from ACTUAL pixel gaps, not average spacing: points
+  // cluster in time, so two labels can collide even when there are few points.
+  let minGap=Infinity;
+  for(let i=1;i<pts.length;i++){
+    const g=Math.abs(sx(pts[i].x)-sx(pts[i-1].x));
+    if(g<minGap) minGap=g;
+  }
+  const widest=pts.reduce((m,p)=>Math.max(m, tagOf(p).length),0)*5.6; // ~5.6px per mono char
+  // only tilt when labels would actually touch (small padding), not merely be close
+  const rotate = pts.length>1 && minGap < (widest*0.85 + 4);
+  const xlab=pts.map(p=>{
+    const x=sx(p.x), y=H-12;
+    const col=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':'var(--ink-faint)');
+    const weight=(p.death||p.event)?'600':'400';
+    const t=tagOf(p);
+    const full=String(p.label||'').replace(/"/g,'&quot;');
+    return rotate
+      ? `<text x="${x.toFixed(1)}" y="${y}" text-anchor="end" font-size="8.5" fill="${col}" font-weight="${weight}" font-family="monospace" transform="rotate(-45 ${x.toFixed(1)} ${y})"><title>${full}</title>${t}</text>`
+      : `<text x="${x.toFixed(1)}" y="${y}" text-anchor="middle" font-size="9" fill="${col}" font-weight="${weight}" font-family="monospace"><title>${full}</title>${t}</text>`;
+  }).join('');
+  // faint tick under each point so the label lines up visually
+  const ticks=pts.map(p=>`<line x1="${sx(p.x).toFixed(1)}" y1="${(H-PB+2)}" x2="${sx(p.x).toFixed(1)}" y2="${(H-PB+6)}" stroke="var(--line)" stroke-width="1"/>`).join('');
+  const hasEvent=pts.some(p=>p.event), hasDeath=pts.some(p=>p.death);
+  let legend='';
+  if(hasEvent) legend+=`<text x="${W-PR}" y="${PT+4}" text-anchor="end" font-size="9" fill="var(--trace-amber)">&#9679; event</text>`;
+  if(hasDeath) legend+=`<text x="${W-PR}" y="${PT+16}" text-anchor="end" font-size="9" fill="var(--alarm)">&#9679; death</text>`;
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    ${grid}
+    <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>
+    ${ticks}${dots}${xlab}${legend}
+  </svg>`;
+}
+
+
+/* Open the lab form already linked to the timepoint shown on Current */
+function openLabForCurrent(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  const order=orderedRows(a);
+  const tpId=order.length?order[order.length-1][0]:'';
+  // prefill with whatever labs already exist at that timepoint
+  const existing={};
+  if(tpId && a.rows[tpId]) Object.keys(a.rows[tpId]).forEach(k=>{
+    if(k.startsWith('lab_')) existing[k.replace('lab_','')]=a.rows[tpId][k];
+  });
+  (a.labs||[]).forEach(l=>{ if(l.tp===tpId) Object.entries(l.values||{}).forEach(([k,v])=>{ if(existing[k]==null) existing[k]=v; }); });
+  openLabModal(null);
+  setTimeout(()=>{
+    const sel=$('#labTp'); if(sel && tpId) sel.value=tpId;
+    if(Object.keys(existing).length) fillOcrFields(existing);
+  },40);
+}
+window.openLabForCurrent = openLabForCurrent;
+
+/* Take/choose an i-STAT photo for the timepoint shown on Current */
+function istatPhotoForCurrent(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  const order=orderedRows(a);
+  const tpId=order.length?order[order.length-1][0]:null;
+  if(!tpId){ toast('Record a timepoint first'); return; }
+  photoForTimepoint(tpId);
+}
+window.istatPhotoForCurrent = istatPhotoForCurrent;
+
+/* ============================================================
+   CURRENT - shows the most recently recorded timepoint,
+   with the change since the timepoint before it.
+   Live feed values (if a source is ever connected) take priority.
+   ============================================================ */
+function orderedRows(a){
+  if(!a) return [];
+  const order=[];
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{
+    if(a.rows[t.id]) order.push([t.id, a.rows[t.id]._label||t.label]);
+  });
+  Object.keys(a.rows).forEach(k=>{ if(!order.find(o=>o[0]===k)) order.push([k, a.rows[k]._label||k]); });
+  // sort by run minute when available so events land in the right place
+  order.sort((p,q)=>{
+    const rp=a.rows[p[0]], rq=a.rows[q[0]];
+    const xp=rp._runMin!=null?rp._runMin:0, xq=rq._runMin!=null?rq._runMin:0;
+    if(xp!==xq) return xp-xq;
+    return new Date(rp._ts)-new Date(rq._ts);
+  });
+  return order;
+}
+
+
+/* ============================================================
+   CURRENT - timepoint strip
+   Shows EVERY timepoint in the protocol plus any events/death.
+   Colour tells you the state; tapping one shows its values.
+   ============================================================ */
+let CURRENT_SEL=null;   // null = follow the latest recorded
+
+function selectCurrentTp(rid){
+  const a=getActiveAnimal(); if(!a) return;
+  // tapping the same chip again goes back to following the latest
+  CURRENT_SEL = (CURRENT_SEL===rid) ? null : rid;
+  renderCurrent();
+}
+window.selectCurrentTp = selectCurrentTp;
+
+function renderTpStrip(selectedId){
+  const host=$('#tpStrip'); if(!host) return;
+  const a=getActiveAnimal();
+  if(!a){ host.innerHTML=''; return; }
+  const chips=[];
+  const usedIds=new Set();
+
+  // every protocol timepoint, recorded or not
+  if(App.protocol) App.protocol.timepoints.forEach(tp=>{
+    const row=a.rows[tp.id];
+    const done=!!row;
+    usedIds.add(tp.id);
+    const short=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    const cls=['tpchip'];
+    if(done && row._death) cls.push('death');
+    else if(done && row._event) cls.push('event');
+    else if(done) cls.push('done');
+    else cls.push('pending');
+    if(selectedId===tp.id) cls.push('sel');
+    chips.push({x:(row&&row._runMin!=null)?row._runMin:(tp.offsetMin??0),
+      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${tp.id}')" title="${tp.label}${done?'':' (not recorded yet)'}">
+        <span class="dotm"></span>${short}</div>`});
+  });
+
+  // events and death points, in the order they happened
+  orderedRows(a).forEach(([rid,label])=>{
+    if(usedIds.has(rid)) return;
+    const row=a.rows[rid];
+    const isD=!!row._death, isE=!!row._event;
+    const cls=['tpchip', isD?'death':(isE?'event':'done')];
+    if(selectedId===rid) cls.push('sel');
+    let short=label;
+    if(isD) short='DEATH';
+    else { const m=label.match(/EVENT\s*(\d+)/i); if(m) short='EV'+m[1]; else short=label.split(/[-–(]/)[0].trim().slice(0,10); }
+    chips.push({x:row._runMin!=null?row._runMin:9999,
+      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${rid}')" title="${label}">
+        <span class="dotm"></span>${short}</div>`});
+  });
+
+  chips.sort((p,q)=>p.x-q.x);
+  const following = selectedId==null || !a.rows[selectedId];
+  host.innerHTML=`<div class="tpstrip">${chips.map(c=>c.html).join('')}</div>
+    <div class="hint" style="margin-top:6px">
+      Tap a timepoint to see its values.
+      <span style="color:var(--trace)">&#9679;</span> recorded &middot;
+      <span style="color:var(--ink-faint)">&#9675;</span> not yet &middot;
+      <span style="color:var(--trace-amber)">&#9679;</span> event &middot;
+      <span style="color:var(--alarm)">&#9679;</span> death
+      ${CURRENT_SEL?' &mdash; <a href="#" onclick="selectCurrentTp(null);return false;" style="color:var(--accent)">show latest</a>':''}
+    </div>`;
+}
+window.renderTpStrip = renderTpStrip;
+
+function renderCurrent(){
+  const head=$('#currentHead'); const grid=$('#vitalsGrid');
+  if(!head||!grid) return;
+  const a=getActiveAnimal();
+  const order=orderedRows(a);
+  const params=activeParams();
+
+  if(!a || (!order.length && !(a.labs||[]).length)){
+    renderTpStrip(null);
+    head.innerHTML=`<div class="hint" style="margin:0">Nothing recorded yet for this animal. Use <b>Timeline &amp; Labs</b> to record a timepoint &mdash; the latest values will appear here.</div>`;
+    grid.innerHTML='<div class="empty" style="grid-column:1/-1">No data recorded yet.</div>';
+    return;
+  }
+  // Labs uploaded before any vitals were recorded: still show them.
+  if(!order.length && (a.labs||[]).length){
+    renderTpStrip(null);
+    const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+    const lab=sorted[sorted.length-1];
+    head.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">Latest recorded</div>
+          <div style="font-size:16px;font-weight:600">Blood labs only (no vitals yet)</div>
+        </div>
+        <div class="hint" style="margin:0;text-align:right">${lab.ts?tsShort(lab.ts):''}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn sm" style="width:auto" onclick="showTab('timeline')">Record vitals</button>
+        <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+      </div>`;
+    const BGO=['pH','pCO2','pO2','HCO3','BE','Lactate','sO2','Hb','Hct','Na','K','iCa','Glucose','TCO2','Creatinine'];
+    const vals={};
+    sorted.forEach(l=>Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='') vals[k]=v; }));
+    const keys=Object.keys(vals).sort((x,y)=>{
+      const ix=BGO.indexOf(x), iy=BGO.indexOf(y);
+      return (ix<0?99:ix)-(iy<0?99:iy);
+    });
+    grid.innerHTML =
+      `<div class="group-tag" style="grid-column:1/-1">Blood gas / labs</div>` +
+      `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 4px">
+         <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+         <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+       </div>` +
+      keys.map(k=>`
+        <div class="vital">
+          <div class="vlabel">${k}<span class="vsrc">LAB</span></div>
+          <div class="vval" style="color:var(--trace-amber)">${vals[k]}</div>
+          <div style="margin-top:2px"><span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span></div>
+        </div>`).join('');
+    return;
+  }
+
+  // pick which timepoint to show: the tapped one, else the most recent
+  let idx=order.length-1;
+  if(CURRENT_SEL){
+    const i=order.findIndex(o=>o[0]===CURRENT_SEL);
+    if(i>=0) idx=i; else CURRENT_SEL=null;   // selection no longer exists
+  }
+  const [lastId,lastLabel]=order[idx];
+  const last=a.rows[lastId];
+  const prev=idx>0?a.rows[order[idx-1][0]]:null;
+  const prevLabel=idx>0?order[idx-1][1]:null;
+  renderTpStrip(CURRENT_SEL||lastId);
+
+  const when=last._ts?tsShort(last._ts):'';
+  const runMin=last._runMin!=null?`run +${last._runMin} min`:'';
+  const isEvent=!!last._event;
+  const isDeath=!!last._death;
+  const headColor=isDeath?'var(--alarm)':(isEvent?'var(--trace-amber)':'var(--ink)');
+  const headIcon=isDeath?'&#10013; ':(isEvent?'&#9888; ':'');
+  head.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">${CURRENT_SEL?'Viewing timepoint':'Latest recorded'}</div>
+        <div style="font-size:16px;font-weight:600;color:${headColor}">${headIcon}${lastLabel}</div>
+        ${isDeath&&last._deathSample?`<div class="hint" style="margin-top:2px">Final sample: <b>${last._deathSample}</b></div>`:''}
+      </div>
+      <div class="hint" style="margin:0;text-align:right">${when}${runMin?' &middot; '+runMin:''}<br>
+        ${prevLabel?'compared with: '+prevLabel:'first timepoint'}</div>
+    </div>
+    ${last._note?`<div class="hint" style="margin-top:8px;color:var(--ink-dim)"><b>Note:</b> ${last._note}</div>`:''}
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+      <button class="btn sm" style="width:auto" onclick="openCapture('${lastId}')">Edit this timepoint</button>
+      <button class="btn sm ghost" style="width:auto" onclick="showTab('timeline')">Go to timeline</button>
+    </div>`;
+
+  // build the value cards from the latest row (live feed overrides if present)
+  let monCards='', ventCards='';
+  let shown=0;
+  params.forEach(p=>{
+    const live=App.live[p.key];
+    let val = (live&&live.value!=null) ? live.value : last[p.key];
+    const fromLive = !!(live&&live.value!=null);
+    if(val==null||val==='') return;
+    shown++;
+    const pv = prev?prev[p.key]:null;
+    let delta='';
+    if(pv!=null&&pv!==''&&!isNaN(+pv)&&!isNaN(+val)){
+      const dv=(+val)-(+pv);
+      if(Math.abs(dv)>0.001){
+        const up=dv>0;
+        const col=up?'var(--trace-red)':'var(--accent)';
+        const rounded=Math.round(dv*10)/10;
+        delta=`<span style="font-size:11px;color:${col};font-family:var(--mono)">${up?'&#9650;':'&#9660;'} ${Math.abs(rounded)}</span>`;
+      } else {
+        delta=`<span style="font-size:11px;color:var(--ink-faint);font-family:var(--mono)">no change</span>`;
+      }
+    }
+    const alarm=(p.lo!=null&&+val<p.lo)||(p.hi!=null&&+val>p.hi);
+    const card=`
+      <div class="vital ${p.group==='vent'?'vent':''} ${alarm?'alarm':''}" id="v-${p.key}">
+        <div class="vlabel">${p.label}<span class="vsrc">${fromLive?'LIVE':(p.group==='vent'?'VENT':'MON')}</span></div>
+        <div class="vval">${val}<span class="vunit">${p.unit}</span></div>
+        <div style="margin-top:2px">${delta||'<span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span>'}</div>
+      </div>`;
+    if(p.group==='vent') ventCards+=card; else monCards+=card;
+  });
+
+  // ---- Blood gas / labs shown on Current ----
+  // Uses values merged into this row AND standalone lab entries, so an i-STAT
+  // photo shows up here even when it was saved as its own lab record.
+  // Falls back to the most recent lab drawn if this timepoint had none.
+  const BG_ORDER=['pH','pCO2','pO2','HCO3','BE','Lactate','sO2','Hb','Hct','Na','K','iCa','Glucose','TCO2','Creatinine'];
+  const collectLabs=(row)=>{
+    const out={};
+    if(row) Object.keys(row).forEach(k=>{
+      if(!k.startsWith('lab_'))return;
+      const v=row[k]; if(v==null||v==='')return;
+      out[k.replace('lab_','')]=v;
+    });
+    return out;
+  };
+  // labs attached directly to this row
+  let labVals=collectLabs(last);
+  let labSource='';
+  // plus any standalone lab entry linked to this timepoint
+  (a.labs||[]).forEach(l=>{
+    if(l.tp!==lastId) return;
+    Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='' && labVals[k]==null) labVals[k]=v; });
+  });
+  // also pick up unlinked lab entries (saved without choosing a timepoint)
+  (a.labs||[]).forEach(l=>{
+    if(l.tp) return;
+    Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='' && labVals[k]==null) labVals[k]=v; });
+  });
+  // if this timepoint has no labs at all, fall back to the latest lab drawn
+  let fellBack=false, fallbackWhen='';
+  if(!Object.keys(labVals).length && (a.labs||[]).length){
+    const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+    const lastLab=sorted[sorted.length-1];
+    Object.entries(lastLab.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='') labVals[k]=v; });
+    fellBack=true;
+    const tpName=lastLab.tp&&App.protocol?(App.protocol.timepoints.find(t=>t.id===lastLab.tp)||{}).label:null;
+    fallbackWhen=tpName||(lastLab.ts?tsShort(lastLab.ts):'earlier');
+  }
+  // previous labs for the delta: the row before, or the lab before the latest
+  const prevLabs=(()=>{
+    let pv=collectLabs(prev);
+    if(prev) (a.labs||[]).forEach(l=>{
+      const pid=order.length>1?order[order.length-2][0]:null;
+      if(l.tp && l.tp===pid) Object.entries(l.values||{}).forEach(([k,v])=>{ if(pv[k]==null) pv[k]=v; });
+    });
+    if(!Object.keys(pv).length && (a.labs||[]).length>1){
+      const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+      pv=Object.assign({}, sorted[sorted.length-2].values||{});
+    }
+    return pv;
+  })();
+
+  let labCards='';
+  const labKeysSorted=Object.keys(labVals).sort((x,y)=>{
+    const ix=BG_ORDER.indexOf(x), iy=BG_ORDER.indexOf(y);
+    return (ix<0?99:ix)-(iy<0?99:iy);
+  });
+  labKeysSorted.forEach(name=>{
+    const val=labVals[name];
+    const pv=prevLabs?prevLabs[name]:null;
+    let delta='';
+    if(pv!=null&&pv!==''&&!isNaN(+pv)&&!isNaN(+val)){
+      const dv=(+val)-(+pv);
+      if(Math.abs(dv)>0.001){
+        const up=dv>0;
+        delta=`<span style="font-size:11px;color:${up?'var(--trace-red)':'var(--accent)'};font-family:var(--mono)">${up?'&#9650;':'&#9660;'} ${Math.abs(Math.round(dv*100)/100)}</span>`;
+      }
+    }
+    labCards+=`
+      <div class="vital">
+        <div class="vlabel">${name}<span class="vsrc">${fellBack?'PREV':'LAB'}</span></div>
+        <div class="vval" style="color:var(--trace-amber)">${val}</div>
+        <div style="margin-top:2px">${delta||'<span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span>'}</div>
+      </div>`;
+  });
+  const labHeader = fellBack
+    ? `Blood gas / labs &mdash; last drawn at ${fallbackWhen} (not this timepoint)`
+    : 'Blood gas / labs at this timepoint';
+
+  // Blood gas panel is ALWAYS shown, even with nothing entered, so there is a
+  // fixed place to look for it and a one-tap way to add it.
+  const bgEmpty = `<div class="empty" style="grid-column:1/-1;padding:16px">
+      No blood gas recorded for this animal yet.<br>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+        <button class="btn sm" style="width:auto" onclick="openLabForCurrent()">Enter by hand</button>
+      </div>
+    </div>`;
+  const bgActions = `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 4px">
+      <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+      <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+    </div>`;
+
+  grid.innerHTML =
+    (monCards?`<div class="group-tag" style="grid-column:1/-1">Vitals</div>${monCards}`
+             :`<div class="group-tag" style="grid-column:1/-1">Vitals</div>
+               <div class="empty" style="grid-column:1/-1;padding:14px">No vitals at ${lastLabel}. Tap "Edit this timepoint" to add them.</div>`) +
+    (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator</div>${ventCards}`:'') +
+    `<div class="group-tag" style="grid-column:1/-1">${labCards?labHeader:'Blood gas / labs'}</div>` +
+    (labCards ? bgActions+labCards : bgEmpty);
+}
+window.renderCurrent = renderCurrent;
+
+/* ============================================================
+   PHOTO -> a specific timepoint
+   Tapping "Photo" on a timeline row opens the camera/library,
+   reads the values, and opens THAT timepoint's form pre-filled.
+   ============================================================ */
+let _photoTargetTp=null;
+function photoForTimepoint(tpId){
+  _photoTargetTp=tpId;
+  $('#tpPhoto').click();
+}
+window.photoForTimepoint = photoForTimepoint;
+
+async function tpPhotoToCapture(file){
+  const tpId=_photoTargetTp; _photoTargetTp=null;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    const tp=App.protocol&&App.protocol.timepoints.find(t=>t.id===tpId);
+    toast('Reading photo for '+(tp?tp.label:tpId)+'...');
+    try{
+      let values={};
+      if(getOcrMethod()==='claude'){
+        // reads EVERY device/cartridge in the frame at once
+        const res=await detectAndExtract(img);
+        const nLab=Object.keys(res.labs||{}).length;
+        const nVit=Object.keys(res.vitals||{}).length;
+        const seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+        if(nLab && !nVit){
+          // labs only -> lab modal, linked to this timepoint
+          openLabModal(img);
+          setTimeout(()=>{
+            fillOcrFields(res.labs);
+            const sel=$('#labTp'); if(sel) sel.value=tpId||'';
+            $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${seen||'i-STAT'} - read ${nLab} value(s)</span> for <b>${tp?tp.label:tpId}</b>. Check against the photo, then save.`;
+          },60);
+          toast(seen+' detected - linked to '+(tp?tp.label:tpId));
+          return;
+        }
+        if(nLab && nVit){
+          // BOTH in one photo: save labs onto this timepoint, then open vitals form
+          const a2=getActiveAnimal()||addAnimal({silent:true});
+          if(!a2.rows[tpId]) a2.rows[tpId]={_ts:nowTs(), _runMin:App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
+          Object.assign(a2.rows[tpId], prefixKeys(res.labs));
+          a2.labs.push({ts:nowTs(), tp:tpId, values:res.labs, src:{}, img:img});
+          renderLabList();
+          toast(seen+' - '+nLab+' lab + '+nVit+' vital value(s) read');
+        }
+        values=res.vitals||{};
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        values=out.values;
+      }
+      openCapture(tpId, values, img);
+      const n=Object.keys(values).length;
+      toast(n?`Extracted ${n} value${n>1?'s':''} for ${tp?tp.label:tpId} - check & correct`:'No values read - enter manually');
+    }catch(err){
+      openCapture(tpId, null, img);
+      toast('Extraction failed: '+err.message);
+    }
+  };
+  reader.readAsDataURL(file);
+}
+
+
+/* ============================================================
+   PERSISTENCE - autosave to this browser + session file save/load.
+   Experiment data must survive a refresh, a locked phone, or a
+   browser crash. Autosave runs on every change; session files are
+   for backup and moving between devices.
+   ============================================================ */
+const SAVE_KEY='swineicu_session_v1';
+let _saveTimer=null;
+
+function collectSession(){
+  return {
+    version:'3.2',
+    copyright:'(c) 2026 HAKOYA LLC. All rights reserved.',
+    savedAt:nowTs(),
+    runStart:App.runStart,
+    protocol:App.protocol?{
+      name:App.protocol.name,
+      timepoints:App.protocol.timepoints,
+      params:App.protocol.params,
+      labFields:App.protocol.labFields,
+      groups:App.protocol.groups||[],
+      endpoints:App.protocol.endpoints||[],
+      extras:App.protocol.extras||[]
+    }:null,
+    activeAnimal:App.activeAnimal,
+    animals:App.animals,
+    hcare:{
+      animal:HCARE.animal,
+      data:HCARE.data,
+      vitalsRows:HCARE.vitalsRows,
+      istatRows:HCARE.istatRows
+    },
+    trendSel:TREND_SEL
+  };
+}
+
+function applySession(o){
+  if(!o||typeof o!=='object') throw new Error('Not a valid session file');
+  if(o.protocol) App.protocol=o.protocol;
+  App.animals=Array.isArray(o.animals)?o.animals:[];
+  App.activeAnimal=o.activeAnimal||(App.animals[0]&&App.animals[0].id)||null;
+  App.runStart=o.runStart||null;
+  if(o.hcare){
+    if(o.hcare.data) HCARE.data=o.hcare.data;
+    if(o.hcare.animal) HCARE.animal=o.hcare.animal;
+    if(Array.isArray(o.hcare.vitalsRows)&&o.hcare.vitalsRows.length) HCARE.vitalsRows=o.hcare.vitalsRows;
+    if(Array.isArray(o.hcare.istatRows)&&o.hcare.istatRows.length) HCARE.istatRows=o.hcare.istatRows;
+  }
+  if(Array.isArray(o.trendSel)&&o.trendSel.length) TREND_SEL=o.trendSel;
+  renderProtocolInfo(); renderTimeline(); renderAnimalTabs(); rebuildTable();
+  renderLabList(); updateAnimalLabel(); renderTrendPicker(); renderTrends(); renderCurrent();
+}
+
+function autosave(){
+  clearTimeout(_saveTimer);
+  _saveTimer=setTimeout(()=>{
+    try{
+      localStorage.setItem(SAVE_KEY, JSON.stringify(collectSession()));
+      const el=$('#saveStatus');
+      if(el){ el.textContent='saved '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); el.style.color='var(--trace)'; }
+    }catch(e){
+      const el=$('#saveStatus');
+      if(el){ el.textContent='autosave failed - use Save file'; el.style.color='var(--alarm)'; }
+    }
+  }, 400);
+}
+window.autosave = autosave;
+
+function restoreSession(){
+  let raw=null;
+  try{ raw=localStorage.getItem(SAVE_KEY); }catch(e){ return false; }
+  if(!raw) return false;
+  try{
+    const o=JSON.parse(raw);
+    const nAnimals=(o.animals||[]).length;
+    const nRows=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
+    if(!nAnimals && !nRows) return false;
+    applySession(o);
+    const when=o.savedAt?new Date(o.savedAt).toLocaleString():'earlier';
+    toast('Restored your data from '+when);
+    const el=$('#saveStatus');
+    if(el){ el.textContent='restored'; el.style.color='var(--trace)'; }
+    return true;
+  }catch(e){ return false; }
+}
+
+function saveSessionFile(){
+  const data=collectSession();
+  const a=getActiveAnimal();
+  const stamp=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+  const name='HCARE_'+((a&&a.id)||'session').replace(/[^A-Za-z0-9_-]/g,'')+'_'+stamp+'.json';
+  download(name, JSON.stringify(data,null,2), 'application/json');
+}
+window.saveSessionFile = saveSessionFile;
+
+function loadSessionFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const o=JSON.parse(e.target.result);
+      const nAnimals=(o.animals||[]).length;
+      const nRows=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
+      if(!confirm('Load this session?\n\n'+nAnimals+' animal(s), '+nRows+' recorded timepoint(s).\n\nThis replaces what is currently in the app.')) return;
+      applySession(o);
+      autosave();
+      toast('Session loaded');
+    }catch(err){ toast('Could not read that file: '+err.message); }
+  };
+  reader.readAsText(file);
+}
+
+function clearSavedData(){
+  if(!confirm('Erase ALL data in the app and the autosave?\n\nExport or save a file first if you need it. This cannot be undone.')) return;
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+  App.animals=[]; App.activeAnimal=null; App.runStart=null;
+  HCARE.data={}; HCARE.animal=null;
+  addAnimal({silent:true});
+  hcAddAnimal(true);
+  renderTimeline(); rebuildTable(); renderLabList(); renderTrendPicker(); renderTrends(); renderCurrent();
+  toast('All data cleared');
+}
+window.clearSavedData = clearSavedData;
+
+/* Delete one recorded timepoint (asks first) */
+function deleteRow(rid){
+  const a=getActiveAnimal(); if(!a||!a.rows[rid]) { toast('Nothing to delete'); return; }
+  const label=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===rid)||{}).label)||a.rows[rid]._label||rid;
+  if(!confirm('Delete the recorded data for:\n\n'+label+'\n\nThis cannot be undone.')) return;
+  delete a.rows[rid];
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  toast('Deleted '+label);
+}
+window.deleteRow = deleteRow;
+
+/* Delete a saved lab entry (asks first) */
+function deleteLab(i){
+  const a=getActiveAnimal(); if(!a||!a.labs[i]) return;
+  if(!confirm('Delete this lab entry?\n\nThis cannot be undone.')) return;
+  a.labs.splice(i,1);
+  renderLabList(); renderTrendPicker(); renderTrends();
+  toast('Lab entry deleted');
+}
+window.deleteLab = deleteLab;
+
+/* Clear every recorded timepoint for the active animal */
+function clearAllRows(){
+  const a=getActiveAnimal(); if(!a) return;
+  const n=Object.keys(a.rows).length;
+  if(!n){ toast('Nothing recorded yet'); return; }
+  if(!confirm('Delete ALL '+n+' recorded timepoint(s) for '+a.id+'?\n\nThis cannot be undone.')) return;
+  a.rows={};
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  toast('All timepoints cleared for '+a.id);
+}
+window.clearAllRows = clearAllRows;
+
+/* Delete the active animal entirely */
+function deleteAnimal(){
+  const a=getActiveAnimal(); if(!a) return;
+  if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all instead'); return; }
+  if(!confirm('Delete animal "'+a.id+'" and ALL its data?\n\nThis cannot be undone.')) return;
+  App.animals=App.animals.filter(x=>x.id!==a.id);
+  App.activeAnimal=App.animals[0].id;
+  renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel();
+  toast('Animal deleted');
+}
+window.deleteAnimal = deleteAnimal;
+
+function rebuildTable(){
+  const a=getActiveAnimal();
+  const params=activeParams();
+  const thead=$('#dataTable thead'), tbody=$('#dataTable tbody');
+  thead.innerHTML='<tr><th>Timepoint</th><th>Run</th>'+params.map(p=>`<th>${p.label}</th>`).join('')+'<th>Note</th><th>Delete</th></tr>';
+  if(!a||!Object.keys(a.rows).length){
+    tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+4}">No timepoints recorded yet.</td></tr>`;return;
+  }
+  const order=[];
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{
+    if(a.rows[t.id]) order.push([t.id, a.rows[t.id]._label||t.label]);
+  });
+  Object.keys(a.rows).forEach(k=>{if(!order.find(o=>o[0]===k))order.push([k, a.rows[k]._label||k]);});
+  tbody.innerHTML=order.map(([rid,label])=>{
+    const r=a.rows[rid];
+    const rowStyle = r._death?' style="background:rgba(224,57,43,.07)"':(r._event?' style="background:rgba(200,134,26,.07)"':'');
+    return `<tr${rowStyle}><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
+      params.map(p=>`<td>${r[p.key]??''}</td>`).join('')+
+      `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td>`+
+      `<td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${rid}')">Delete</button></td></tr>`;
+  }).join('');
+}
+
+let pendingLabImg=null;
+function populateLabFields(){}
+function openLabModal(imgData){
+  pendingLabImg=imgData||null;
+  const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
+  $('#labPreview').innerHTML = imgData?`<img src="${imgData}" style="max-width:100%;border-radius:4px;border:1px solid var(--line)">`:'';
+  $('#labFields').innerHTML = `<div class="grid3">`+fields.map(f=>
+    `<div class="field" data-field="${f}"><label>${f}</label><input data-lab="${f}" inputmode="decimal"></div>`).join('')+`</div>`;
+  $('#ocrBtn').style.display = imgData ? 'block' : 'none';
+  $('#ocrStatus').innerHTML = '';
+  let opts='<option value="">- unlinked -</option>';
+  if(App.protocol) App.protocol.timepoints.forEach(t=>opts+=`<option value="${t.id}">${t.label}</option>`);
+  $('#labTp').innerHTML=opts;
+  $('#labModal').classList.add('show');
+}
+
+const LAB_ALIASES = {
+  pH:['ph'], pCO2:['pco2','paco2'], pO2:['po2','pao2'],
+  HCO3:['hco3','hco3-','bicarb','bicarbonate'], BE:['be','base excess','beecf','abe'],
+  Lactate:['lactate','lac'], Hb:['hb','hgb','hemoglobin'], Hct:['hct','hematocrit'],
+  Na:['na','na+','sodium'], K:['k','k+','potassium'], Cl:['cl','cl-','chloride'],
+  Glucose:['glu','glucose','gluc'], iCa:['ica','ica++','ca++','calcium','ica2+'],
+  Creatinine:['crea','creat','creatinine','cr']
+};
+async function runOCR(){
+  if(!pendingLabImg) return;
+  const status=$('#ocrStatus');
+  const method=getOcrMethod();
+  status.innerHTML = method==='claude'
+    ? `Reading photo with Claude...`
+    : `Loading OCR engine... <div class="ocr-progress"><span id="ocrBar"></span></div>`;
+  try{
+    const fields=((App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS).map(f=>({key:f}));
+    const {values:matched}=await extractFromPhoto(pendingLabImg, fields, mapOcrText);
+    fillOcrFields(matched);
+    const n=Object.keys(matched).length;
+    status.innerHTML = n
+      ? `<span style="color:var(--trace)">Read ${n} value${n>1?'s':''}.</span> Check each against the photo before saving.`
+      : `<span style="color:var(--alarm)">No values recognized.</span> Type them in, or try a sharper photo.`;
+  }catch(e){
+    status.innerHTML=`<span style="color:var(--alarm)">Extraction failed:</span> ${e.message}`;
+  }
+}
+function mapOcrText(text){
+  const out={};
+  const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
+  const lookup={};
+  fields.forEach(f=>{
+    lookup[f.toLowerCase()]=f;
+    (LAB_ALIASES[f]||[]).forEach(a=>lookup[a]=f);
+  });
+  const canonOf = raw=>{
+    const name=raw.toLowerCase().replace(/[^a-z0-9+]/g,'');
+    return lookup[name]||lookup[name.replace(/[+]/g,'')]||null;
+  };
+  const lines=text.split(/\n+/).map(l=>l.trim()).filter(Boolean);
+  lines.forEach(line=>{
+    const mm=line.match(/^[\s|>*-]*([A-Za-z][A-Za-z0-9+\-]{0,11})\b[^0-9\-]{0,8}(-?\d+\.?\d*)\s*$/);
+    if(!mm)return;
+    const canon=canonOf(mm[1]); const val=parseFloat(mm[2]);
+    if(canon&&!isNaN(val)&&out[canon]===undefined) out[canon]=val;
+  });
+  if(Object.keys(out).length < 3){
+    const labelBlock=[], valueBlock=[];
+    let phase='labels';
+    for(const l of lines){
+      const isNum=/^-?\d+\.?\d*$/.test(l);
+      const lab=/^[A-Za-z][A-Za-z0-9+\-]{0,11}$/.test(l)?canonOf(l):null;
+      if(phase==='labels'){
+        if(lab) labelBlock.push(lab);
+        else if(isNum){phase='values'; valueBlock.push(parseFloat(l));}
+      }else{
+        if(isNum) valueBlock.push(parseFloat(l));
+        else if(lab){labelBlock.length=0;break;}
+      }
+    }
+    const clean = labelBlock.length>=3 &&
+                  labelBlock.length===valueBlock.length &&
+                  labelBlock.every(Boolean) &&
+                  new Set(labelBlock).size===labelBlock.length;
+    if(clean){
+      labelBlock.forEach((f,k)=>{ if(out[f]===undefined && !isNaN(valueBlock[k])) out[f]=valueBlock[k]; });
+    }
+  }
+  return out;
+}
+function fillOcrFields(matched){
+  Object.entries(matched).forEach(([f,v])=>{
+    const wrap=$(`#labFields [data-field="${f}"]`);
+    const inp=$(`#labFields [data-lab="${f}"]`);
+    if(inp){inp.value=v; if(wrap)wrap.classList.add('ocr-filled');}
+  });
+  $$('#labFields [data-lab]').forEach(inp=>{
+    inp.addEventListener('input',()=>{const w=inp.closest('.field'); if(w)w.classList.remove('ocr-filled');},{once:true});
+  });
+}
+function saveLab(){
+  const a=getActiveAnimal()||addAnimal({silent:true});
+  const vals={}; const src={};
+  $$('#labFields [data-lab]').forEach(i=>{
+    if(i.value.trim()!==''){
+      vals[i.dataset.lab]=isNaN(+i.value)?i.value:+i.value;
+      src[i.dataset.lab]= i.closest('.field').classList.contains('ocr-filled') ? 'ocr' : 'manual';
+    }
+  });
+  let tpSel=$('#labTp').value;
+  // If no timepoint was chosen, attach these labs to the most recent recorded
+  // row so they still show up on Current instead of disappearing.
+  if(!tpSel){
+    const ord=orderedRows(a);
+    if(ord.length) tpSel=ord[ord.length-1][0];
+  }
+  const entry={ts:nowTs(), tp:tpSel, values:vals, src:src, img:pendingLabImg};
+  a.labs.push(entry);
+  if(tpSel){
+    // create the row if it does not exist yet, then merge the lab values in
+    if(!a.rows[tpSel]){
+      let off=null;
+      if(App.protocol){
+        const tp=App.protocol.timepoints.find(t=>t.id===tpSel);
+        if(tp && tp.offsetMin!=null) off=tp.offsetMin;
+      }
+      a.rows[tpSel]={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):off};
+    }
+    Object.assign(a.rows[tpSel], prefixKeys(vals));
+  }
+  $('#labModal').classList.remove('show');
+  renderLabList(); rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent(); autosave();
+  const nOcr=Object.values(src).filter(s=>s==='ocr').length;
+  toast(`Lab saved - ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
+}
+function prefixKeys(o){const r={};for(const k in o)r['lab_'+k]=o[k];return r;}
+function renderLabList(){
+  const a=getActiveAnimal(); const c=$('#labList');
+  if(!a||!a.labs.length){c.innerHTML='<div class="hint">No lab entries yet.</div>';return;}
+  c.innerHTML=a.labs.map((l,i)=>{
+    const summary=Object.entries(l.values).slice(0,4).map(([k,v])=>`${k} ${v}`).join(' - ');
+    return `<div class="lab-thumb">
+      ${l.img?`<img src="${l.img}">`:'<div style="width:46px;height:46px;border:1px dashed var(--line);border-radius:3px"></div>'}
+      <div class="lmeta"><b>${l.tp||'unlinked'} - ${tsShort(l.ts)}</b>${summary||'-'}</div>
+      <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="deleteLab(${i})">Delete</button>
+    </div>`;
+  }).join('');
+}
+
+function startSimulator(){
+  stopSource();
+  App.runStart=App.runStart||Date.now();
+  const params=DEFAULT_VITALS;
+  const base={HR:95,ABPs:118,ABPd:68,MAP:84,SpO2:98,Temp:38.2,EtCO2:38,CVP:7,RR:16,TV:420,PEEP:5,PIP:18,FiO2:40};
+  const tick=()=>{
+    params.forEach(p=>{
+      const b=base[p.key]??((p.lo+p.hi)/2);
+      const jitter=(Math.random()-.5)* (p.key==='Temp'?0.2: p.key==='SpO2'?1.2: b*0.05);
+      let v=b+jitter;
+      v = p.key==='Temp'? +v.toFixed(1) : Math.round(v);
+      App.live[p.key]={value:v, unit:p.unit, ts:nowTs(), group:p.group};
+    });
+    updateLiveDisplay();
+  };
+  tick();
+  App.source={mode:'sim', timer:setInterval(tick,1500)};
+  setConn('sim','SIMULATOR');
+}
+
+function connectBridge(addr){
+  stopSource();
+  let ws;
+  try{ws=new WebSocket(addr);}catch(e){toast('Bad address');return;}
+  setConn('','CONNECTING...');
+  ws.onopen=()=>{App.runStart=App.runStart||Date.now();setConn('live','BRIDGE LIVE');toast('Bridge connected');};
+  ws.onmessage=ev=>{
+    try{
+      const msg=JSON.parse(ev.data);
+      if(msg.key){App.live[msg.key]={value:msg.value,unit:msg.unit,ts:nowTs(),group:msg.group||'vital'};}
+      else Object.entries(msg).forEach(([k,d])=>{
+        if(d&&typeof d==='object')App.live[k]={value:d.value,unit:d.unit||'',ts:nowTs(),group:d.group||'vital'};
+      });
+      updateLiveDisplay();
+    }catch(e){}
+  };
+  ws.onclose=()=>{setConn('','BRIDGE OFFLINE');};
+  ws.onerror=()=>{setConn('','BRIDGE ERROR');toast('Bridge not reachable - is it running?');};
+  App.source={mode:'bridge', ws};
+}
+
+function stopSource(){
+  if(App.source){if(App.source.timer)clearInterval(App.source.timer);if(App.source.ws)try{App.source.ws.close()}catch(e){}}
+  App.source=null;
+}
+function setConn(cls,label){const c=$('#conn');c.className='conn'+(cls?' '+cls:'');$('#connlabel').textContent=label;}
+
+let camStream=null;
+async function toggleCamera(){
+  const v=$('#cam');
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;v.style.display='none';$('#camBtn').textContent='Start monitor camera';return;}
+  try{
+    camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    v.srcObject=camStream;v.style.display='block';await v.play();$('#camBtn').textContent='Stop camera';
+  }catch(e){toast('Camera unavailable: '+e.message);}
+}
+
+function exportCSV(animal){
+  const a=animal||getActiveAnimal(); if(!a){toast('No animal');return;}
+  const params=activeParams();
+  const labKeys=new Set();
+  Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);}));
+  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
+  const order=[];
+  if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
+  Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
+  order.forEach(rid=>{
+    const r=a.rows[rid];
+    const row=[a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
+      ...params.map(p=>r[p.key]??''),
+      ...[...labKeys].map(k=>r[k]??''),
+      (r._note||'').replace(/,/g,';')];
+    lines.push(row.join(','));
+  });
+  download(`${a.id}_data.csv`, lines.join('\n'), 'text/csv');
+}
+function exportAllCSV(){
+  if(!App.animals.length){toast('No animals');return;}
+  const params=activeParams();
+  const labKeys=new Set();
+  App.animals.forEach(a=>Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);})));
+  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
+  App.animals.forEach(a=>{
+    const order=[];
+    if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
+    Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
+    order.forEach(rid=>{
+      const r=a.rows[rid];
+      lines.push([a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
+        ...params.map(p=>r[p.key]??''),
+        ...[...labKeys].map(k=>r[k]??''),
+        (r._note||'').replace(/,/g,';')].join(','));
+    });
+  });
+  download('all_animals_data.csv', lines.join('\n'),'text/csv');
+}
+function exportJSON(){
+  const data={copyright:'(c) 2026 HAKOYA LLC. All rights reserved.', protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
+    animals:App.animals.map(a=>({id:a.id,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values}))})),
+    exported:nowTs()};
+  download('swine_icu_session.json', JSON.stringify(data,null,2),'application/json');
+}
+function download(name,content,type){
+  const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name;a.click();URL.revokeObjectURL(url);
+  toast('Exported '+name);
+}
+
+async function handleProtocolFile(file){
+  const ext=file.name.split('.').pop().toLowerCase();
+  let text='';
+  try{
+    if(ext==='txt'){text=await file.text();}
+    else if(ext==='pdf'){text=await extractPdf(file);}
+    else if(ext==='docx'){text=await extractDocx(file);}
+    else {toast('Unsupported file');return;}
+  }catch(e){toast('Could not read file - using demo');loadProtocol(demoProtocol());return;}
+  const proto=parseProtocolText(text,file.name);
+  if(!proto.timepoints.length){toast('No timepoints found - loaded demo structure');loadProtocol(demoProtocol());return;}
+  loadProtocol(proto);
+}
+async function extractPdf(file){
+  if(!window.pdfjsLib){await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';}
+  const buf=await file.arrayBuffer();const pdf=await pdfjsLib.getDocument({data:buf}).promise;
+  let text='';for(let i=1;i<=pdf.numPages;i++){const pg=await pdf.getPage(i);const c=await pg.getTextContent();text+=c.items.map(it=>it.str).join(' ')+'\n';}
+  return text;
+}
+async function extractDocx(file){
+  if(!window.mammoth)await loadScript('https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js');
+  const buf=await file.arrayBuffer();const r=await mammoth.extractRawText({arrayBuffer:buf});return r.value;
+}
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+
+function handleLabFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>openLabModal(e.target.result);
+  reader.readAsDataURL(file);
+}
+
+setInterval(()=>{
+  $('#runtime').textContent = App.runStart?fmtClock(Date.now()-App.runStart):'-';
+  if(App.protocol && document.hidden===false){
+    const tl=$('#timeline');
+    if(tl && tl.querySelector('.tp')) renderTimeline();
+  }
+}, 1000);
+
+$('#drop').addEventListener('click',()=>$('#protoFile').click());
+$('#protoFile').addEventListener('change',e=>{if(e.target.files[0])handleProtocolFile(e.target.files[0]);});
+['dragover','dragenter'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over');}));
+['dragleave','drop'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.remove('over');}));
+$('#drop').addEventListener('drop',e=>{if(e.dataTransfer.files[0])handleProtocolFile(e.dataTransfer.files[0]);});
+
+$('#srcMode').addEventListener('change',e=>{$('#wsField').style.display=e.target.value==='bridge'?'block':'none';});
+$('#connectBtn').addEventListener('click',()=>{
+  if($('#srcMode').value==='sim')startSimulator();
+  else connectBridge($('#wsAddr').value.trim());
+});
+$('#camBtn').addEventListener('click',toggleCamera);
+$('#ocrMethod')&&$('#ocrMethod').addEventListener('change',e=>{
+  $('#apiKeyField').style.display = e.target.value==='claude'?'block':'none';
+});
+$('#captureNow').addEventListener('click',()=>openCapture(''));
+$('#eventBtn').addEventListener('click',()=>recordEvent());
+$('#deathBtn').addEventListener('click',()=>recordDeath());
+$('#deathPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) deathPhotoToVitals(e.target.files[0]);
+  e.target.value='';
+});
+$('#eventPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) eventPhotoToVitals(e.target.files[0]);
+  e.target.value='';
+});
+$('#tpPhoto').addEventListener('change',e=>{
+  if(e.target.files[0]) tpPhotoToCapture(e.target.files[0]);
+  e.target.value='';
+});
+$('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
+$('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
+
+let _pendingPhoto=null;
+let _pendingBothLabs=null;
+
+async function autoDetectPhoto(file){
+  if(getOcrMethod()!=='claude'){ toast('Auto-detect needs Claude AI method'); return; }
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Detecting device & reading values...');
+    try{
+      const res=await detectAndExtract(img);
+      const nLab=Object.keys(res.labs||{}).length;
+      const nVit=Object.keys(res.vitals||{}).length;
+      const seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+      if(!res.readouts || !res.readouts.length){ toast('Could not identify the screen - pick the type manually'); return; }
+      if(nLab && !nVit){
+        openLabModal(img);
+        setTimeout(()=>{ fillOcrFields(res.labs);
+          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${seen} - read ${nLab} value(s).</span> Check against the photo, then save.`;
+        },60);
+        toast(seen+' detected - '+nLab+' value(s)');
+      } else if(nVit && !nLab){
+        openCapture('', res.vitals, img);
+        toast(seen+' detected - '+nVit+' value(s), check & correct');
+      } else {
+        // both kinds in one photo
+        openCapture('', res.vitals, img);
+        setTimeout(()=>{ _pendingBothLabs={labs:res.labs, img:img}; },20);
+        toast(seen+' - '+nVit+' vital + '+nLab+' lab value(s); save vitals, then labs open next');
+      }
+    }catch(err){ toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+function normalizeVitalKeys(v){
+  const map={PEAK:'PIP', Vt:'TV', VtExp:'TV'};
+  const out={};
+  Object.entries(v).forEach(([k,val])=>{ out[map[k]||k]=val; });
+  return out;
+}
+function mapIstatToLabFields(v){
+  const map={pH:'pH',PCO2:'pCO2',PO2:'pO2',BEecf:'BE',HCO3:'HCO3',TCO2:'TCO2',
+    sO2:'sO2',Lac:'Lactate',Na:'Na',K:'K',iCa:'iCa',Glu:'Glucose',Hct:'Hct',Hb:'Hb'};
+  const out={};
+  Object.entries(v).forEach(([k,val])=>{ const t=map[k]||k; out[t]=val; });
+  return out;
+}
+
+$('#uploadPhotoBtn').addEventListener('click',()=>$('#uploadPhotoFile').click());
+$('#uploadPhotoFile').addEventListener('change',e=>{
+  if(e.target.files[0]){ _pendingPhoto=e.target.files[0]; $('#photoChooser').classList.add('show'); }
+  e.target.value='';
+});
+$('#pcAuto').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) autoDetectPhoto(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcMonitor').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcVent').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) monitorPhotoToVitals(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcIstat').addEventListener('click',()=>{
+  $('#photoChooser').classList.remove('show');
+  if(_pendingPhoto) handleLabFile(_pendingPhoto);
+  _pendingPhoto=null;
+});
+$('#pcCancel').addEventListener('click',()=>{$('#photoChooser').classList.remove('show');_pendingPhoto=null;});
+$('#addLab').addEventListener('click',()=>$('#labFile').click());
+$('#labFile').addEventListener('change',e=>{if(e.target.files[0])handleLabFile(e.target.files[0]);});
+$('#saveLab').addEventListener('click',saveLab);
+$('#ocrBtn').addEventListener('click',runOCR);
+$('#exportCsv').addEventListener('click',()=>exportCSV());
+$('#exportJson').addEventListener('click',exportJSON);
+$('#exportAll').addEventListener('click',exportAllCSV);
+$('#sessionFile').addEventListener('change',e=>{
+  if(e.target.files[0]) loadSessionFile(e.target.files[0]);
+  e.target.value='';
+});
+$$('[data-close]').forEach(b=>b.addEventListener('click',()=>{b.closest('.modal-bg').classList.remove('show');}));
+$$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show');}));
+
+(function(){
+  var KEY='swineicu_apikey', METH='swineicu_ocrmethod';
+  function safeGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+  function safeSet(k,v){try{localStorage.setItem(k,v);return true;}catch(e){return false;}}
+  function safeDel(k){try{localStorage.removeItem(k);}catch(e){}}
+  var savedKey=safeGet(KEY), savedMeth=safeGet(METH);
+  if(savedKey && $('#apiKey')){ $('#apiKey').value=savedKey; }
+  if(savedMeth && $('#ocrMethod')){ $('#ocrMethod').value=savedMeth;
+    $('#apiKeyField').style.display = savedMeth==='claude'?'block':'none'; }
+  var st=$('#keyStatus');
+  if(st && savedKey) st.textContent='saved';
+  $('#saveKeyBtn') && $('#saveKeyBtn').addEventListener('click',function(){
+    var v=$('#apiKey').value.trim();
+    if(!v){ if(st){st.textContent='enter a key first';st.style.color='var(--alarm)';} return; }
+    var ok=safeSet(KEY,v);
+    if(st){ st.textContent= ok?'saved - stays across sessions':'saved for this session only'; st.style.color= ok?'var(--trace)':'var(--trace-amber)'; }
+    toast(ok?'API key saved':'Saved for this session');
+  });
+  $('#clearKeyBtn') && $('#clearKeyBtn').addEventListener('click',function(){
+    safeDel(KEY); if($('#apiKey'))$('#apiKey').value='';
+    if(st){st.textContent='cleared';st.style.color='var(--ink-faint)';}
+    toast('API key cleared');
+  });
+  $('#ocrMethod') && $('#ocrMethod').addEventListener('change',function(e){ safeSet(METH,e.target.value); });
+})();
+
+(function(){
+  function showTab(name){
+    document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+    document.querySelectorAll('.col[data-panel]').forEach(c=>c.classList.toggle('active', c.dataset.panel===name));
+    var body=document.querySelector('.body'); if(body) body.scrollTop=0;
+  }
+  document.querySelectorAll('.tabbtn').forEach(b=>{
+    b.addEventListener('click',()=>showTab(b.dataset.tab));
+  });
+  showTab('live');
+  window.showTab=showTab;
+})();
+
+loadProtocol(demoProtocol());
+// bring back anything from a previous session in this browser
+try{ restoreSession(); }catch(e){ console.error('restore failed',e); }
+// make sure every panel reflects the restored data
+try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
+     renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
+</script>
+</body>
+</html>ntent="width=device-width, initial-scale=1.0">
 <title>Swine ICU — Data Capture</title>
 <meta name="author" content="HAKOYA LLC">
 <meta name="copyright" content="Copyright (c) 2026 HAKOYA LLC. All rights reserved.">
