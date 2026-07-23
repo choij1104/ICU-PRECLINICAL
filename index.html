@@ -1,9 +1,16 @@
 <!DOCTYPE html>
+<!--
+  Swine ICU - Preclinical Data Capture
+  Copyright (c) 2026 HAKOYA LLC. All rights reserved.
+  H-CARE study support tool (IPROTO202500000107).
+-->
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Swine ICU — Data Capture</title>
+<meta name="author" content="HAKOYA LLC">
+<meta name="copyright" content="Copyright (c) 2026 HAKOYA LLC. All rights reserved.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -221,7 +228,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v2.6</small>
+      Swine ICU <small>Current &middot; v2.9</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -343,6 +350,10 @@
           <input type="file" id="sessionFile" hidden accept=".json,application/json">
           <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="clearSavedData()">Erase everything</button>
         </div>
+      </div>
+      <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
+        &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
+        Swine ICU &mdash; Preclinical Data Capture &middot; v2.9
       </div>
     </main>
 
@@ -472,6 +483,9 @@
     </div>
 
     <div id="hcSheet"></div>
+    <div style="text-align:center;padding:22px 0 8px;color:var(--ink-faint);font-size:11px">
+      &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.
+    </div>
   </div>
 </div>
 
@@ -763,6 +777,7 @@ function hcBind(){
 function hcExportCSV(){
   const lines=[];
   const a=HCARE.animal, A=hcA();
+  lines.push('# (c) 2026 HAKOYA LLC. All rights reserved.');
   lines.push('# CASE SETUP');
   lines.push('animal,'+a);
   Object.entries(A.case).forEach(([k,v])=>lines.push(`${k},"${String(v).replace(/"/g,'""')}"`));
@@ -1522,6 +1537,56 @@ function deleteTimepoint(){
 }
 window.deleteTimepoint = deleteTimepoint;
 
+
+/* Re-run extraction on the photo already attached to the open form.
+   Keeps whatever the user has already typed in the note field. */
+async function rereadFromPhoto(kind){
+  const img = kind==='death' ? _deathPhotoData : _eventPhotoData;
+  if(!img){ toast('No photo attached yet'); return; }
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    toast('No API key on this device - add it under Photo / Settings');
+    return;
+  }
+  const noteEl=$('#capBody textarea[data-k="_note"]');
+  const keptNote=noteEl?noteEl.value:'';
+  toast('Reading photo again...');
+  try{
+    let values={};
+    if(getOcrMethod()==='claude'){
+      const res=await detectAndExtract(img);
+      values=res.vitals||{};
+      const nLab=Object.keys(res.labs||{}).length;
+      if(nLab){
+        const a=getActiveAnimal()||addAnimal({silent:true});
+        a.labs.push({ts:nowTs(), tp:kind==='death'?'DEATH':'', values:res.labs, src:{}, img:img});
+        renderLabList(); autosave();
+        toast('Labs captured: '+nLab+' value(s)');
+      }
+      if(!Object.keys(values).length && !nLab){
+        toast('No values could be read from this photo');
+        return;
+      }
+    } else {
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const out=await extractFromPhoto(img, fields, mapMonitorText);
+      values=out.values;
+      if(!Object.keys(values).length){ toast('No values could be read'); return; }
+    }
+    if(kind==='death') recordDeath(values, img); else recordEvent(values, img);
+    // restore the note the user had already typed
+    setTimeout(()=>{
+      const n2=$('#capBody textarea[data-k="_note"]');
+      if(n2 && keptNote) n2.value=keptNote;
+    },30);
+    const n=Object.keys(values).length;
+    if(n) toast('Read '+n+' value(s) - check & correct');
+  }catch(err){ toast('Extraction failed: '+err.message); }
+}
+function rereadDeathPhoto(){ return rereadFromPhoto('death'); }
+function rereadEventPhoto(){ return rereadFromPhoto('event'); }
+window.rereadDeathPhoto = rereadDeathPhoto;
+window.rereadEventPhoto = rereadEventPhoto;
+
 /* ============================================================
    DEATH POINT - final sample + vitals when an animal dies before EOS.
    Recorded once per animal, timestamped, flagged separately in export.
@@ -1538,7 +1603,11 @@ function recordDeath(prefill, photo){
   let body=`<div class="hint" style="margin-bottom:12px;color:var(--alarm)">
     <b>Death point</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''}.
     Record the final vitals and last sample. This is flagged separately from scheduled timepoints in the export.</div>`;
-  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
+  body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('deathPhoto').click()">${photo?'Replace photo':'Add photo (monitor / i-STAT)'}</button>
+    ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadDeathPhoto()">Read values again</button>`:''}
+  </div>`;
   body+=`<div class="grid2" style="margin-bottom:4px">
     <div class="field"><label>Time of death</label><input data-k="_deathTime" value="${clock}"></div>
     <div class="field"><label>Run minute</label><input data-k="_deathRunMin" value="${elapsed!=null?elapsed:''}" inputmode="numeric"></div>
@@ -1554,9 +1623,6 @@ function recordDeath(prefill, photo){
       <option>CG4, CG8, Coag, Plasma, Urine</option>
       <option>None - could not draw</option>
     </select></div>`;
-  if(!photo){
-    body+=`<button class="btn amber" style="margin-bottom:12px" onclick="document.getElementById('deathPhoto').click()">Add photo (monitor / i-STAT)</button>`;
-  }
   const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
   const fieldFor=p=>{
     let v=''; let ocr=false;
@@ -1605,6 +1671,13 @@ function saveDeath(){
 window.saveDeath = saveDeath;
 
 async function deathPhotoToVitals(file){
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    const reader0=new FileReader();
+    reader0.onload=ev=>{ recordDeath(null, ev.target.result);
+      toast('No API key on this device - photo attached, enter values by hand'); };
+    reader0.readAsDataURL(file);
+    return;
+  }
   const reader=new FileReader();
   reader.onload=async e=>{
     const img=e.target.result;
@@ -1644,12 +1717,13 @@ function recordEvent(prefill, photo){
   let body=`<div class="hint" style="margin-bottom:12px;color:var(--trace-amber)">
     <b>Unplanned event</b> at ${clock}${elapsed!=null?' (run +'+elapsed+' min)':''} -
     recorded between scheduled timepoints.</div>`;
-  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
+  body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('eventPhoto').click()">${photo?'Replace photo':'Add a photo (monitor / animal)'}</button>
+    ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadEventPhoto()">Read values again</button>`:''}
+  </div>`;
   body+=`<div class="field"><label>What happened? (required)</label>
     <textarea data-k="_note" rows="3" placeholder="e.g. runs of PVCs after REBOA deflation; MAP fell to 28; gave 250 mL WB"></textarea></div>`;
-  if(!photo){
-    body+=`<button class="btn amber" style="margin-bottom:12px" onclick="document.getElementById('eventPhoto').click()">Add a photo (monitor / animal)</button>`;
-  }
   const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
   const fieldFor=p=>{
     let v=''; let ocr=false;
@@ -1695,6 +1769,13 @@ function saveEvent(){
 window.saveEvent = saveEvent;
 
 async function eventPhotoToVitals(file){
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    const reader0=new FileReader();
+    reader0.onload=ev=>{ recordEvent(null, ev.target.result);
+      toast('No API key on this device - photo attached, enter values by hand'); };
+    reader0.readAsDataURL(file);
+    return;
+  }
   const reader=new FileReader();
   reader.onload=async e=>{
     const img=e.target.result;
@@ -1768,7 +1849,20 @@ function trendPoints(key){
     if(v==null||v==='') return;
     const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
     if(isNaN(num)) return;
-    const x=r._runMin!=null?r._runMin:0;
+    // x position: real run minute if the clock was started; otherwise fall back
+    // to the timepoint's planned offset so points don't all stack at 0.
+    let x=r._runMin;
+    if(x==null && App.protocol){
+      const tp=App.protocol.timepoints.find(t=>t.id===rid);
+      if(tp && tp.offsetMin!=null) x=tp.offsetMin;
+    }
+    if(x==null && (r._death||r._event)){
+      // events and death have no planned offset: place them after the last
+      // scheduled point recorded so far, in the order they happened
+      const maxSoFar=pts.reduce((m,p)=>Math.max(m,p.x),0);
+      x=maxSoFar+(r._death?10:5);
+    }
+    if(x==null) x=pts.length;   // last resort: keep them in entry order
     pts.push({x, y:num, label, event:!!r._event, death:!!r._death, ts:r._ts});
     seen.add(rid);
   });
@@ -1820,7 +1914,9 @@ function renderTrends(){
 window.renderTrends = renderTrends;
 
 function trendSVG(pts, meta){
-  const W=680,H=200,PL=48,PR=14,PT=14,PB=32;
+  const W=680,PL=48,PR=14,PT=14;
+  const manyPts=pts.length>7;
+  const PB=manyPts?54:38, H=manyPts?226:210;
   const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
   let xMin=Math.min(...xs), xMax=Math.max(...xs);
   let yMin=Math.min(...ys), yMax=Math.max(...ys);
@@ -1844,12 +1940,44 @@ function trendSVG(pts, meta){
     return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${rr}" fill="${c}"><title>${p.label}: ${p.y}${meta.unit?' '+meta.unit:''}</title></circle>`;
   }).join('');
   // x labels: first, middle, last
-  const idxs=[...new Set([0,Math.floor(pts.length/2),pts.length-1])];
-  const xlab=idxs.map(i=>{
-    const p=pts[i]; if(!p) return '';
-    const t=(p.x>=0?'+':'')+p.x+'m';
-    return `<text x="${sx(p.x).toFixed(1)}" y="${H-10}" text-anchor="middle" font-size="9" fill="var(--ink-faint)" font-family="monospace">${t}</text>`;
+  // X axis: label EVERY point with its timepoint name (T1, T2, EVENT...).
+  // Names are shortened to a tag and rotated when they would collide.
+  const tagOf=p=>{
+    if(p.death) return 'DEATH';
+    const L=String(p.label||'');
+    if(p.event){
+      const mE=L.match(/EVENT\s*(\d+)/i);
+      return mE?('EV'+mE[1]):'EVENT';
+    }
+    const mT=L.match(/\bT(\d+)\b/i);          // "T3 - 30 min post..." -> T3
+    if(mT) return 'T'+mT[1];
+    const mM=L.match(/(\d+)\s*min/i);          // "120 min post deflation" -> 120m
+    if(mM) return mM[1]+'m';
+    const word=L.split(/[-–(]/)[0].trim();
+    return word.length>8?word.slice(0,8):(word||((p.x>=0?'+':'')+p.x+'m'));
+  };
+  // Decide rotation from ACTUAL pixel gaps, not average spacing: points
+  // cluster in time, so two labels can collide even when there are few points.
+  let minGap=Infinity;
+  for(let i=1;i<pts.length;i++){
+    const g=Math.abs(sx(pts[i].x)-sx(pts[i-1].x));
+    if(g<minGap) minGap=g;
+  }
+  const widest=pts.reduce((m,p)=>Math.max(m, tagOf(p).length),0)*5.6; // ~5.6px per mono char
+  // only tilt when labels would actually touch (small padding), not merely be close
+  const rotate = pts.length>1 && minGap < (widest*0.85 + 4);
+  const xlab=pts.map(p=>{
+    const x=sx(p.x), y=H-12;
+    const col=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':'var(--ink-faint)');
+    const weight=(p.death||p.event)?'600':'400';
+    const t=tagOf(p);
+    const full=String(p.label||'').replace(/"/g,'&quot;');
+    return rotate
+      ? `<text x="${x.toFixed(1)}" y="${y}" text-anchor="end" font-size="8.5" fill="${col}" font-weight="${weight}" font-family="monospace" transform="rotate(-45 ${x.toFixed(1)} ${y})"><title>${full}</title>${t}</text>`
+      : `<text x="${x.toFixed(1)}" y="${y}" text-anchor="middle" font-size="9" fill="${col}" font-weight="${weight}" font-family="monospace"><title>${full}</title>${t}</text>`;
   }).join('');
+  // faint tick under each point so the label lines up visually
+  const ticks=pts.map(p=>`<line x1="${sx(p.x).toFixed(1)}" y1="${(H-PB+2)}" x2="${sx(p.x).toFixed(1)}" y2="${(H-PB+6)}" stroke="var(--line)" stroke-width="1"/>`).join('');
   const hasEvent=pts.some(p=>p.event), hasDeath=pts.some(p=>p.death);
   let legend='';
   if(hasEvent) legend+=`<text x="${W-PR}" y="${PT+4}" text-anchor="end" font-size="9" fill="var(--trace-amber)">&#9679; event</text>`;
@@ -1857,7 +1985,7 @@ function trendSVG(pts, meta){
   return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
     ${grid}
     <path d="${line}" fill="none" stroke="var(--accent)" stroke-width="1.8" stroke-linejoin="round"/>
-    ${dots}${xlab}${legend}
+    ${ticks}${dots}${xlab}${legend}
   </svg>`;
 }
 
@@ -2063,7 +2191,8 @@ let _saveTimer=null;
 
 function collectSession(){
   return {
-    version:'2.5',
+    version:'2.9',
+    copyright:'(c) 2026 HAKOYA LLC. All rights reserved.',
     savedAt:nowTs(),
     runStart:App.runStart,
     protocol:App.protocol?{
@@ -2430,7 +2559,7 @@ function exportCSV(animal){
   const labKeys=new Set();
   Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);}));
   const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
-  const lines=[cols.join(',')];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
   const order=[];
   if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
   Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
@@ -2450,7 +2579,7 @@ function exportAllCSV(){
   const labKeys=new Set();
   App.animals.forEach(a=>Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);})));
   const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
-  const lines=[cols.join(',')];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
   App.animals.forEach(a=>{
     const order=[];
     if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
@@ -2466,7 +2595,7 @@ function exportAllCSV(){
   download('all_animals_data.csv', lines.join('\n'),'text/csv');
 }
 function exportJSON(){
-  const data={protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
+  const data={copyright:'(c) 2026 HAKOYA LLC. All rights reserved.', protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
     animals:App.animals.map(a=>({id:a.id,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values}))})),
     exported:nowTs()};
   download('swine_icu_session.json', JSON.stringify(data,null,2),'application/json');
