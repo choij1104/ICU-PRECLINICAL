@@ -228,7 +228,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v3.0</small>
+      Swine ICU <small>Current &middot; v3.1</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -353,7 +353,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v3.0
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.1
       </div>
     </main>
 
@@ -768,12 +768,47 @@ function hcBind(){
       const {g,r,k}=el.dataset;
       const d=hcA()[g]; if(!d[r])d[r]={};
       d[r][k]= el.type==='checkbox'?el.checked:el.value;
+      if(g==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(parseInt(r));
       if(window.autosave) autosave();
     };
     el.addEventListener(el.type==='checkbox'?'change':'input',handler);
   });
 }
 
+
+/* Mirror a row of the iSTAT data sheet into the main record so the values
+   show up on Current and in Trends. Sheet row 0 = T0, row 1 = T1, etc. */
+function hcMirrorIstatRow(rid){
+  try{
+    const label=HCARE.istatRows[rid]||'';
+    const m=label.match(/\bT(\d+)\b/i);
+    if(!m) return;                       // custom rows are not mirrored
+    const tpId='T'+m[1];
+    if(!App.protocol || !App.protocol.timepoints.find(t=>t.id===tpId)) return;
+    const src=(hcA().istat||{})[rid]; if(!src) return;
+    const map={lactate:'Lactate',k:'K',glu:'Glucose',hgb:'Hb',ph:'pH',
+               pco2:'pCO2',po2:'pO2',hco3:'HCO3',be:'BE',so2:'sO2'};
+    const vals={};
+    Object.entries(src).forEach(([k,v])=>{
+      if(k.startsWith('_')||k==='notes') return;
+      if(v===''||v==null) return;
+      const name=map[k]; if(!name) return;
+      const num=isNaN(+v)?v:+v;
+      vals[name]=num;
+    });
+    if(!Object.keys(vals).length) return;
+    // find the animal in the main record with this name, else the active one
+    let a=App.animals.find(x=>x.id===HCARE.animal) || getActiveAnimal();
+    if(!a) a=addAnimal({silent:true});
+    if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:null};
+    Object.assign(a.rows[tpId], prefixKeys(vals));
+    // keep one lab entry per sheet row so Trends/Current can read it
+    const existing=(a.labs||[]).find(l=>l._fromSheet===rid);
+    if(existing){ existing.values=vals; existing.ts=nowTs(); }
+    else { a.labs.push({ts:nowTs(), tp:tpId, values:vals, src:{}, img:(src._photo||null), _fromSheet:rid}); }
+    rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent(); renderLabList();
+  }catch(e){ /* mirroring must never break sheet entry */ }
+}
 function hcExportCSV(){
   const lines=[];
   const a=HCARE.animal, A=hcA();
@@ -840,6 +875,7 @@ async function hcPhotoToRow(file){
       Object.assign(d[rid], vals);
       d[rid]._photo=ev.target.result;
       hcRenderSheet();
+      if(sheet==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(rid);
       const n=Object.keys(vals).length;
       toast(n?`Filled ${n} value${n>1?'s':''} into "${rows[rid]}" - check & correct`:'No values read - enter manually');
     }catch(err){ toast('Extraction failed: '+err.message); }
@@ -1989,6 +2025,36 @@ function trendSVG(pts, meta){
   </svg>`;
 }
 
+
+/* Open the lab form already linked to the timepoint shown on Current */
+function openLabForCurrent(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  const order=orderedRows(a);
+  const tpId=order.length?order[order.length-1][0]:'';
+  // prefill with whatever labs already exist at that timepoint
+  const existing={};
+  if(tpId && a.rows[tpId]) Object.keys(a.rows[tpId]).forEach(k=>{
+    if(k.startsWith('lab_')) existing[k.replace('lab_','')]=a.rows[tpId][k];
+  });
+  (a.labs||[]).forEach(l=>{ if(l.tp===tpId) Object.entries(l.values||{}).forEach(([k,v])=>{ if(existing[k]==null) existing[k]=v; }); });
+  openLabModal(null);
+  setTimeout(()=>{
+    const sel=$('#labTp'); if(sel && tpId) sel.value=tpId;
+    if(Object.keys(existing).length) fillOcrFields(existing);
+  },40);
+}
+window.openLabForCurrent = openLabForCurrent;
+
+/* Take/choose an i-STAT photo for the timepoint shown on Current */
+function istatPhotoForCurrent(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  const order=orderedRows(a);
+  const tpId=order.length?order[order.length-1][0]:null;
+  if(!tpId){ toast('Record a timepoint first'); return; }
+  photoForTimepoint(tpId);
+}
+window.istatPhotoForCurrent = istatPhotoForCurrent;
+
 /* ============================================================
    CURRENT - shows the most recently recorded timepoint,
    with the change since the timepoint before it.
@@ -2154,14 +2220,27 @@ function renderCurrent(){
     ? `Blood gas / labs &mdash; last drawn at ${fallbackWhen} (not this timepoint)`
     : 'Blood gas / labs at this timepoint';
 
-  if(!shown && !labCards){
-    grid.innerHTML=`<div class="empty" style="grid-column:1/-1">No values entered at ${lastLabel}. Tap "Edit this timepoint" to add them.</div>`;
-    return;
-  }
+  // Blood gas panel is ALWAYS shown, even with nothing entered, so there is a
+  // fixed place to look for it and a one-tap way to add it.
+  const bgEmpty = `<div class="empty" style="grid-column:1/-1;padding:16px">
+      No blood gas recorded for this animal yet.<br>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
+        <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+        <button class="btn sm" style="width:auto" onclick="openLabForCurrent()">Enter by hand</button>
+      </div>
+    </div>`;
+  const bgActions = `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 4px">
+      <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+      <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+    </div>`;
+
   grid.innerHTML =
-    (monCards?`<div class="group-tag" style="grid-column:1/-1">Vitals</div>${monCards}`:'') +
+    (monCards?`<div class="group-tag" style="grid-column:1/-1">Vitals</div>${monCards}`
+             :`<div class="group-tag" style="grid-column:1/-1">Vitals</div>
+               <div class="empty" style="grid-column:1/-1;padding:14px">No vitals at ${lastLabel}. Tap "Edit this timepoint" to add them.</div>`) +
     (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator</div>${ventCards}`:'') +
-    (labCards?`<div class="group-tag" style="grid-column:1/-1">${labHeader}</div>${labCards}`:'');
+    `<div class="group-tag" style="grid-column:1/-1">${labCards?labHeader:'Blood gas / labs'}</div>` +
+    (labCards ? bgActions+labCards : bgEmpty);
 }
 window.renderCurrent = renderCurrent;
 
