@@ -246,13 +246,13 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v3.6</small>
+      Swine ICU <small>Current &middot; v3.8</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" hidden accept="image/*">
-    <div class="conn sim" id="conn">
+    <div class="conn" id="conn">
       <span class="led"></span>
-      <span class="label" id="connlabel">SIMULATOR</span>
+      <span class="label" id="connlabel">MANUAL ENTRY</span>
     </div>
   </header>
 
@@ -342,7 +342,11 @@
 
       <h2 class="sec" style="margin-top:8px">Recorded data</h2>
       <div class="animals" id="animalTabs"></div>
-      <div class="hint" style="margin:-4px 0 10px">Tap an animal to open its data. Tap the <b>name of the open animal</b> to rename it.</div>
+      <div style="display:flex;gap:8px;align-items:center;margin:-4px 0 10px;flex-wrap:wrap">
+        <button class="btn sm" style="width:auto" onclick="editAnimalInfo()">Study details (weight, arm, date)</button>
+        <span class="hint" style="margin:0">Tap an animal to open its data. Tap the <b>name of the open animal</b> to rename it.</span>
+      </div>
+      <div id="colToggle" style="margin-bottom:8px"></div>
       <div class="tablewrap">
         <table id="dataTable">
           <thead><tr><th>Timepoint</th></tr></thead>
@@ -371,7 +375,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v3.6
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.8
       </div>
     </main>
 
@@ -951,14 +955,20 @@ const App = {
 
 const DEFAULT_VITALS = [
   {key:'HR',   label:'HR',    unit:'bpm',  group:'vital', lo:40, hi:180},
-  {key:'ABPs', label:'ABP sys',unit:'mmHg',group:'vital', lo:70, hi:200},
-  {key:'ABPd', label:'ABP dia',unit:'mmHg',group:'vital', lo:30, hi:120},
-  {key:'MAP',  label:'MAP',   unit:'mmHg', group:'vital', lo:50, hi:120},
+  // Carotid line = sampling + proximal pressure; femoral = distal / hemorrhage.
+  // REBOA splits these, so they are recorded separately as on the paper form.
+  {key:'CAs',  label:'Carotid sys',unit:'mmHg',group:'vital', lo:50, hi:220},
+  {key:'CAd',  label:'Carotid dia',unit:'mmHg',group:'vital', lo:20, hi:140},
+  {key:'MAP',  label:'Carotid MAP',unit:'mmHg',group:'vital', lo:20, hi:140},
+  {key:'FAs',  label:'Femoral sys',unit:'mmHg',group:'vital', lo:0,  hi:220},
+  {key:'FAd',  label:'Femoral dia',unit:'mmHg',group:'vital', lo:0,  hi:140},
+  {key:'FAmap',label:'Femoral MAP',unit:'mmHg',group:'vital', lo:0,  hi:140},
   {key:'SpO2', label:'SpO2',  unit:'%',    group:'vital', lo:88, hi:100},
-  {key:'PVC',  label:'PVC',   unit:'/min', group:'vital', lo:0,  hi:30},
   {key:'Temp', label:'Temp',  unit:'C',    group:'vital', lo:35, hi:41},
   {key:'EtCO2',label:'EtCO2', unit:'mmHg', group:'vital', lo:25, hi:55},
+  {key:'Urine',label:'Urine', unit:'mL',   group:'vital', lo:null,hi:null},
   {key:'CVP',  label:'CVP',   unit:'mmHg', group:'vital', lo:0,  hi:18},
+  {key:'PVC',  label:'PVC',   unit:'/min', group:'vital', lo:0,  hi:30},
   {key:'RR',   label:'RR',    unit:'/min', group:'vent', lo:8,  hi:40},
   {key:'TV',   label:'Vt',    unit:'mL',   group:'vent', lo:200,hi:800},
   {key:'PEEP', label:'PEEP',  unit:'cmH2O',group:'vent', lo:0,  hi:20},
@@ -1262,6 +1272,69 @@ function renameAnimal(){
   toast('Renamed to '+id);
 }
 function getActiveAnimal(){return App.animals.find(a=>a.id===App.activeAnimal);}
+
+/* Study details for the active animal - weight, sex, treatment arm, date.
+   Kept on the animal so every export carries them. Shared with the data sheet. */
+function editAnimalInfo(){
+  const a=getActiveAnimal(); if(!a){ toast('No animal selected'); return; }
+  a.info=a.info||{};
+  // pull anything already typed on the data sheet for this animal
+  const sheet=HCARE.data[a.id]&&HCARE.data[a.id].case?HCARE.data[a.id].case:{};
+  const v=k=>(a.info[k]!=null&&a.info[k]!=='')?a.info[k]:(sheet[k]||'');
+  $('#capTitle').textContent='Study details - '+a.id;
+  $('#capBody').innerHTML=`
+    <div class="grid2" style="margin-bottom:4px">
+      <div class="field"><label>Animal #</label><input data-i="animalNo" value="${a.id}"></div>
+      <div class="field"><label>Weight (kg)</label><input data-i="weight" value="${v('weight')}" inputmode="decimal"></div>
+    </div>
+    <div class="grid2" style="margin-bottom:4px">
+      <div class="field"><label>Sex</label>
+        <select data-i="sex">
+          <option value="">-</option>
+          <option ${v('sex')==='M'?'selected':''}>M</option>
+          <option ${v('sex')==='F'?'selected':''}>F</option>
+        </select></div>
+      <div class="field"><label>Date</label><input data-i="date" value="${v('date')}" placeholder="MM/DD/YY"></div>
+    </div>
+    <div class="field"><label>Experiment #</label><input data-i="expNo" value="${v('expNo')}"></div>
+    <div class="field"><label>Treatment arm</label>
+      <select data-i="arm">
+        <option value="">- select -</option>
+        <option ${v('arm')==='1 unit WB'?'selected':''}>1 unit WB</option>
+        <option ${v('arm')==='1 unit WB + NAC (150mg/kg)'?'selected':''}>1 unit WB + NAC (150mg/kg)</option>
+        <option ${v('arm')==='1 unit WB + CX-01 (4.3mg/kg)'?'selected':''}>1 unit WB + CX-01 (4.3mg/kg)</option>
+      </select></div>
+    <div class="field"><label>Notes</label><textarea data-i="plan" rows="2">${v('plan')}</textarea></div>
+    <button class="btn primary" onclick="saveAnimalInfo()">Save details</button>`;
+  $('#captureModal').classList.add('show');
+}
+window.editAnimalInfo = editAnimalInfo;
+
+function saveAnimalInfo(){
+  const a=getActiveAnimal(); if(!a) return;
+  a.info=a.info||{};
+  let newId=null;
+  $$('#capBody [data-i]').forEach(el=>{
+    const k=el.dataset.i;
+    if(k==='animalNo'){ newId=el.value.trim(); return; }
+    a.info[k]=el.value;
+  });
+  a.group=a.info.arm||null;          // so the export group column is filled
+  if(newId && newId!==a.id){
+    if(App.animals.some(x=>x!==a && x.id===newId)) toast('An animal named "'+newId+'" already exists');
+    else { const old=a.id; a.id=newId; App.activeAnimal=newId;
+      if(HCARE.data[old]){ const rb={}; Object.keys(HCARE.data).forEach(k=>{rb[k===old?newId:k]=HCARE.data[k];});
+        HCARE.data=rb; if(HCARE.animal===old) HCARE.animal=newId; } }
+  }
+  // mirror into the data sheet so both places agree
+  if(!HCARE.data[a.id]) HCARE.data[a.id]={case:{},vitals:{},istat:{}};
+  Object.assign(HCARE.data[a.id].case, a.info, {animalNo:a.id});
+  $('#captureModal').classList.remove('show');
+  renderAnimalTabs(); updateAnimalLabel(); renderCurrent(); rebuildTable(); autosave();
+  toast('Study details saved');
+}
+window.saveAnimalInfo = saveAnimalInfo;
+
 function renderAnimalTabs(){
   const c=$('#animalTabs');
   c.innerHTML = App.animals.map(a=>{
@@ -1288,8 +1361,20 @@ function openCapture(tpId, prefill, photo){
   const elapsed = App.runStart ? `+${Math.round((Date.now()-App.runStart)/60000)} min` : '';
   const srcNote = fromPhoto ? 'values extracted from photo - check & correct' :
                   (Object.keys(App.live).length? 'values pre-filled from live feed' : 'enter values manually');
-  let body=`<div class="hint" style="margin-bottom:12px">${nowTs().replace('T',' ').slice(0,19)} ${elapsed?'- run '+elapsed:''} - ${srcNote}</div>`;
+  let body=`<div class="hint" style="margin-bottom:10px">${srcNote}</div>`;
   if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
+  // clock time as written on the paper form, plus run minute for the graphs
+  const existingRow=(getActiveAnimal()&&tpId)?getActiveAnimal().rows[tpId]:null;
+  const clockNow=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  const clockVal=(existingRow&&existingRow._clock)||clockNow;
+  let runVal='';
+  if(existingRow&&existingRow._runMin!=null) runVal=existingRow._runMin;
+  else if(App.runStart) runVal=Math.round((Date.now()-App.runStart)/60000);
+  else if(tp&&tp.offsetMin!=null) runVal=tp.offsetMin;
+  body+=`<div class="grid2" style="margin-bottom:6px">
+    <div class="field"><label>Time (clock)</label><input data-k="_clock" value="${clockVal}"></div>
+    <div class="field"><label>Run minute</label><input data-k="_runMinIn" value="${runVal}" inputmode="numeric"></div>
+  </div>`;
   const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
   const fieldFor=p=>{
     let v='';
@@ -1329,8 +1414,12 @@ const DEVICE_SCHEMAS = {
   },
   monitor: {
     label:'Mindray monitor (BeneVision)',
-    fields:['HR','ABPs','ABPd','MAP','SpO2','PVC','RR','Temp','CVP'],
-    hint:`A Mindray BeneVision patient monitor. Read the large live numerics: HR (green, /min), arterial BP shown as sys/dia(MAP) in red (label Art or ABP), SpO2 (blue, %), PVC count if shown, RR, Temp, CVP. For arterial pressure return keys ABPs (systolic), ABPd (diastolic), MAP (mean, the number in parentheses).`,
+    fields:['HR','CAs','CAd','MAP','FAs','FAd','FAmap','SpO2','PVC','RR','Temp','CVP'],
+    hint:`A Mindray BeneVision patient monitor from a swine REBOA study. Read the large live numerics: HR (green, /min), SpO2 (blue, %), PVC count if shown, RR, Temp, CVP.
+There may be TWO arterial pressure traces, each shown as sys/dia(MAP):
+- the CAROTID / proximal line (often labelled ART, ABP, Art1, or CA) -> return CAs (systolic), CAd (diastolic), MAP (the mean in parentheses)
+- the FEMORAL / distal line (often labelled ART2, FA, P2, or the lower trace) -> return FAs, FAd, FAmap
+If only ONE arterial pressure is displayed, treat it as the carotid line and return CAs/CAd/MAP only. Never invent the second one.`,
     extra:[]
   },
   ventilator: {
@@ -1510,8 +1599,13 @@ function mapMonitorText(text){
     const val=parseFloat(mm[2]);
     if(key && params.has(key) && out[key]===undefined && !isNaN(val)) out[key]=val;
   });
-  const bp=text.match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
-  if(bp){ if(params.has('ABPs'))out['ABPs']=+bp[1]; if(params.has('ABPd'))out['ABPd']=+bp[2]; }
+  const bps=[...text.matchAll(/(\d{2,3})\s*\/\s*(\d{2,3})\s*\(?(\d{2,3})?\)?/g)];
+  if(bps[0]){ if(params.has('CAs'))out['CAs']=+bps[0][1];
+              if(params.has('CAd'))out['CAd']=+bps[0][2];
+              if(bps[0][3]&&params.has('MAP'))out['MAP']=+bps[0][3]; }
+  if(bps[1]){ if(params.has('FAs'))out['FAs']=+bps[1][1];
+              if(params.has('FAd'))out['FAd']=+bps[1][2];
+              if(bps[1][3]&&params.has('FAmap'))out['FAmap']=+bps[1][3]; }
   return out;
 }
 
@@ -1524,9 +1618,16 @@ function saveCapture(tpId){
     const k=inp.dataset.k;
     if(k==='_label'){label=inp.value||'manual';return;}
     if(k==='_note'){row._note=inp.value;return;}
+    if(k==='_clock'){ if(inp.value.trim()) row._clock=inp.value.trim(); return; }
+    if(k==='_runMinIn'){ const n=parseInt(inp.value); if(!isNaN(n)) row._runMin=n; return; }
     const val=inp.value.trim();
     if(val!=='') row[k]=isNaN(+val)?val:+val;
   });
+  // if no run minute given, fall back to the scheduled offset so graphs line up
+  if(row._runMin==null && App.protocol && tpId){
+    const tpDef=App.protocol.timepoints.find(t=>t.id===tpId);
+    if(tpDef && tpDef.offsetMin!=null) row._runMin=tpDef.offsetMin;
+  }
   let rid = tpId;
   if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
   a.rows[rid]=row;
@@ -1801,7 +1902,9 @@ function saveDeath(){
   const fl=collectFormLabs();
   if(fl){
     Object.assign(a.rows[rid], prefixKeys(fl));
-    a.labs.push({ts:nowTs(), tp:rid, values:fl, src:{}, img:_deathPhotoData||null});
+    const di=a.labs.findIndex(l=>l.tp===rid);
+    const rec={ts:nowTs(), tp:rid, values:fl, src:{}, img:_deathPhotoData||null};
+    if(di>=0) a.labs[di]=rec; else a.labs.push(rec);
     renderLabList();
   }
   _pendingFormLabs=null;
@@ -1902,7 +2005,9 @@ function saveEvent(){
   const fl=collectFormLabs();
   if(fl){
     Object.assign(a.rows[rid], prefixKeys(fl));
-    a.labs.push({ts:nowTs(), tp:rid, values:fl, src:{}, img:_eventPhotoData||null});
+    const di=a.labs.findIndex(l=>l.tp===rid);
+    const rec={ts:nowTs(), tp:rid, values:fl, src:{}, img:_eventPhotoData||null};
+    if(di>=0) a.labs[di]=rec; else a.labs.push(rec);
     renderLabList();
   }
   _pendingFormLabs=null;
@@ -1940,7 +2045,7 @@ async function eventPhotoToVitals(file){
    TRENDS - charts that redraw every time data is entered
    ============================================================ */
 const TREND_PRESETS = {
-  hemo:['HR','MAP','ABPs','ABPd'],
+  hemo:['HR','MAP','CAs','FAmap'],
   gas:['SpO2','EtCO2','Temp','RR'],
   bloodgas:['lab_pH','lab_pCO2','lab_pO2','lab_HCO3','lab_BE','lab_Lactate','lab_sO2'],
   perfusion:['lab_Lactate','lab_BE','lab_HCO3','MAP'],
@@ -2356,7 +2461,7 @@ function renderCurrent(){
   const prevLabel=idx>0?order[idx-1][1]:null;
   renderTpStrip(CURRENT_SEL||lastId);
 
-  const when=last._ts?tsShort(last._ts):'';
+  const when=last._clock||(last._ts?tsShort(last._ts):'');
   const runMin=last._runMin!=null?`run +${last._runMin} min`:'';
   const isEvent=!!last._event;
   const isDeath=!!last._death;
@@ -2558,6 +2663,10 @@ async function mainPhotoUpload(file){
   reader.onload=async e=>{
     const img=e.target.result;
     toast('Reading photo for '+tpLabel+'...');
+    // show the photo immediately with a reading indicator, so it is obvious
+    // that something is happening on a slow connection
+    openLabModal(img);
+    $('#ocrStatus').innerHTML='<span style="color:var(--trace-amber)">Reading the photo...</span> This takes a few seconds.';
     try{
       let vitals={}, labs={}, seen='';
       if(getOcrMethod()==='claude'){
@@ -2571,31 +2680,33 @@ async function mainPhotoUpload(file){
       }
       const nV=Object.keys(vitals).length, nL=Object.keys(labs).length;
       if(!nV && !nL){
+        $('#labModal').classList.remove('show');
         toast('No values could be read - make sure the numbers are visible and not covered');
         return;
       }
-      // blood gas goes straight into the labs for this timepoint
-      if(nL){
-        if(!a.rows[tpId]){
-          let off=tp&&tp.offsetMin!=null?tp.offsetMin:null;
-          a.rows[tpId]={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):off};
-        }
-        Object.assign(a.rows[tpId], prefixKeys(labs));
-        a.labs.push({ts:nowTs(), tp:tpId, values:labs, src:{}, img:img});
-        renderLabList();
-      }
-      // vitals open the capture form for this timepoint so they can be checked
+      // Nothing is saved until it has been checked against the photo.
       if(nV){
+        // vitals form opens; any blood gas from the same photo is carried along
+        $('#labModal').classList.remove('show');
+        _pendingBothLabs = nL ? {labs:labs, img:img} : null;
         openCapture(tpId, vitals, img);
       } else {
-        rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
-        renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
+        // blood gas only -> open the lab form for review, linked to this timepoint
+        openLabModal(img);
+        setTimeout(()=>{
+          fillOcrFields(labs);
+          const sel=$('#labTp'); if(sel) sel.value=tpId;
+          $('#ocrStatus').innerHTML=`<span style="color:var(--trace)">${seen||'i-STAT'} - read ${nL} value(s)</span> for <b>${tpLabel}</b>. Check each against the photo, then press Save.`;
+        },60);
       }
       const parts=[];
       if(nV) parts.push(nV+' vital');
       if(nL) parts.push(nL+' blood gas');
-      toast((seen?seen+': ':'')+'read '+parts.join(' + ')+' value(s) for '+tpLabel);
-    }catch(err){ toast('Extraction failed: '+err.message); }
+      toast((seen?seen+': ':'')+'read '+parts.join(' + ')+' value(s) - check & save');
+    }catch(err){
+      $('#labModal').classList.remove('show');
+      toast('Extraction failed: '+err.message);
+    }
   };
   reader.readAsDataURL(file);
 }
@@ -2833,13 +2944,33 @@ function deleteAnimal(){
 }
 window.deleteAnimal = deleteAnimal;
 
+let TABLE_ALL_COLS=false;
+function toggleTableCols(){ TABLE_ALL_COLS=!TABLE_ALL_COLS; rebuildTable(); }
+window.toggleTableCols = toggleTableCols;
+
 function rebuildTable(){
   const a=getActiveAnimal();
-  const params=activeParams();
+  const allParams=activeParams();
+  // On a phone 21 columns is unreadable. Show only the parameters that
+  // actually have a value somewhere, unless the user asks for all of them.
+  let params=allParams;
+  if(!TABLE_ALL_COLS && a){
+    const used=new Set();
+    Object.values(a.rows).forEach(r=>allParams.forEach(p=>{
+      if(r[p.key]!=null && r[p.key]!=='') used.add(p.key);
+    }));
+    if(used.size) params=allParams.filter(p=>used.has(p.key));
+  }
+  const hidden=allParams.length-params.length;
+  const toggle=$('#colToggle');
+  if(toggle) toggle.innerHTML = hidden>0
+    ? `<button class="btn sm ghost" style="width:auto" onclick="toggleTableCols()">Show all ${allParams.length} columns (${hidden} empty hidden)</button>`
+    : (TABLE_ALL_COLS && a && Object.keys(a.rows).length
+        ? `<button class="btn sm ghost" style="width:auto" onclick="toggleTableCols()">Show only columns with data</button>` : '');
   const thead=$('#dataTable thead'), tbody=$('#dataTable tbody');
-  thead.innerHTML='<tr><th>Timepoint</th><th>Run</th>'+params.map(p=>`<th>${p.label}</th>`).join('')+'<th>Note</th><th>Delete</th></tr>';
+  thead.innerHTML='<tr><th>Timepoint</th><th>Time</th><th>Run</th>'+params.map(p=>`<th>${p.label}</th>`).join('')+'<th>Note</th><th>Delete</th></tr>';
   if(!a||!Object.keys(a.rows).length){
-    tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+4}">No timepoints recorded yet.</td></tr>`;return;
+    tbody.innerHTML=`<tr><td class="empty" colspan="${params.length+5}">No timepoints recorded yet.</td></tr>`;return;
   }
   const order=[];
   if(App.protocol) App.protocol.timepoints.forEach(t=>{
@@ -2849,7 +2980,7 @@ function rebuildTable(){
   tbody.innerHTML=order.map(([rid,label])=>{
     const r=a.rows[rid];
     const rowStyle = r._death?' style="background:rgba(224,57,43,.07)"':(r._event?' style="background:rgba(200,134,26,.07)"':'');
-    return `<tr${rowStyle}><td>${label}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
+    return `<tr${rowStyle}><td>${label}</td><td>${r._clock||'-'}</td><td>${r._runMin!=null?'+'+r._runMin:'-'}</td>`+
       params.map(p=>`<td>${r[p.key]??''}</td>`).join('')+
       `<td style="text-align:left;color:var(--ink-faint)">${r._note||''}</td>`+
       `<td><button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${rid}')">Delete</button></td></tr>`;
@@ -2984,7 +3115,9 @@ function saveLab(){
     if(ord.length) tpSel=ord[ord.length-1][0];
   }
   const entry={ts:nowTs(), tp:tpSel, values:vals, src:src, img:pendingLabImg};
-  a.labs.push(entry);
+  // one lab record per timepoint - re-reading or correcting replaces it
+  const dupIdx = tpSel ? a.labs.findIndex(l=>l.tp===tpSel) : -1;
+  if(dupIdx>=0) a.labs[dupIdx]=entry; else a.labs.push(entry);
   if(tpSel){
     // create the row if it does not exist yet, then merge the lab values in
     if(!a.rows[tpSel]){
@@ -3020,7 +3153,7 @@ function startSimulator(){
   stopSource();
   App.runStart=App.runStart||Date.now();
   const params=DEFAULT_VITALS;
-  const base={HR:95,ABPs:118,ABPd:68,MAP:84,SpO2:98,Temp:38.2,EtCO2:38,CVP:7,RR:16,TV:420,PEEP:5,PIP:18,FiO2:40};
+  const base={HR:95,CAs:118,CAd:68,MAP:84,FAs:112,FAd:64,FAmap:80,SpO2:98,Temp:38.2,EtCO2:38,CVP:7,RR:16,TV:420,PEEP:5,PIP:18,FiO2:40,Urine:0};
   const tick=()=>{
     params.forEach(p=>{
       const b=base[p.key]??((p.lo+p.hi)/2);
@@ -3078,14 +3211,16 @@ function exportCSV(animal){
   const params=activeParams();
   const labKeys=new Set();
   Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);}));
-  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const cols=['animal','arm','weight_kg','sex','date','experiment','timepoint','type','clock','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
   const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
+  const info=a.info||{};
   const order=[];
   if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
   Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
   order.forEach(rid=>{
     const r=a.rows[rid];
-    const row=[a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
+    const row=[a.id, a.group||info.arm||'', info.weight||'', info.sex||'', info.date||'', info.expNo||'',
+      r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._clock||'', r._runMin??'', r._ts,
       ...params.map(p=>r[p.key]??''),
       ...[...labKeys].map(k=>r[k]??''),
       (r._note||'').replace(/,/g,';')];
@@ -3098,15 +3233,17 @@ function exportAllCSV(){
   const params=activeParams();
   const labKeys=new Set();
   App.animals.forEach(a=>Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{if(k.startsWith('lab_'))labKeys.add(k);})));
-  const cols=['animal','group','timepoint','type','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
+  const cols=['animal','arm','weight_kg','sex','date','experiment','timepoint','type','clock','run_min','timestamp',...params.map(p=>p.key),...labKeys,'note'];
   const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
   App.animals.forEach(a=>{
+    const info=a.info||{};
     const order=[];
     if(App.protocol)App.protocol.timepoints.forEach(t=>{if(a.rows[t.id])order.push(t.id);});
     Object.keys(a.rows).forEach(k=>{if(!order.includes(k))order.push(k);});
     order.forEach(rid=>{
       const r=a.rows[rid];
-      lines.push([a.id, a.group||'', r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._runMin??'', r._ts,
+      lines.push([a.id, a.group||info.arm||'', info.weight||'', info.sex||'', info.date||'', info.expNo||'',
+        r._label||rid, r._death?'DEATH':(r._event?'EVENT':'scheduled'), r._clock||'', r._runMin??'', r._ts,
         ...params.map(p=>r[p.key]??''),
         ...[...labKeys].map(k=>r[k]??''),
         (r._note||'').replace(/,/g,';')].join(','));
