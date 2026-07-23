@@ -246,10 +246,9 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v3.5</small>
+      Swine ICU <small>Current &middot; v3.6</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
-    <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
     <input type="file" id="uploadPhotoFile" hidden accept="image/*">
     <div class="conn sim" id="conn">
       <span class="led"></span>
@@ -372,7 +371,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v3.5
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.6
       </div>
     </main>
 
@@ -397,21 +396,29 @@
 
     <aside class="col right" data-panel="timeline">
       <h2 class="sec">Timeline</h2>
-      <div class="card" style="padding:8px 12px">
+      <div class="card" style="padding:12px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint);font-weight:600;margin-bottom:8px">Upload a photo</div>
+        <div class="field" style="margin-bottom:8px">
+          <label>Which timepoint is this for?</label>
+          <select id="mainPhotoTp"></select>
+        </div>
+        <button class="btn cap" id="mainPhotoBtn">Take / choose photo</button>
+        <input type="file" id="mainPhotoFile" hidden accept="image/*">
+        <div class="hint" style="margin-top:6px">One place for every photo. Monitor, ventilator and i-STAT are all recognised automatically &mdash; vitals go to the timepoint, blood gas goes to the labs for that same timepoint. Several devices in one photo are read together.</div>
+
+        <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
         <div style="display:flex;gap:6px;margin-bottom:8px">
           <button class="btn sm" style="flex:1" onclick="addTimepoint()">+ Timepoint</button>
           <button class="btn sm ghost" style="flex:1;color:var(--alarm);border-color:var(--alarm)" onclick="deleteTimepoint()">- Timepoint</button>
         </div>
-        <button class="btn cap" id="photoVitals">Monitor photo &rarr; vitals</button>
-        <input type="file" id="vitalPhoto" hidden accept="image/*">
-        <button class="btn" id="captureNow" style="margin-top:8px">Edit / enter</button>
+        <button class="btn" id="captureNow">Type values (no photo)</button>
         <button class="btn amber" id="eventBtn" style="margin-top:8px">&#9888; Record EVENT (between timepoints)</button>
         <button class="btn" id="deathBtn" style="margin-top:8px;background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:700">&#10013; DEATH POINT (final sample)</button>
         <input type="file" id="deathPhoto" hidden accept="image/*">
         <input type="file" id="eventPhoto" hidden accept="image/*">
         <input type="file" id="tpPhoto" hidden accept="image/*">
-        <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction. Timestamped automatically.</div>
-        <div class="hint" id="nextHint" style="text-align:center;margin-top:6px">Photo extracts vitals automatically. "Edit / enter" corrects them, or enters values with no photo.</div>
+        <input type="file" id="vitalPhoto" hidden accept="image/*">
+        <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction.</div>
       </div>
       <div class="timeline" id="timeline">
         <div class="empty">Upload a protocol to build the timeline.</div>
@@ -419,8 +426,9 @@
 
       <h2 class="sec" style="margin-top:8px">Blood labs</h2>
       <div class="card">
-        <button class="btn ghost" id="addLab">+ Add lab photo / values</button>
+        <button class="btn ghost" id="addLab">+ Enter lab values by hand</button>
         <input type="file" id="labFile" hidden accept="image/*">
+        <div class="hint" style="margin-top:6px">For i-STAT photos use <b>Upload a photo</b> above &mdash; it reads the cartridge and files the values here automatically.</div>
         <div id="labList" style="margin-top:10px"></div>
       </div>
     </aside>
@@ -487,7 +495,6 @@
       <button class="btn sm" style="width:auto" onclick="hcRenameAnimal()">Rename</button>
       <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
-      <button class="btn sm amber" id="hcPhoto" style="width:auto">Photo &rarr; row</button>
       <input type="file" id="hcPhotoFile" hidden accept="image/*">
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
@@ -640,13 +647,12 @@ function hcGrid(sheet,rows,cols){
         ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
           ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}
           <td style="white-space:nowrap">
-            <button class="btn sm cap" style="margin-right:4px" onclick="hcRowPhoto('${sheet}',${rid})">Photo</button>
             <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button>
           </td></tr>`).join('')}
       </tbody>
     </table>
   </div>
-  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap <b>Photo</b> on a row to read values straight into it. Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that row.</div>`;
+  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that row.</div>`;
 }
 
 /* Photo straight into one sheet row - no row number prompt */
@@ -804,6 +810,7 @@ function hcMirrorIstatRow(rid){
     if(!m) return;                       // custom rows are not mirrored
     const tpId='T'+m[1];
     if(!App.protocol || !App.protocol.timepoints.find(t=>t.id===tpId)) return;
+    const tpDef=App.protocol.timepoints.find(t=>t.id===tpId);
     const src=(hcA().istat||{})[rid]; if(!src) return;
     const map={lactate:'Lactate',k:'K',glu:'Glucose',hgb:'Hb',ph:'pH',
                pco2:'pCO2',po2:'pO2',hco3:'HCO3',be:'BE',so2:'sO2'};
@@ -819,13 +826,15 @@ function hcMirrorIstatRow(rid){
     // find the animal in the main record with this name, else the active one
     let a=App.animals.find(x=>x.id===HCARE.animal) || getActiveAnimal();
     if(!a) a=addAnimal({silent:true});
-    if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:null};
+    if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef&&tpDef.offsetMin!=null)?tpDef.offsetMin:null};
     Object.assign(a.rows[tpId], prefixKeys(vals));
     // keep one lab entry per sheet row so Trends/Current can read it
     const existing=(a.labs||[]).find(l=>l._fromSheet===rid);
     if(existing){ existing.values=vals; existing.ts=nowTs(); }
     else { a.labs.push({ts:nowTs(), tp:tpId, values:vals, src:{}, img:(src._photo||null), _fromSheet:rid}); }
-    rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent(); renderLabList();
+    rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+    renderCurrent(); renderLabList(); renderAnimalTabs();
+    if(typeof renderMainPhotoTp==='function') renderMainPhotoTp();
   }catch(e){ /* mirroring must never break sheet entry */ }
 }
 function hcExportCSV(){
@@ -858,10 +867,7 @@ document.getElementById('hcClose').addEventListener('click',()=>document.getElem
 document.getElementById('hcAddAnimal').addEventListener('click',()=>hcAddAnimal(false));
 document.getElementById('hcAnimal').addEventListener('change',e=>{HCARE.animal=e.target.value;hcRenderSheet();});
 document.getElementById('hcExport').addEventListener('click',hcExportCSV);
-document.getElementById('hcPhoto').addEventListener('click',()=>{
-  if(HCARE.sheet==='case'){toast('Switch to Vitals or iSTAT sheet to read a photo into a row');return;}
-  document.getElementById('hcPhotoFile').click();
-});
+
 document.getElementById('hcPhotoFile').addEventListener('change',e=>{
   if(e.target.files[0]) hcPhotoToRow(e.target.files[0]);
   e.target.value='';
@@ -1097,7 +1103,7 @@ function loadProtocol(proto){
   rebuildTable();
   populateLabFields();
   if(!App.animals.length) addAnimal({silent:true});
-  renderTrendPicker(); renderTrends();
+  renderTrendPicker(); renderTrends(); renderMainPhotoTp();
   toast('Protocol loaded - interface rebuilt');
 }
 
@@ -1193,13 +1199,11 @@ function renderTimeline(){
             : cd.text?`<div class="countdown">${cd.text}</div>`:''}
           ${done
             ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo</button>
                  <button class="btn sm" onclick="openCapture('${tp.id}')">Edit</button>
                  <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${tp.id}')">Delete</button>
                </div>`
             : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-                 <button class="btn sm cap" onclick="photoForTimepoint('${tp.id}')">Photo &rarr; ${tp.id}</button>
-                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Type ${tp.id}</button>
+                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>
                </div>`}
         </div>
       </div>`;
@@ -1272,7 +1276,7 @@ function renderAnimalTabs(){
     return `<div class="atab ${on?'on':''}" onclick="selectAnimal('${a.id}')" title="${on?'Tap the name to rename':'Tap to open '+a.id}">${inner}</div>`;
   }).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
 }
-function selectAnimal(id){App.activeAnimal=id;CURRENT_SEL=null;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
+function selectAnimal(id){App.activeAnimal=id;CURRENT_SEL=null;renderMainPhotoTp();renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
 function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
 
 function openCapture(tpId, prefill, photo){
@@ -1527,7 +1531,7 @@ function saveCapture(tpId){
   if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
   a.rows[rid]=row;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast(`Saved ${tpId||label} for ${a.id}`);
   // if the same photo also contained lab values, open the lab form next
   if(_pendingBothLabs){
@@ -1803,7 +1807,7 @@ function saveDeath(){
   _pendingFormLabs=null;
   _deathPhotoData=null;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('Death point recorded for '+a.id+(fl?' (with '+Object.keys(fl).length+' lab value(s))':''));
 }
 window.saveDeath = saveDeath;
@@ -1904,7 +1908,7 @@ function saveEvent(){
   _pendingFormLabs=null;
   _eventPhotoData=null;
   $('#captureModal').classList.remove('show');
-  rebuildTable(); renderTimeline(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  rebuildTable(); renderTimeline(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('Event saved'+(fl?' (with '+Object.keys(fl).length+' lab value(s))':''));
 }
 window.saveEvent = saveEvent;
@@ -1946,13 +1950,27 @@ const TREND_PRESETS = {
 };
 let TREND_SEL = ['HR','MAP','SpO2','lab_Lactate'];
 
+const LAB_UNITS={pH:'',pCO2:'mmHg',pO2:'mmHg',HCO3:'mmol/L',TCO2:'mmol/L',BE:'mmol/L',
+  sO2:'%',Lactate:'mmol/L',Hb:'g/dL',Hct:'%',Na:'mmol/L',K:'mmol/L',Cl:'mmol/L',
+  Glucose:'mg/dL',iCa:'mmol/L',Creatinine:'mg/dL'};
+
 function trendSeriesOptions(){
   const opts=[];
   activeParams().forEach(p=>opts.push({key:p.key,label:p.label,unit:p.unit}));
   const a=getActiveAnimal();
   const labKeys=new Set();
-  if(a) Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{ if(k.startsWith('lab_')) labKeys.add(k); }));
-  [...labKeys].forEach(k=>opts.push({key:k,label:k.replace('lab_','')+' (lab)',unit:''}));
+  // every lab field the protocol defines, so the option exists before any data
+  const fields=(App.protocol&&App.protocol.labFields&&App.protocol.labFields.length)
+    ? App.protocol.labFields : DEFAULT_LAB_FIELDS;
+  fields.forEach(f=>labKeys.add('lab_'+f));
+  if(a){
+    Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{ if(k.startsWith('lab_')) labKeys.add(k); }));
+    (a.labs||[]).forEach(l=>Object.keys(l.values||{}).forEach(k=>labKeys.add('lab_'+k)));
+  }
+  [...labKeys].forEach(k=>{
+    const name=k.replace('lab_','');
+    opts.push({key:k, label:name+' (lab)', unit:LAB_UNITS[name]||''});
+  });
   return opts;
 }
 
@@ -2056,9 +2074,25 @@ window.renderTrends = renderTrends;
 
 function trendSVG(pts, meta){
   const W=680,PL=48,PR=14,PT=14;
-  const manyPts=pts.length>7;
+  // The x-axis shows EVERY scheduled timepoint, recorded or not, so the shape
+  // of the study is always visible and gaps are obvious.
+  const axisPts=[];
+  const seenX=new Set();
+  if(App.protocol) App.protocol.timepoints.forEach(tp=>{
+    const off=tp.offsetMin!=null?tp.offsetMin:0;
+    const short=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    axisPts.push({x:off, tag:short, full:tp.label, scheduled:true});
+    seenX.add(off);
+  });
+  // events / death that are not scheduled timepoints
+  pts.forEach(p=>{ if((p.event||p.death) && !seenX.has(p.x)){
+    axisPts.push({x:p.x, tag:p.death?'DEATH':(String(p.label).match(/EVENT\s*(\d+)/i)?'EV'+String(p.label).match(/EVENT\s*(\d+)/i)[1]:'EV'), full:p.label, scheduled:false, event:p.event, death:p.death});
+    seenX.add(p.x);
+  }});
+  axisPts.sort((a,b)=>a.x-b.x);
+  const manyPts=Math.max(pts.length, axisPts.length)>7;
   const PB=manyPts?54:38, H=manyPts?226:210;
-  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y);
+  const xs=(axisPts.length?axisPts:pts).map(p=>p.x), ys=pts.map(p=>p.y);
   let xMin=Math.min(...xs), xMax=Math.max(...xs);
   let yMin=Math.min(...ys), yMax=Math.max(...ys);
   if(xMax===xMin){ xMax=xMin+1; }
@@ -2099,26 +2133,33 @@ function trendSVG(pts, meta){
   };
   // Decide rotation from ACTUAL pixel gaps, not average spacing: points
   // cluster in time, so two labels can collide even when there are few points.
+  const gapSrc = axisPts.length?axisPts:pts;
   let minGap=Infinity;
-  for(let i=1;i<pts.length;i++){
-    const g=Math.abs(sx(pts[i].x)-sx(pts[i-1].x));
+  for(let i=1;i<gapSrc.length;i++){
+    const g=Math.abs(sx(gapSrc[i].x)-sx(gapSrc[i-1].x));
     if(g<minGap) minGap=g;
   }
-  const widest=pts.reduce((m,p)=>Math.max(m, tagOf(p).length),0)*5.6; // ~5.6px per mono char
-  // only tilt when labels would actually touch (small padding), not merely be close
-  const rotate = pts.length>1 && minGap < (widest*0.85 + 4);
-  const xlab=pts.map(p=>{
+  const widest=gapSrc.reduce((m,p)=>Math.max(m,(p.tag||tagOf(p)).length),0)*5.6;
+  const rotate = gapSrc.length>1 && minGap < (widest*0.85 + 4);
+  const hasData=new Set(pts.map(p=>p.x));
+  const labelSrc = axisPts.length?axisPts:pts.map(p=>({x:p.x, tag:tagOf(p), full:p.label, event:p.event, death:p.death}));
+  const xlab=labelSrc.map(p=>{
     const x=sx(p.x), y=H-12;
-    const col=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':'var(--ink-faint)');
-    const weight=(p.death||p.event)?'600':'400';
-    const t=tagOf(p);
-    const full=String(p.label||'').replace(/"/g,'&quot;');
+    const filled=hasData.has(p.x);
+    const col=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':(filled?'var(--ink-dim)':'var(--ink-faint)'));
+    const weight=(p.death||p.event||filled)?'600':'400';
+    const op=filled?'1':'0.55';
+    const t=p.tag||'';
+    const full=String(p.full||'').replace(/"/g,'&quot;')+(filled?'':' (no data)');
     return rotate
-      ? `<text x="${x.toFixed(1)}" y="${y}" text-anchor="end" font-size="8.5" fill="${col}" font-weight="${weight}" font-family="monospace" transform="rotate(-45 ${x.toFixed(1)} ${y})"><title>${full}</title>${t}</text>`
-      : `<text x="${x.toFixed(1)}" y="${y}" text-anchor="middle" font-size="9" fill="${col}" font-weight="${weight}" font-family="monospace"><title>${full}</title>${t}</text>`;
+      ? `<text x="${x.toFixed(1)}" y="${y}" text-anchor="end" font-size="8.5" fill="${col}" opacity="${op}" font-weight="${weight}" font-family="monospace" transform="rotate(-45 ${x.toFixed(1)} ${y})"><title>${full}</title>${t}</text>`
+      : `<text x="${x.toFixed(1)}" y="${y}" text-anchor="middle" font-size="9" fill="${col}" opacity="${op}" font-weight="${weight}" font-family="monospace"><title>${full}</title>${t}</text>`;
   }).join('');
-  // faint tick under each point so the label lines up visually
-  const ticks=pts.map(p=>`<line x1="${sx(p.x).toFixed(1)}" y1="${(H-PB+2)}" x2="${sx(p.x).toFixed(1)}" y2="${(H-PB+6)}" stroke="var(--line)" stroke-width="1"/>`).join('');
+  // tick under every scheduled timepoint; darker where data exists
+  const ticks=labelSrc.map(p=>{
+    const filled=hasData.has(p.x);
+    return `<line x1="${sx(p.x).toFixed(1)}" y1="${(H-PB+2)}" x2="${sx(p.x).toFixed(1)}" y2="${(H-PB+6)}" stroke="${filled?'var(--ink-faint)':'var(--line)'}" stroke-width="1"/>`;
+  }).join('');
   const hasEvent=pts.some(p=>p.event), hasDeath=pts.some(p=>p.death);
   let legend='';
   if(hasEvent) legend+=`<text x="${W-PR}" y="${PT+4}" text-anchor="end" font-size="9" fill="var(--trace-amber)">&#9679; event</text>`;
@@ -2452,12 +2493,11 @@ function renderCurrent(){
   const bgEmpty = `<div class="empty" style="grid-column:1/-1;padding:16px">
       No blood gas recorded for this animal yet.<br>
       <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px">
-        <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+        <button class="btn sm cap" style="width:auto" onclick="showTab('timeline')">Upload i-STAT photo</button>
         <button class="btn sm" style="width:auto" onclick="openLabForCurrent()">Enter by hand</button>
       </div>
     </div>`;
   const bgActions = `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 4px">
-      <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
       <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
     </div>`;
 
@@ -2470,6 +2510,95 @@ function renderCurrent(){
     (labCards ? bgActions+labCards : bgEmpty);
 }
 window.renderCurrent = renderCurrent;
+
+
+/* ============================================================
+   SINGLE PHOTO UPLOADER (Timeline & Labs)
+   One place for every photo. Detects monitor / ventilator / i-STAT
+   (several at once), files vitals on the chosen timepoint and blood
+   gas into the labs for that same timepoint.
+   ============================================================ */
+function renderMainPhotoTp(){
+  const sel=$('#mainPhotoTp'); if(!sel) return;
+  const a=getActiveAnimal();
+  const prev=sel.value;
+  let opts='';
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{
+    const row=a&&a.rows[t.id];
+    const lab=(row&&row._label)||t.label;
+    opts+=`<option value="${t.id}">${lab}${row?' \u2713':''}</option>`;
+  });
+  if(a) Object.keys(a.rows).forEach(rid=>{
+    if(App.protocol && App.protocol.timepoints.find(t=>t.id===rid)) return;
+    const row=a.rows[rid];
+    if(!row._event && !row._death) return;
+    opts+=`<option value="${rid}">${row._death?'\u271D ':'\u26A0 '}${row._label||rid}</option>`;
+  });
+  sel.innerHTML=opts;
+  // keep the previous choice, else jump to the first timepoint with no data
+  if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
+  else if(a && App.protocol){
+    const nextEmpty=App.protocol.timepoints.find(t=>!a.rows[t.id]);
+    if(nextEmpty) sel.value=nextEmpty.id;
+  }
+}
+window.renderMainPhotoTp = renderMainPhotoTp;
+
+async function mainPhotoUpload(file){
+  const tpId=$('#mainPhotoTp')?$('#mainPhotoTp').value:'';
+  if(!tpId){ toast('Choose a timepoint first'); return; }
+  if(getOcrMethod()==='claude' && !getApiKey()){
+    toast('No API key on this device - add it under Photo / Settings');
+    return;
+  }
+  const a=getActiveAnimal()||addAnimal({silent:true});
+  const tp=App.protocol&&App.protocol.timepoints.find(t=>t.id===tpId);
+  const tpLabel=(a.rows[tpId]&&a.rows[tpId]._label)||(tp&&tp.label)||tpId;
+  const reader=new FileReader();
+  reader.onload=async e=>{
+    const img=e.target.result;
+    toast('Reading photo for '+tpLabel+'...');
+    try{
+      let vitals={}, labs={}, seen='';
+      if(getOcrMethod()==='claude'){
+        const res=await detectAndExtract(img);
+        vitals=res.vitals||{}; labs=res.labs||{};
+        seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        vitals=out.values;
+      }
+      const nV=Object.keys(vitals).length, nL=Object.keys(labs).length;
+      if(!nV && !nL){
+        toast('No values could be read - make sure the numbers are visible and not covered');
+        return;
+      }
+      // blood gas goes straight into the labs for this timepoint
+      if(nL){
+        if(!a.rows[tpId]){
+          let off=tp&&tp.offsetMin!=null?tp.offsetMin:null;
+          a.rows[tpId]={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):off};
+        }
+        Object.assign(a.rows[tpId], prefixKeys(labs));
+        a.labs.push({ts:nowTs(), tp:tpId, values:labs, src:{}, img:img});
+        renderLabList();
+      }
+      // vitals open the capture form for this timepoint so they can be checked
+      if(nV){
+        openCapture(tpId, vitals, img);
+      } else {
+        rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+        renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
+      }
+      const parts=[];
+      if(nV) parts.push(nV+' vital');
+      if(nL) parts.push(nL+' blood gas');
+      toast((seen?seen+': ':'')+'read '+parts.join(' + ')+' value(s) for '+tpLabel);
+    }catch(err){ toast('Extraction failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
 
 /* ============================================================
    PHOTO -> a specific timepoint
@@ -2665,7 +2794,7 @@ function deleteRow(rid){
   const label=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===rid)||{}).label)||a.rows[rid]._label||rid;
   if(!confirm('Delete the recorded data for:\n\n'+label+'\n\nThis cannot be undone.')) return;
   delete a.rows[rid];
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('Deleted '+label);
 }
 window.deleteRow = deleteRow;
@@ -2687,7 +2816,7 @@ function clearAllRows(){
   if(!n){ toast('Nothing recorded yet'); return; }
   if(!confirm('Delete ALL '+n+' recorded timepoint(s) for '+a.id+'?\n\nThis cannot be undone.')) return;
   a.rows={};
-  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); autosave();
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('All timepoints cleared for '+a.id);
 }
 window.clearAllRows = clearAllRows;
@@ -3067,8 +3196,12 @@ $('#tpPhoto').addEventListener('change',e=>{
   if(e.target.files[0]) tpPhotoToCapture(e.target.files[0]);
   e.target.value='';
 });
-$('#photoVitals').addEventListener('click',()=>$('#vitalPhoto').click());
-$('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
+$('#mainPhotoBtn') && $('#mainPhotoBtn').addEventListener('click',()=>$('#mainPhotoFile').click());
+$('#mainPhotoFile') && $('#mainPhotoFile').addEventListener('change',e=>{
+  if(e.target.files[0]) mainPhotoUpload(e.target.files[0]);
+  e.target.value='';
+});
+$('#vitalPhoto') && $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
 
 let _pendingPhoto=null;
 let _pendingBothLabs=null;
@@ -3118,7 +3251,7 @@ function mapIstatToLabFields(v){
   return out;
 }
 
-$('#uploadPhotoBtn').addEventListener('click',()=>$('#uploadPhotoFile').click());
+$('#uploadPhotoBtn') && $('#uploadPhotoBtn').addEventListener('click',()=>$('#uploadPhotoFile').click());
 $('#uploadPhotoFile').addEventListener('change',e=>{
   if(e.target.files[0]){ _pendingPhoto=e.target.files[0]; $('#photoChooser').classList.add('show'); }
   e.target.value='';
@@ -3144,7 +3277,7 @@ $('#pcIstat').addEventListener('click',()=>{
   _pendingPhoto=null;
 });
 $('#pcCancel').addEventListener('click',()=>{$('#photoChooser').classList.remove('show');_pendingPhoto=null;});
-$('#addLab').addEventListener('click',()=>$('#labFile').click());
+$('#addLab').addEventListener('click',()=>openLabModal(null));
 $('#labFile').addEventListener('change',e=>{if(e.target.files[0])handleLabFile(e.target.files[0]);});
 $('#saveLab').addEventListener('click',saveLab);
 $('#ocrBtn').addEventListener('click',runOCR);
