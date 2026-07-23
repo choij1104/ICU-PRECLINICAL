@@ -228,7 +228,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v2.9</small>
+      Swine ICU <small>Current &middot; v3.0</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -353,7 +353,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v2.9
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.0
       </div>
     </main>
 
@@ -2081,13 +2081,60 @@ function renderCurrent(){
     if(p.group==='vent') ventCards+=card; else monCards+=card;
   });
 
-  // include lab values recorded at this timepoint
+  // ---- Blood gas / labs shown on Current ----
+  // Uses values merged into this row AND standalone lab entries, so an i-STAT
+  // photo shows up here even when it was saved as its own lab record.
+  // Falls back to the most recent lab drawn if this timepoint had none.
+  const BG_ORDER=['pH','pCO2','pO2','HCO3','BE','Lactate','sO2','Hb','Hct','Na','K','iCa','Glucose','TCO2','Creatinine'];
+  const collectLabs=(row)=>{
+    const out={};
+    if(row) Object.keys(row).forEach(k=>{
+      if(!k.startsWith('lab_'))return;
+      const v=row[k]; if(v==null||v==='')return;
+      out[k.replace('lab_','')]=v;
+    });
+    return out;
+  };
+  // labs attached directly to this row
+  let labVals=collectLabs(last);
+  let labSource='';
+  // plus any standalone lab entry linked to this timepoint
+  (a.labs||[]).forEach(l=>{
+    if(l.tp!==lastId) return;
+    Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='' && labVals[k]==null) labVals[k]=v; });
+  });
+  // if this timepoint has no labs at all, fall back to the latest lab drawn
+  let fellBack=false, fallbackWhen='';
+  if(!Object.keys(labVals).length && (a.labs||[]).length){
+    const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+    const lastLab=sorted[sorted.length-1];
+    Object.entries(lastLab.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='') labVals[k]=v; });
+    fellBack=true;
+    const tpName=lastLab.tp&&App.protocol?(App.protocol.timepoints.find(t=>t.id===lastLab.tp)||{}).label:null;
+    fallbackWhen=tpName||(lastLab.ts?tsShort(lastLab.ts):'earlier');
+  }
+  // previous labs for the delta: the row before, or the lab before the latest
+  const prevLabs=(()=>{
+    let pv=collectLabs(prev);
+    if(prev) (a.labs||[]).forEach(l=>{
+      const pid=order.length>1?order[order.length-2][0]:null;
+      if(l.tp && l.tp===pid) Object.entries(l.values||{}).forEach(([k,v])=>{ if(pv[k]==null) pv[k]=v; });
+    });
+    if(!Object.keys(pv).length && (a.labs||[]).length>1){
+      const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+      pv=Object.assign({}, sorted[sorted.length-2].values||{});
+    }
+    return pv;
+  })();
+
   let labCards='';
-  Object.keys(last).forEach(k=>{
-    if(!k.startsWith('lab_')) return;
-    const val=last[k]; if(val==null||val==='') return;
-    const name=k.replace('lab_','');
-    const pv=prev?prev[k]:null;
+  const labKeysSorted=Object.keys(labVals).sort((x,y)=>{
+    const ix=BG_ORDER.indexOf(x), iy=BG_ORDER.indexOf(y);
+    return (ix<0?99:ix)-(iy<0?99:iy);
+  });
+  labKeysSorted.forEach(name=>{
+    const val=labVals[name];
+    const pv=prevLabs?prevLabs[name]:null;
     let delta='';
     if(pv!=null&&pv!==''&&!isNaN(+pv)&&!isNaN(+val)){
       const dv=(+val)-(+pv);
@@ -2098,11 +2145,14 @@ function renderCurrent(){
     }
     labCards+=`
       <div class="vital">
-        <div class="vlabel">${name}<span class="vsrc">LAB</span></div>
+        <div class="vlabel">${name}<span class="vsrc">${fellBack?'PREV':'LAB'}</span></div>
         <div class="vval" style="color:var(--trace-amber)">${val}</div>
         <div style="margin-top:2px">${delta||'<span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span>'}</div>
       </div>`;
   });
+  const labHeader = fellBack
+    ? `Blood gas / labs &mdash; last drawn at ${fallbackWhen} (not this timepoint)`
+    : 'Blood gas / labs at this timepoint';
 
   if(!shown && !labCards){
     grid.innerHTML=`<div class="empty" style="grid-column:1/-1">No values entered at ${lastLabel}. Tap "Edit this timepoint" to add them.</div>`;
@@ -2111,7 +2161,7 @@ function renderCurrent(){
   grid.innerHTML =
     (monCards?`<div class="group-tag" style="grid-column:1/-1">Vitals</div>${monCards}`:'') +
     (ventCards?`<div class="group-tag" style="grid-column:1/-1">Ventilator</div>${ventCards}`:'') +
-    (labCards?`<div class="group-tag" style="grid-column:1/-1">Labs at this timepoint</div>${labCards}`:'');
+    (labCards?`<div class="group-tag" style="grid-column:1/-1">${labHeader}</div>${labCards}`:'');
 }
 window.renderCurrent = renderCurrent;
 
