@@ -133,6 +133,24 @@
   @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 rgba(255,90,82,0)}50%{box-shadow:0 0 14px rgba(255,90,82,.4)}}
   .spark{position:absolute;bottom:0;left:0;right:0;height:22px;opacity:.5}
 
+  /* Current-tab timepoint strip */
+  .tpstrip{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+  .tpchip{padding:5px 10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);
+    color:var(--ink-faint);font-size:11.5px;font-family:var(--mono);cursor:pointer;
+    display:inline-flex;align-items:center;gap:5px;transition:.12s;white-space:nowrap}
+  .tpchip:hover{border-color:var(--accent);color:var(--accent)}
+  .tpchip .dotm{width:7px;height:7px;border-radius:50%;background:var(--line);flex-shrink:0}
+  .tpchip.done{color:var(--ink);border-color:#bfe3d3;background:#f2fbf7}
+  .tpchip.done .dotm{background:var(--trace)}
+  .tpchip.event{color:var(--trace-amber);border-color:#e8d3a6;background:#fdf8ef}
+  .tpchip.event .dotm{background:var(--trace-amber)}
+  .tpchip.death{color:var(--alarm);border-color:#f0bdb7;background:#fdf2f1}
+  .tpchip.death .dotm{background:var(--alarm)}
+  .tpchip.sel{border-color:var(--accent-deep);background:var(--accent-deep);color:#fff;font-weight:600;
+    box-shadow:0 0 0 2px rgba(31,127,209,.18)}
+  .tpchip.sel .dotm{background:#fff}
+  .tpchip.pending{border-style:dashed}
+
   .group-tag{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--ink-faint);
     margin:4px 0 10px;display:flex;align-items:center;gap:8px}
   .group-tag::after{content:"";flex:1;height:1px;background:var(--line)}
@@ -228,7 +246,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v3.1</small>
+      Swine ICU <small>Current &middot; v3.3</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <button class="btn primary" id="uploadPhotoBtn" style="width:auto;margin-left:14px">Upload photo</button>
@@ -316,6 +334,7 @@
     <main class="col center" data-panel="live">
       <div id="liveArea">
         <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <div id="tpStrip" style="margin-bottom:10px"></div>
         <div id="currentHead" class="card" style="margin-bottom:12px"></div>
         <div class="vitals" id="vitalsGrid">
           <div class="empty" style="grid-column:1/-1">No data recorded yet. Record a timepoint to see values here.</div>
@@ -353,7 +372,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v3.1
+        Swine ICU &mdash; Preclinical Data Capture &middot; v3.3
       </div>
     </main>
 
@@ -1253,7 +1272,7 @@ function renderAnimalTabs(){
     return `<div class="atab ${on?'on':''}" onclick="selectAnimal('${a.id}')" title="${on?'Tap the name to rename':'Tap to open '+a.id}">${inner}</div>`;
   }).join('') + `<div class="atab add" onclick="addAnimal()">+ animal</div>`;
 }
-function selectAnimal(id){App.activeAnimal=id;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
+function selectAnimal(id){App.activeAnimal=id;CURRENT_SEL=null;renderAnimalTabs();rebuildTable();renderTimeline();updateAnimalLabel();renderTrendPicker();renderTrends();renderCurrent();}
 function updateAnimalLabel(){$('#liveAnimalLabel').textContent=App.activeAnimal||'no animal selected';}
 
 function openCapture(tpId, prefill, photo){
@@ -2075,6 +2094,72 @@ function orderedRows(a){
   return order;
 }
 
+
+/* ============================================================
+   CURRENT - timepoint strip
+   Shows EVERY timepoint in the protocol plus any events/death.
+   Colour tells you the state; tapping one shows its values.
+   ============================================================ */
+let CURRENT_SEL=null;   // null = follow the latest recorded
+
+function selectCurrentTp(rid){
+  const a=getActiveAnimal(); if(!a) return;
+  // tapping the same chip again goes back to following the latest
+  CURRENT_SEL = (CURRENT_SEL===rid) ? null : rid;
+  renderCurrent();
+}
+window.selectCurrentTp = selectCurrentTp;
+
+function renderTpStrip(selectedId){
+  const host=$('#tpStrip'); if(!host) return;
+  const a=getActiveAnimal();
+  if(!a){ host.innerHTML=''; return; }
+  const chips=[];
+  const usedIds=new Set();
+
+  // every protocol timepoint, recorded or not
+  if(App.protocol) App.protocol.timepoints.forEach(tp=>{
+    const row=a.rows[tp.id];
+    const done=!!row;
+    usedIds.add(tp.id);
+    const short=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    const cls=['tpchip'];
+    if(done) cls.push('done'); else cls.push('pending');
+    if(selectedId===tp.id) cls.push('sel');
+    chips.push({x:(row&&row._runMin!=null)?row._runMin:(tp.offsetMin??0),
+      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${tp.id}')" title="${tp.label}${done?'':' (not recorded yet)'}">
+        <span class="dotm"></span>${short}</div>`});
+  });
+
+  // events and death points, in the order they happened
+  orderedRows(a).forEach(([rid,label])=>{
+    if(usedIds.has(rid)) return;
+    const row=a.rows[rid];
+    const isD=!!row._death, isE=!!row._event;
+    const cls=['tpchip', isD?'death':(isE?'event':'done')];
+    if(selectedId===rid) cls.push('sel');
+    let short=label;
+    if(isD) short='DEATH';
+    else { const m=label.match(/EVENT\s*(\d+)/i); if(m) short='EV'+m[1]; else short=label.split(/[-–(]/)[0].trim().slice(0,10); }
+    chips.push({x:row._runMin!=null?row._runMin:9999,
+      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${rid}')" title="${label}">
+        <span class="dotm"></span>${short}</div>`});
+  });
+
+  chips.sort((p,q)=>p.x-q.x);
+  const following = selectedId==null || !a.rows[selectedId];
+  host.innerHTML=`<div class="tpstrip">${chips.map(c=>c.html).join('')}</div>
+    <div class="hint" style="margin-top:6px">
+      Tap a timepoint to see its values.
+      <span style="color:var(--trace)">&#9679;</span> recorded &middot;
+      <span style="color:var(--ink-faint)">&#9675;</span> not yet &middot;
+      <span style="color:var(--trace-amber)">&#9679;</span> event &middot;
+      <span style="color:var(--alarm)">&#9679;</span> death
+      ${CURRENT_SEL?' &mdash; <a href="#" onclick="selectCurrentTp(null);return false;" style="color:var(--accent)">show latest</a>':''}
+    </div>`;
+}
+window.renderTpStrip = renderTpStrip;
+
 function renderCurrent(){
   const head=$('#currentHead'); const grid=$('#vitalsGrid');
   if(!head||!grid) return;
@@ -2082,16 +2167,62 @@ function renderCurrent(){
   const order=orderedRows(a);
   const params=activeParams();
 
-  if(!a || !order.length){
+  if(!a || (!order.length && !(a.labs||[]).length)){
+    renderTpStrip(null);
     head.innerHTML=`<div class="hint" style="margin:0">Nothing recorded yet for this animal. Use <b>Timeline &amp; Labs</b> to record a timepoint &mdash; the latest values will appear here.</div>`;
     grid.innerHTML='<div class="empty" style="grid-column:1/-1">No data recorded yet.</div>';
     return;
   }
+  // Labs uploaded before any vitals were recorded: still show them.
+  if(!order.length && (a.labs||[]).length){
+    renderTpStrip(null);
+    const sorted=[...a.labs].sort((x,y)=>new Date(x.ts)-new Date(y.ts));
+    const lab=sorted[sorted.length-1];
+    head.innerHTML=`
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">Latest recorded</div>
+          <div style="font-size:16px;font-weight:600">Blood labs only (no vitals yet)</div>
+        </div>
+        <div class="hint" style="margin:0;text-align:right">${lab.ts?tsShort(lab.ts):''}</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn sm" style="width:auto" onclick="showTab('timeline')">Record vitals</button>
+        <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+      </div>`;
+    const BGO=['pH','pCO2','pO2','HCO3','BE','Lactate','sO2','Hb','Hct','Na','K','iCa','Glucose','TCO2','Creatinine'];
+    const vals={};
+    sorted.forEach(l=>Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='') vals[k]=v; }));
+    const keys=Object.keys(vals).sort((x,y)=>{
+      const ix=BGO.indexOf(x), iy=BGO.indexOf(y);
+      return (ix<0?99:ix)-(iy<0?99:iy);
+    });
+    grid.innerHTML =
+      `<div class="group-tag" style="grid-column:1/-1">Blood gas / labs</div>` +
+      `<div style="grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap;margin:-2px 0 4px">
+         <button class="btn sm cap" style="width:auto" onclick="istatPhotoForCurrent()">i-STAT photo</button>
+         <button class="btn sm ghost" style="width:auto" onclick="openLabForCurrent()">Add / edit labs</button>
+       </div>` +
+      keys.map(k=>`
+        <div class="vital">
+          <div class="vlabel">${k}<span class="vsrc">LAB</span></div>
+          <div class="vval" style="color:var(--trace-amber)">${vals[k]}</div>
+          <div style="margin-top:2px"><span style="font-size:11px;color:var(--ink-faint)">&nbsp;</span></div>
+        </div>`).join('');
+    return;
+  }
 
-  const [lastId,lastLabel]=order[order.length-1];
+  // pick which timepoint to show: the tapped one, else the most recent
+  let idx=order.length-1;
+  if(CURRENT_SEL){
+    const i=order.findIndex(o=>o[0]===CURRENT_SEL);
+    if(i>=0) idx=i; else CURRENT_SEL=null;   // selection no longer exists
+  }
+  const [lastId,lastLabel]=order[idx];
   const last=a.rows[lastId];
-  const prev=order.length>1?a.rows[order[order.length-2][0]]:null;
-  const prevLabel=order.length>1?order[order.length-2][1]:null;
+  const prev=idx>0?a.rows[order[idx-1][0]]:null;
+  const prevLabel=idx>0?order[idx-1][1]:null;
+  renderTpStrip(CURRENT_SEL||lastId);
 
   const when=last._ts?tsShort(last._ts):'';
   const runMin=last._runMin!=null?`run +${last._runMin} min`:'';
@@ -2102,7 +2233,7 @@ function renderCurrent(){
   head.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">Latest recorded</div>
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--ink-faint)">${CURRENT_SEL?'Viewing timepoint':'Latest recorded'}</div>
         <div style="font-size:16px;font-weight:600;color:${headColor}">${headIcon}${lastLabel}</div>
         ${isDeath&&last._deathSample?`<div class="hint" style="margin-top:2px">Final sample: <b>${last._deathSample}</b></div>`:''}
       </div>
@@ -2167,6 +2298,11 @@ function renderCurrent(){
   // plus any standalone lab entry linked to this timepoint
   (a.labs||[]).forEach(l=>{
     if(l.tp!==lastId) return;
+    Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='' && labVals[k]==null) labVals[k]=v; });
+  });
+  // also pick up unlinked lab entries (saved without choosing a timepoint)
+  (a.labs||[]).forEach(l=>{
+    if(l.tp) return;
     Object.entries(l.values||{}).forEach(([k,v])=>{ if(v!=null&&v!=='' && labVals[k]==null) labVals[k]=v; });
   });
   // if this timepoint has no labs at all, fall back to the latest lab drawn
@@ -2320,7 +2456,7 @@ let _saveTimer=null;
 
 function collectSession(){
   return {
-    version:'2.9',
+    version:'3.2',
     copyright:'(c) 2026 HAKOYA LLC. All rights reserved.',
     savedAt:nowTs(),
     runStart:App.runStart,
@@ -2603,9 +2739,27 @@ function saveLab(){
       src[i.dataset.lab]= i.closest('.field').classList.contains('ocr-filled') ? 'ocr' : 'manual';
     }
   });
-  const entry={ts:nowTs(), tp:$('#labTp').value, values:vals, src:src, img:pendingLabImg};
+  let tpSel=$('#labTp').value;
+  // If no timepoint was chosen, attach these labs to the most recent recorded
+  // row so they still show up on Current instead of disappearing.
+  if(!tpSel){
+    const ord=orderedRows(a);
+    if(ord.length) tpSel=ord[ord.length-1][0];
+  }
+  const entry={ts:nowTs(), tp:tpSel, values:vals, src:src, img:pendingLabImg};
   a.labs.push(entry);
-  if(entry.tp && a.rows[entry.tp]) Object.assign(a.rows[entry.tp], prefixKeys(vals));
+  if(tpSel){
+    // create the row if it does not exist yet, then merge the lab values in
+    if(!a.rows[tpSel]){
+      let off=null;
+      if(App.protocol){
+        const tp=App.protocol.timepoints.find(t=>t.id===tpSel);
+        if(tp && tp.offsetMin!=null) off=tp.offsetMin;
+      }
+      a.rows[tpSel]={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):off};
+    }
+    Object.assign(a.rows[tpSel], prefixKeys(vals));
+  }
   $('#labModal').classList.remove('show');
   renderLabList(); rebuildTable(); renderTrendPicker(); renderTrends(); renderCurrent(); autosave();
   const nOcr=Object.values(src).filter(s=>s==='ocr').length;
@@ -2937,7 +3091,10 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.clas
 
 loadProtocol(demoProtocol());
 // bring back anything from a previous session in this browser
-restoreSession();
+try{ restoreSession(); }catch(e){ console.error('restore failed',e); }
+// make sure every panel reflects the restored data
+try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
+     renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
 </script>
 </body>
 </html>
