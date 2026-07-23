@@ -246,7 +246,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v3.8</small>
+      Swine ICU <small>Current &middot; v4.0</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" hidden accept="image/*">
@@ -301,11 +301,9 @@
     </aside>
 
     <aside class="col left" data-panel="settings">
-      <h2 class="sec">Camera (backup)</h2>
+      <h2 class="sec">Camera</h2>
       <div class="card">
-        <button class="btn ghost" id="camBtn">Start monitor camera</button>
-        <video id="cam" style="display:none;margin-top:8px" muted playsinline></video>
-        <div class="hint">Point at the monitor as a visual backup. Snapshots are timestamped to match recorded video.</div>
+        <div class="hint" style="margin:0">Photos are taken from <b>Timeline &amp; Labs &rarr; Open camera</b>. On a laptop you can pick an external/USB camera from the list inside the camera window. The first time you use it the browser will ask for camera permission.</div>
       </div>
 
       <h2 class="sec">Photo extraction (AI)</h2>
@@ -372,10 +370,13 @@
           <input type="file" id="sessionFile" hidden accept=".json,application/json">
           <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="clearSavedData()">Erase everything</button>
         </div>
+        <div style="border-top:1px solid var(--line);margin:10px 0 8px"></div>
+        <button class="btn sm ghost" style="width:auto" onclick="showBackups()">Earlier copies on this device</button>
+        <div id="backupList" style="margin-top:8px"></div>
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v3.8
+        Swine ICU &mdash; Preclinical Data Capture &middot; v4.0
       </div>
     </main>
 
@@ -406,7 +407,10 @@
           <label>Which timepoint is this for?</label>
           <select id="mainPhotoTp"></select>
         </div>
-        <button class="btn cap" id="mainPhotoBtn">Take / choose photo</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn cap" id="mainCamBtn" style="flex:1;min-width:150px">Open camera</button>
+          <button class="btn" id="mainPhotoBtn" style="flex:1;min-width:150px">Choose a file</button>
+        </div>
         <input type="file" id="mainPhotoFile" hidden accept="image/*">
         <div class="hint" style="margin-top:6px">One place for every photo. Monitor, ventilator and i-STAT are all recognised automatically &mdash; vitals go to the timepoint, blood gas goes to the labs for that same timepoint. Several devices in one photo are read together.</div>
 
@@ -471,6 +475,32 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="camModal">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-head">
+      <h3 id="camTitle">Take a photo</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="field" id="camPickWrap" style="margin-bottom:8px">
+        <label>Camera</label>
+        <select id="camSelect"></select>
+        <div class="hint" style="margin-top:4px">Phone: choose the back camera. Laptop: choose your external/USB camera if you have one.</div>
+      </div>
+      <video id="camView" autoplay muted playsinline style="width:100%;border-radius:var(--radius);background:#000;border:1px solid var(--line)"></video>
+      <canvas id="camCanvas" style="display:none"></canvas>
+      <div id="camShot" style="display:none;margin-top:8px"></div>
+      <div id="camStatus" class="hint" style="margin-top:6px"></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn cap" style="flex:1;min-width:150px" id="camShutter">Capture</button>
+        <button class="btn" style="flex:1;min-width:120px;display:none" id="camRetake">Retake</button>
+        <button class="btn primary" style="flex:1;min-width:120px;display:none" id="camUse">Use this photo</button>
+      </div>
+      <div class="hint" style="margin-top:8px">Hold steady and fill the frame with the screen or printout. Make sure no fingers cover the numbers.</div>
+    </div>
+  </div>
+</div>
 
 <div class="modal-bg" id="photoChooser">
   <div class="modal" style="max-width:380px">
@@ -1803,7 +1833,8 @@ function recordDeath(prefill, photo){
     Record the final vitals and last sample. This is flagged separately from scheduled timepoints in the export.</div>`;
   if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
   body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('deathPhoto').click()">${photo?'Replace photo':'Add photo (monitor / i-STAT)'}</button>
+    <button class="btn sm cap" style="width:auto" onclick="openCamera('Death point photo', d=>deathPhotoToVitals(d))">${photo?'Retake with camera':'Camera'}</button>
+    <button class="btn sm" style="width:auto" onclick="document.getElementById('deathPhoto').click()">${photo?'Replace from file':'Choose a file'}</button>
     ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadDeathPhoto()">Read values again</button>`:''}
   </div>`;
   body+=`<div class="grid2" style="margin-bottom:4px">
@@ -1915,17 +1946,19 @@ function saveDeath(){
 }
 window.saveDeath = saveDeath;
 
-async function deathPhotoToVitals(file){
+async function deathPhotoToVitals(fileOrData){
+  const isData = typeof fileOrData==='string' && fileOrData.startsWith('data:');
+  const file = fileOrData;
   if(getOcrMethod()==='claude' && !getApiKey()){
+    if(isData){ recordDeath(null, file);
+      toast('No API key on this device - photo attached, enter values by hand'); return; }
     const reader0=new FileReader();
     reader0.onload=ev=>{ recordDeath(null, ev.target.result);
       toast('No API key on this device - photo attached, enter values by hand'); };
     reader0.readAsDataURL(file);
     return;
   }
-  const reader=new FileReader();
-  reader.onload=async e=>{
-    const img=e.target.result;
+  const go=async img=>{
     toast('Reading photo...');
     try{
       let values={};
@@ -1942,6 +1975,9 @@ async function deathPhotoToVitals(file){
       if(_pendingFormLabs) setTimeout(()=>showFormLabs(_pendingFormLabs.labs),30);
     }catch(err){ recordDeath(null, img); toast('Extraction failed: '+err.message); }
   };
+  if(isData) return go(file);
+  const reader=new FileReader();
+  reader.onload=e=>go(e.target.result);
   reader.readAsDataURL(file);
 }
 
@@ -1960,7 +1996,8 @@ function recordEvent(prefill, photo){
     recorded between scheduled timepoints.</div>`;
   if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:8px">`;
   body+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
-    <button class="btn sm cap" style="width:auto" onclick="document.getElementById('eventPhoto').click()">${photo?'Replace photo':'Add a photo (monitor / animal)'}</button>
+    <button class="btn sm cap" style="width:auto" onclick="openCamera('Event photo', d=>eventPhotoToVitals(d))">${photo?'Retake with camera':'Camera'}</button>
+    <button class="btn sm" style="width:auto" onclick="document.getElementById('eventPhoto').click()">${photo?'Replace from file':'Choose a file'}</button>
     ${photo?`<button class="btn sm amber" style="width:auto" onclick="rereadEventPhoto()">Read values again</button>`:''}
   </div>`;
   body+=`<div class="field"><label>What happened? (required)</label>
@@ -2018,26 +2055,40 @@ function saveEvent(){
 }
 window.saveEvent = saveEvent;
 
-async function eventPhotoToVitals(file){
+async function eventPhotoToVitals(fileOrData){
+  const isData = typeof fileOrData==='string' && fileOrData.startsWith('data:');
+  const file = fileOrData;
   if(getOcrMethod()==='claude' && !getApiKey()){
+    if(isData){ recordEvent(null, file);
+      toast('No API key on this device - photo attached, enter values by hand'); return; }
     const reader0=new FileReader();
     reader0.onload=ev=>{ recordEvent(null, ev.target.result);
       toast('No API key on this device - photo attached, enter values by hand'); };
     reader0.readAsDataURL(file);
     return;
   }
-  const reader=new FileReader();
-  reader.onload=async e=>{
-    const img=e.target.result;
+  const go=async img=>{
     toast('Reading photo...');
     try{
-      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
-      const {values}=await extractFromPhoto(img, fields, mapMonitorText);
+      let values={};
+      if(getOcrMethod()==='claude'){
+        const res=await detectAndExtract(img);
+        values=res.vitals||{};
+        _pendingFormLabs=Object.keys(res.labs||{}).length?{labs:res.labs,img:img,kind:'event'}:null;
+      } else {
+        const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+        const out=await extractFromPhoto(img, fields, mapMonitorText);
+        values=out.values;
+      }
       recordEvent(values, img);
+      if(_pendingFormLabs) setTimeout(()=>showFormLabs(_pendingFormLabs.labs),30);
       const n=Object.keys(values).length;
       toast(n?`Extracted ${n} value${n>1?'s':''} - add your note`:'No values read - enter manually');
     }catch(err){ recordEvent(null, img); toast('Extraction failed: '+err.message); }
   };
+  if(isData) return go(file);
+  const reader=new FileReader();
+  reader.onload=e=>go(e.target.result);
   reader.readAsDataURL(file);
 }
 
@@ -2617,6 +2668,110 @@ function renderCurrent(){
 window.renderCurrent = renderCurrent;
 
 
+
+/* ============================================================
+   IN-APP CAMERA
+   Take the photo without leaving the app. Works with the phone
+   camera or any external/USB camera on a laptop.
+   ============================================================ */
+let _camStream=null, _camShotData=null, _camOnUse=null;
+
+async function listCameras(){
+  const sel=$('#camSelect'); if(!sel) return;
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(x=>x.kind==='videoinput');
+    if(cams.length<=1){ $('#camPickWrap').style.display='none'; return; }
+    $('#camPickWrap').style.display='block';
+    const cur=sel.value;
+    sel.innerHTML=cams.map((c,i)=>`<option value="${c.deviceId}">${c.label||('Camera '+(i+1))}</option>`).join('');
+    if(cur && cams.some(c=>c.deviceId===cur)) sel.value=cur;
+  }catch(e){ $('#camPickWrap').style.display='none'; }
+}
+
+async function startCamStream(deviceId){
+  stopCamStream();
+  const constraints = deviceId
+    ? {video:{deviceId:{exact:deviceId}, width:{ideal:1920}, height:{ideal:1080}}}
+    : {video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}};
+  try{
+    _camStream=await navigator.mediaDevices.getUserMedia(constraints);
+  }catch(e){
+    // fall back to any camera at all
+    try{ _camStream=await navigator.mediaDevices.getUserMedia({video:true}); }
+    catch(e2){ $('#camStatus').innerHTML='<span style="color:var(--alarm)">Camera unavailable:</span> '+e2.message+'. You can still choose a photo from your files.'; return false; }
+  }
+  const v=$('#camView');
+  v.srcObject=_camStream;
+  try{ const pr=v.play(); if(pr && pr.catch) await pr.catch(()=>{}); }catch(e){}
+  await listCameras();
+  $('#camStatus').textContent='';
+  return true;
+}
+function stopCamStream(){
+  if(_camStream){ _camStream.getTracks().forEach(t=>t.stop()); _camStream=null; }
+}
+
+/* Open the camera. onUse(dataURL) is called when the user accepts a shot. */
+async function openCamera(title, onUse){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    toast('This browser cannot open the camera - choose a photo from files instead');
+    return false;
+  }
+  _camOnUse=onUse; _camShotData=null;
+  $('#camTitle').textContent=title||'Take a photo';
+  $('#camShot').style.display='none'; $('#camShot').innerHTML='';
+  $('#camView').style.display='block';
+  $('#camShutter').style.display='';
+  $('#camRetake').style.display='none';
+  $('#camUse').style.display='none';
+  $('#camStatus').textContent='Starting camera...';
+  $('#camModal').classList.add('show');
+  const ok=await startCamStream($('#camSelect')?$('#camSelect').value:null);
+  return ok;
+}
+window.openCamera = openCamera;
+
+function closeCamera(){
+  stopCamStream();
+  $('#camModal').classList.remove('show');
+  _camOnUse=null; _camShotData=null;
+}
+
+function camCapture(){
+  const v=$('#camView'), c=$('#camCanvas');
+  if(!v || !v.videoWidth){ toast('Camera not ready yet'); return; }
+  c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  // JPEG keeps the upload small enough for the API even from a 12MP phone
+  _camShotData=c.toDataURL('image/jpeg',0.85);
+  $('#camShot').innerHTML=`<img src="${_camShotData}" style="width:100%;border-radius:var(--radius);border:1px solid var(--line)">`;
+  $('#camShot').style.display='block';
+  $('#camView').style.display='none';
+  $('#camShutter').style.display='none';
+  $('#camRetake').style.display='';
+  $('#camUse').style.display='';
+  const kb=Math.round(_camShotData.length*0.75/1024);
+  $('#camStatus').textContent='Captured ('+c.width+'x'+c.height+', ~'+kb+' KB). Check the numbers are readable.';
+}
+
+function camRetake(){
+  _camShotData=null;
+  $('#camShot').style.display='none'; $('#camShot').innerHTML='';
+  $('#camView').style.display='block';
+  $('#camShutter').style.display='';
+  $('#camRetake').style.display='none';
+  $('#camUse').style.display='none';
+  $('#camStatus').textContent='';
+}
+
+function camUse(){
+  if(!_camShotData){ toast('Take a photo first'); return; }
+  const data=_camShotData, cb=_camOnUse;
+  closeCamera();
+  if(cb) cb(data);
+}
+
 /* ============================================================
    SINGLE PHOTO UPLOADER (Timeline & Labs)
    One place for every photo. Detects monitor / ventilator / i-STAT
@@ -2649,7 +2804,7 @@ function renderMainPhotoTp(){
 }
 window.renderMainPhotoTp = renderMainPhotoTp;
 
-async function mainPhotoUpload(file){
+async function mainPhotoUpload(fileOrData){
   const tpId=$('#mainPhotoTp')?$('#mainPhotoTp').value:'';
   if(!tpId){ toast('Choose a timepoint first'); return; }
   if(getOcrMethod()==='claude' && !getApiKey()){
@@ -2659,9 +2814,7 @@ async function mainPhotoUpload(file){
   const a=getActiveAnimal()||addAnimal({silent:true});
   const tp=App.protocol&&App.protocol.timepoints.find(t=>t.id===tpId);
   const tpLabel=(a.rows[tpId]&&a.rows[tpId]._label)||(tp&&tp.label)||tpId;
-  const reader=new FileReader();
-  reader.onload=async e=>{
-    const img=e.target.result;
+  const run=async img=>{
     toast('Reading photo for '+tpLabel+'...');
     // show the photo immediately with a reading indicator, so it is obvious
     // that something is happening on a slow connection
@@ -2708,7 +2861,11 @@ async function mainPhotoUpload(file){
       toast('Extraction failed: '+err.message);
     }
   };
-  reader.readAsDataURL(file);
+  // a data URL comes straight from the in-app camera; a File needs reading
+  if(typeof fileOrData==='string' && fileOrData.startsWith('data:')) return run(fileOrData);
+  const reader=new FileReader();
+  reader.onload=e=>run(e.target.result);
+  reader.readAsDataURL(fileOrData);
 }
 
 /* ============================================================
@@ -2812,9 +2969,72 @@ function collectSession(){
   };
 }
 
+
+/* ============================================================
+   MIGRATION - data saved by an older version must keep working.
+   Field names changed in v3.8 (single ABP -> carotid + femoral),
+   so old rows are converted instead of silently disappearing.
+   ============================================================ */
+const FIELD_MIGRATIONS = {
+  ABPs:'CAs', ABPd:'CAd',        // the old single arterial line was the carotid
+  femBP:null, carBP:null          // handled specially below (string "120/80(93)")
+};
+
+function migrateRow(r){
+  if(!r || typeof r!=='object') return r;
+  let touched=false;
+  Object.entries(FIELD_MIGRATIONS).forEach(([oldK,newK])=>{
+    if(!newK) return;
+    if(r[oldK]!=null && r[oldK]!=='' && (r[newK]==null||r[newK]==='')){
+      r[newK]=r[oldK]; touched=true;
+    }
+    if(r[oldK]!=null) delete r[oldK];
+  });
+  // "120/80(93)" style strings from the paper-form fields
+  const splitBP=(val,sKey,dKey,mKey)=>{
+    if(typeof val!=='string') return;
+    const m=val.match(/(\d{1,3})\s*\/\s*(\d{1,3})\s*\(?(\d{1,3})?\)?/);
+    if(!m) return;
+    if(r[sKey]==null||r[sKey]==='') r[sKey]=+m[1];
+    if(r[dKey]==null||r[dKey]==='') r[dKey]=+m[2];
+    if(m[3] && (r[mKey]==null||r[mKey]==='')) r[mKey]=+m[3];
+    touched=true;
+  };
+  if(r.carBP){ splitBP(r.carBP,'CAs','CAd','MAP'); delete r.carBP; }
+  if(r.femBP){ splitBP(r.femBP,'FAs','FAd','FAmap'); delete r.femBP; }
+  return r;
+}
+
+function migrateSession(o){
+  if(!o) return o;
+  let n=0;
+  (o.animals||[]).forEach(a=>{
+    Object.values(a.rows||{}).forEach(r=>{
+      const before=JSON.stringify(r);
+      migrateRow(r);
+      if(JSON.stringify(r)!==before) n++;
+    });
+  });
+  if(n) console.log('migrated '+n+' row(s) from an older version');
+  o._migrated=n;
+  return o;
+}
+
 function applySession(o){
   if(!o||typeof o!=='object') throw new Error('Not a valid session file');
-  if(o.protocol) App.protocol=o.protocol;
+  migrateSession(o);
+  if(o.protocol){
+    const cur=App.protocol;
+    App.protocol=o.protocol;
+    // Keep the CURRENT app's parameter list. A session saved by an older
+    // version carries the old field names, which would hide newer fields.
+    if(cur && cur.params) App.protocol.params=cur.params;
+    if(cur && cur.labFields) App.protocol.labFields=cur.labFields;
+    // if the saved protocol has no timepoints, fall back to the current one
+    if(!App.protocol.timepoints || !App.protocol.timepoints.length){
+      App.protocol.timepoints = cur?cur.timepoints:[];
+    }
+  }
   App.animals=Array.isArray(o.animals)?o.animals:[];
   App.activeAnimal=o.activeAnimal||(App.animals[0]&&App.animals[0].id)||null;
   App.runStart=o.runStart||null;
@@ -2829,11 +3049,70 @@ function applySession(o){
   renderLabList(); updateAnimalLabel(); renderTrendPicker(); renderTrends(); renderCurrent();
 }
 
+
+/* Rolling backups: the last few autosaves are kept under separate keys so a
+   bad update, an accidental Erase, or a failed restore can be undone. */
+const BACKUP_KEYS=['swineicu_backup_1','swineicu_backup_2','swineicu_backup_3'];
+
+function rotateBackup(payload){
+  try{
+    for(let i=BACKUP_KEYS.length-1;i>0;i--){
+      const prev=localStorage.getItem(BACKUP_KEYS[i-1]);
+      if(prev) localStorage.setItem(BACKUP_KEYS[i], prev);
+    }
+    localStorage.setItem(BACKUP_KEYS[0], payload);
+  }catch(e){ /* storage full - the main save still matters more */ }
+}
+
+function listBackups(){
+  const out=[];
+  BACKUP_KEYS.forEach((k,i)=>{
+    try{
+      const raw=localStorage.getItem(k); if(!raw) return;
+      const o=JSON.parse(raw);
+      const nA=(o.animals||[]).length;
+      const nR=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
+      out.push({key:k, when:o.savedAt?new Date(o.savedAt).toLocaleString():'unknown', animals:nA, rows:nR});
+    }catch(e){}
+  });
+  return out;
+}
+
+function restoreBackup(key){
+  try{
+    const raw=localStorage.getItem(key); if(!raw){ toast('That backup is empty'); return; }
+    const o=JSON.parse(raw);
+    const nR=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
+    if(!confirm('Restore this backup?\n\n'+(o.animals||[]).length+' animal(s), '+nR+' recorded timepoint(s)\nSaved: '+(o.savedAt?new Date(o.savedAt).toLocaleString():'unknown')+'\n\nThis replaces what is in the app now.')) return;
+    applySession(o); autosave();
+    toast('Backup restored');
+  }catch(e){ toast('Could not read that backup'); }
+}
+window.restoreBackup = restoreBackup;
+
+function showBackups(){
+  const list=listBackups();
+  const host=$('#backupList'); if(!host) return;
+  if(!list.length){ host.innerHTML='<div class="hint" style="margin:0">No earlier copies yet. They build up as you work.</div>'; return; }
+  host.innerHTML='<div class="hint" style="margin:0 0 6px">Earlier copies kept on this device:</div>'+
+    list.map(b=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span class="hint" style="margin:0">${b.when} &middot; ${b.animals} animal(s), ${b.rows} timepoint(s)</span>
+      <button class="btn sm ghost" style="width:auto" onclick="restoreBackup('${b.key}')">Restore</button>
+    </div>`).join('');
+}
+window.showBackups = showBackups;
+
 function autosave(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     try{
-      localStorage.setItem(SAVE_KEY, JSON.stringify(collectSession()));
+      const payload=JSON.stringify(collectSession());
+      localStorage.setItem(SAVE_KEY, payload);
+      // keep a rolling copy every few minutes, not on every keystroke
+      const nowMs=Date.now();
+      if(!autosave._lastBackup || nowMs-autosave._lastBackup > 180000){
+        rotateBackup(payload); autosave._lastBackup=nowMs;
+      }
       const el=$('#saveStatus');
       if(el){ el.textContent='saved '+new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}); el.style.color='var(--trace)'; }
     }catch(e){
@@ -2855,7 +3134,9 @@ function restoreSession(){
     if(!nAnimals && !nRows) return false;
     applySession(o);
     const when=o.savedAt?new Date(o.savedAt).toLocaleString():'earlier';
-    toast('Restored your data from '+when);
+    toast(o._migrated
+      ? 'Restored your data from '+when+' ('+o._migrated+' row(s) updated to the new blood-pressure fields)'
+      : 'Restored your data from '+when);
     const el=$('#saveStatus');
     if(el){ el.textContent='restored'; el.style.color='var(--trace)'; }
     return true;
@@ -2888,14 +3169,16 @@ function loadSessionFile(file){
 }
 
 function clearSavedData(){
-  if(!confirm('Erase ALL data in the app and the autosave?\n\nExport or save a file first if you need it. This cannot be undone.')) return;
+  if(!confirm('Erase ALL data in the app and the autosave?\n\nA copy is kept under "Earlier copies" so this can be undone, but export or save a file as well if the data matters.')) return;
+  try{ rotateBackup(localStorage.getItem(SAVE_KEY)||JSON.stringify(collectSession())); }catch(e){}
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   App.animals=[]; App.activeAnimal=null; App.runStart=null;
   HCARE.data={}; HCARE.animal=null;
   addAnimal({silent:true});
   hcAddAnimal(true);
   renderTimeline(); rebuildTable(); renderLabList(); renderTrendPicker(); renderTrends(); renderCurrent();
-  toast('All data cleared');
+  showBackups();
+  toast('All data cleared - an earlier copy is kept below');
 }
 window.clearSavedData = clearSavedData;
 
@@ -3314,7 +3597,7 @@ $('#connectBtn').addEventListener('click',()=>{
   if($('#srcMode').value==='sim')startSimulator();
   else connectBridge($('#wsAddr').value.trim());
 });
-$('#camBtn').addEventListener('click',toggleCamera);
+$('#camBtn') && $('#camBtn').addEventListener('click',toggleCamera);
 $('#ocrMethod')&&$('#ocrMethod').addEventListener('change',e=>{
   $('#apiKeyField').style.display = e.target.value==='claude'?'block':'none';
 });
@@ -3333,7 +3616,18 @@ $('#tpPhoto').addEventListener('change',e=>{
   if(e.target.files[0]) tpPhotoToCapture(e.target.files[0]);
   e.target.value='';
 });
+$('#mainCamBtn') && $('#mainCamBtn').addEventListener('click',()=>{
+  const sel=$('#mainPhotoTp');
+  const lbl=sel&&sel.selectedOptions[0]?sel.selectedOptions[0].textContent.trim():'';
+  openCamera('Photo for '+(lbl||'this timepoint'), data=>mainPhotoUpload(data));
+});
 $('#mainPhotoBtn') && $('#mainPhotoBtn').addEventListener('click',()=>$('#mainPhotoFile').click());
+$('#camShutter') && $('#camShutter').addEventListener('click',camCapture);
+$('#camRetake') && $('#camRetake').addEventListener('click',camRetake);
+$('#camUse') && $('#camUse').addEventListener('click',camUse);
+$('#camSelect') && $('#camSelect').addEventListener('change',e=>startCamStream(e.target.value));
+$('#camModal') && $('#camModal').addEventListener('click',e=>{ if(e.target.id==='camModal') closeCamera(); });
+$$('#camModal [data-close]').forEach(b=>b.addEventListener('click',closeCamera));
 $('#mainPhotoFile') && $('#mainPhotoFile').addEventListener('change',e=>{
   if(e.target.files[0]) mainPhotoUpload(e.target.files[0]);
   e.target.value='';
