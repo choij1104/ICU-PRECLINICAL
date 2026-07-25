@@ -7,7 +7,10 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
+<meta name="theme-color" content="#ffffff">
 <title>Swine ICU — Data Capture</title>
 <meta name="author" content="HAKOYA LLC">
 <meta name="copyright" content="Copyright (c) 2026 HAKOYA LLC. All rights reserved.">
@@ -16,6 +19,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root{
+    color-scheme: light only;
     --bezel:#eef2f5;
     --panel:#ffffff;
     --panel-2:#f4f7f9;
@@ -36,10 +40,21 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{height:100%}
+  html{background:var(--bezel);color-scheme:light only}
+  /* Some phones force a dark theme on any page. This app is a light clinical
+     UI, so re-assert the palette rather than letting the OS invert it. */
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bezel:#eef2f5; --panel:#ffffff; --panel-2:#f4f7f9; --line:#d8e0e6;
+      --ink:#1c2b33; --ink-dim:#566872; --ink-faint:#8497a0;
+    }
+    html,body{background:#eef2f5;color:#1c2b33}
+  }
   body{
     font-family:var(--sans);
     background:var(--bezel);
     color:var(--ink);
+    -webkit-text-fill-color:var(--ink);
     font-size:14px;
     line-height:1.45;
     -webkit-font-smoothing:antialiased;
@@ -47,7 +62,7 @@
   button{font-family:inherit;cursor:pointer}
   input,select,textarea{font-family:inherit}
 
-  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh;overflow:hidden;background:var(--bezel)}
   header.topbar{
     display:flex;align-items:center;gap:16px;
     padding:10px 18px;background:var(--panel);
@@ -76,7 +91,8 @@
   .tabbtn:hover{color:var(--ink)}
   .tabbtn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
 
-  .body{display:block;overflow-y:auto;min-height:0;flex:1}
+  .body{display:block;overflow-y:auto;min-height:0;flex:1;background:var(--bezel)}
+  .col{background:var(--bezel)}
   .col{padding:16px 18px;max-width:1100px;margin:0 auto;display:none}
   .col.active{display:block}
   .col.left{background:transparent}
@@ -211,7 +227,8 @@
     color:var(--ink-faint);margin-bottom:5px}
   .field input,.field select,.field textarea{width:100%;padding:8px 10px;background:var(--panel-2);
     border:1px solid var(--line);border-radius:var(--radius);color:var(--ink);font-size:13px;
-    font-family:var(--mono)}
+    font-family:var(--mono);-webkit-text-fill-color:var(--ink);color-scheme:light}
+  input,select,textarea,button{color-scheme:light}
   .field input:focus,.field select:focus,.field textarea:focus{outline:none;border-color:var(--accent)}
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
@@ -246,7 +263,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v4.0</small>
+      Swine ICU <small>Current &middot; v4.3</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" hidden accept="image/*">
@@ -306,6 +323,14 @@
         <div class="hint" style="margin:0">Photos are taken from <b>Timeline &amp; Labs &rarr; Open camera</b>. On a laptop you can pick an external/USB camera from the list inside the camera window. The first time you use it the browser will ask for camera permission.</div>
       </div>
 
+      <h2 class="sec">Check photo reading</h2>
+      <div class="card">
+        <div class="hint" style="margin:0 0 8px">If a photo does not read, run this. It shows exactly where it stops.</div>
+        <input type="file" id="selfTestFile" hidden accept="image/*">
+        <button class="btn" id="selfTestBtn">Test with a photo</button>
+        <div id="selfTestOut" style="margin-top:10px;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
+      </div>
+
       <h2 class="sec">Photo extraction (AI)</h2>
       <div class="card">
         <div class="field" style="margin-bottom:8px">
@@ -331,6 +356,7 @@
     <main class="col center" data-panel="live">
       <div id="liveArea">
         <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <div class="animals" id="animalTabsTop"></div>
         <div id="tpStrip" style="margin-bottom:10px"></div>
         <div id="currentHead" class="card" style="margin-bottom:12px"></div>
         <div class="vitals" id="vitalsGrid">
@@ -376,7 +402,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v4.0
+        Swine ICU &mdash; Preclinical Data Capture &middot; v4.3
       </div>
     </main>
 
@@ -1265,16 +1291,16 @@ function addAnimal(opts){
   const n=App.animals.length+1;
   let id, group=null;
   if(opts.silent){
-    id='Pig-'+String(n).padStart(2,'0');
+    id='Animal '+String(n);
   }else{
-    id=prompt('Animal ID', 'Pig-'+String(n).padStart(2,'0'));
+    id=prompt('Animal # / ID', 'Animal '+String(n));
     if(id===null)return;
     const groups=App.protocol&&App.protocol.groups;
     if(groups&&groups.length){
       group=prompt('Group ('+groups.join(' / ')+')', groups[(n-1)%groups.length]);
     }
   }
-  const a={id:id||('Pig-'+n), group:group||null, rows:{}, labs:[]};
+  const a={id:id||('Animal '+n), group:group||null, rows:{}, labs:[]};
   App.animals.push(a); App.activeAnimal=a.id;
   renderAnimalTabs(); rebuildTable(); renderTimeline(); updateAnimalLabel(); renderCurrent(); autosave();
   return a;
@@ -1366,7 +1392,11 @@ function saveAnimalInfo(){
 window.saveAnimalInfo = saveAnimalInfo;
 
 function renderAnimalTabs(){
-  const c=$('#animalTabs');
+  renderAnimalTabsInto($('#animalTabsTop'));
+  renderAnimalTabsInto($('#animalTabs'));
+}
+function renderAnimalTabsInto(c){
+  if(!c) return;
   c.innerHTML = App.animals.map(a=>{
     const on=a.id===App.activeAnimal;
     const nRows=Object.keys(a.rows||{}).length;
@@ -1406,10 +1436,12 @@ function openCapture(tpId, prefill, photo){
     <div class="field"><label>Run minute</label><input data-k="_runMinIn" value="${runVal}" inputmode="numeric"></div>
   </div>`;
   const mon=params.filter(p=>p.group!=='vent'), vent=params.filter(p=>p.group==='vent');
+  const saved=(getActiveAnimal()&&tpId)?getActiveAnimal().rows[tpId]:null;
   const fieldFor=p=>{
     let v='';
     let ocr=false;
     if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
+    else if(saved && saved[p.key]!=null && saved[p.key]!=='') v=saved[p.key];   // keep what was recorded
     else { const live=App.live[p.key]; if(live&&live.value!=null && !fromPhoto) v=live.value; }
     return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
       <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
@@ -1417,11 +1449,16 @@ function openCapture(tpId, prefill, photo){
   body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Patient monitor</div>`;
   body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
   if(vent.length){
-    body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin:14px 0 8px">Ventilator</div>`;
-    body+=`<div class="grid3">${vent.map(fieldFor).join('')}</div>`;
+    const ventHasData = saved && vent.some(p=>saved[p.key]!=null&&saved[p.key]!=='');
+    const ventPrefilled = prefill && vent.some(p=>prefill[p.key]!=null);
+    const openVent = ventHasData||ventPrefilled;
+    body+=`<details ${openVent?'open':''} style="margin:14px 0 4px">
+      <summary style="cursor:pointer;font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;font-weight:600">Ventilator (${vent.length} fields)${openVent?'':' - tap to open'}</summary>
+      <div class="grid3" style="margin-top:8px">${vent.map(fieldFor).join('')}</div>
+    </details>`;
   }
   body+=`<div class="field" style="margin-top:14px"><label>Note / intervention</label>
-    <textarea data-k="_note" rows="2" placeholder="e.g. started norepi 0.1 mcg/kg/min"></textarea></div>`;
+    <textarea data-k="_note" rows="2" placeholder="e.g. started norepi 0.1 mcg/kg/min">${(saved&&saved._note)?String(saved._note).replace(/</g,'&lt;'):''}</textarea></div>`;
   if(!tp){
     body+=`<div class="field"><label>Label this timepoint</label>
       <input data-k="_label" value="${elapsed||'manual'}"></div>`;
@@ -1641,6 +1678,9 @@ function mapMonitorText(text){
 
 function saveCapture(tpId){
   const a=getActiveAnimal(); if(!a)return;
+  // first record of the study starts the run clock, so countdowns and
+  // run minutes work without the user having to press anything
+  if(!App.runStart && !Object.keys(a.rows).length) App.runStart=Date.now();
   const inputs=$$('#capBody [data-k]');
   const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
   let label=tpId;
@@ -1660,7 +1700,18 @@ function saveCapture(tpId){
   }
   let rid = tpId;
   if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=label; }
-  a.rows[rid]=row;
+  // merge over the existing row so labs, photos and death/event flags survive an edit
+  const prevRow=a.rows[rid];
+  if(prevRow){
+    const keep={};
+    Object.keys(prevRow).forEach(k=>{
+      if(k.startsWith('lab_') || ['_photo','_death','_event','_deathTime','_deathSample','_deathTp','_label'].includes(k)) keep[k]=prevRow[k];
+    });
+    a.rows[rid]=Object.assign({}, keep, row);
+    if(prevRow._label && !row._label) a.rows[rid]._label=prevRow._label;
+  } else {
+    a.rows[rid]=row;
+  }
   $('#captureModal').classList.remove('show');
   rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast(`Saved ${tpId||label} for ${a.id}`);
@@ -1910,10 +1961,28 @@ function saveDeath(){
     else {                                  // it was merged into a timepoint - unmerge the flags
       delete a.rows[k]._death; delete a.rows[k]._deathTime;
       delete a.rows[k]._deathSample; delete a.rows[k]._deathTp;
-      if(a.rows[k]._label && a.rows[k]._label.indexOf('DEATH')===0) delete a.rows[k]._label;
+      // drop any DEATH wording from the label; fall back to the protocol name
+      if(a.rows[k]._label && /DEATH/i.test(a.rows[k]._label)){
+        const tpDef=App.protocol?App.protocol.timepoints.find(t=>t.id===k):null;
+        if(tpDef) delete a.rows[k]._label;
+        else a.rows[k]._label=a.rows[k]._label.replace(/\s*-\s*DEATH.*$/i,'').trim()||k;
+      }
     }
   });
 
+  // Blank vitals in the death form must not erase what was already recorded.
+  const targetId = (tpChoice && App.protocol && App.protocol.timepoints.find(t=>t.id===tpChoice)) ? tpChoice : null;
+  const prior = targetId ? a.rows[targetId] : null;
+  if(prior){
+    activeParams().forEach(p=>{
+      const entered=row[p.key];
+      const had=prior[p.key];
+      // keep the old value when the field was left blank, or when a 0 was
+      // pre-filled by the form but the animal genuinely had a value before
+      if((entered==null||entered==='') && had!=null && had!=='') row[p.key]=had;
+    });
+    Object.keys(prior).forEach(k=>{ if(k.startsWith('lab_') && row[k]==null) row[k]=prior[k]; });
+  }
   let rid;
   if(tpChoice && App.protocol && App.protocol.timepoints.find(t=>t.id===tpChoice)){
     // file the death against that scheduled timepoint, keeping any data already there
@@ -2458,7 +2527,13 @@ function renderCurrent(){
   if(!a || (!order.length && !(a.labs||[]).length)){
     renderTpStrip(null);
     head.innerHTML=`<div class="hint" style="margin:0">Nothing recorded yet for this animal. Use <b>Timeline &amp; Labs</b> to record a timepoint &mdash; the latest values will appear here.</div>`;
-    grid.innerHTML='<div class="empty" style="grid-column:1/-1">No data recorded yet.</div>';
+    grid.innerHTML=
+      `<div class="group-tag" style="grid-column:1/-1">Vitals</div>
+       <div class="empty" style="grid-column:1/-1;padding:14px">No vitals recorded yet.</div>
+       <div class="group-tag" style="grid-column:1/-1">Blood gas / labs</div>
+       <div class="empty" style="grid-column:1/-1;padding:14px">No blood gas recorded yet.
+         <div style="margin-top:10px"><button class="btn sm" style="width:auto" onclick="openLabForCurrent()">Enter by hand</button></div>
+       </div>`;
     return;
   }
   // Labs uploaded before any vitals were recorded: still show them.
@@ -2778,6 +2853,60 @@ function camUse(){
    (several at once), files vitals on the chosen timepoint and blood
    gas into the labs for that same timepoint.
    ============================================================ */
+
+/* Visible, step-by-step check of the whole photo path. Because a phone has
+   no console, this reports each stage on screen so failures are obvious. */
+function stLine(html){ const o=$('#selfTestOut'); if(o) o.innerHTML+=html+'<br>'; }
+function stOK(t){ stLine('<span style="color:var(--trace)">&#10003;</span> '+t); }
+function stBad(t){ stLine('<span style="color:var(--alarm)">&#10007;</span> '+t); }
+function stInfo(t){ stLine('<span style="color:var(--ink-faint)">&#8226;</span> '+t); }
+
+async function runSelfTest(file){
+  const o=$('#selfTestOut'); if(o) o.innerHTML='';
+  stInfo('Started '+new Date().toLocaleTimeString());
+
+  // 1. secure context (camera + API need HTTPS)
+  if(window.isSecureContext) stOK('Page is secure (HTTPS)');
+  else stBad('Page is NOT https - photo reading and camera will not work. Open the app from its https:// address.');
+
+  // 2. API key present
+  const key=getApiKey();
+  if(!key){ stBad('No API key saved on this device. Paste your key above and press Save, then test again.'); return; }
+  if(!/^sk-ant-/.test(key)) stBad('The saved key does not start with "sk-ant-". It may be incomplete.');
+  else stOK('API key is saved ('+key.slice(0,10)+'...'+key.slice(-4)+', length '+key.length+')');
+
+  // 3. image loaded
+  const img=await new Promise((res,rej)=>{
+    const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file);
+  }).catch(e=>{ stBad('Could not read the file: '+e.message); return null; });
+  if(!img) return;
+  const kb=Math.round(img.length*0.75/1024);
+  stOK('Photo loaded ('+kb+' KB)');
+  if(kb>4500) stInfo('Large photo - it will still send, but a smaller one is faster.');
+
+  // 4. actually call the API
+  stInfo('Contacting Anthropic... (a few seconds)');
+  try{
+    const res=await detectAndExtract(img);
+    const nDev=(res.readouts||[]).length;
+    const nV=Object.keys(res.vitals||{}).length;
+    const nL=Object.keys(res.labs||{}).length;
+    if(nDev) stOK('Anthropic replied. Devices seen: '+res.readouts.map(r=>r.device+(r.cartridge?' '+r.cartridge:'')).join(', '));
+    else stInfo('Anthropic replied but saw no known device in this photo.');
+    if(nV) stOK('Vitals read: '+Object.keys(res.vitals).join(', '));
+    if(nL) stOK('Blood gas read: '+Object.keys(res.labs).join(', '));
+    if(!nV && !nL) stBad('No values could be read from this photo. Make sure the numbers are sharp, filled the frame, and nothing covers them.');
+    else stOK('Reading works. You can use Open camera / Choose a file on the Timeline tab.');
+  }catch(err){
+    stBad('API call failed: '+err.message);
+    const m=String(err.message||'');
+    if(/401|invalid|authentication/i.test(m)) stInfo('The key was rejected. Make a fresh key at console.anthropic.com and paste the whole thing.');
+    else if(/credit|billing|quota|429/i.test(m)) stInfo('This looks like a billing/quota issue on the Anthropic account.');
+    else if(/Failed to fetch|NetworkError|Load failed/i.test(m)) stInfo('The network blocked the request. Some hospital/guest WiFi blocks it - try cellular data.');
+  }
+}
+window.runSelfTest = runSelfTest;
+
 function renderMainPhotoTp(){
   const sel=$('#mainPhotoTp'); if(!sel) return;
   const a=getActiveAnimal();
@@ -2795,20 +2924,27 @@ function renderMainPhotoTp(){
     opts+=`<option value="${rid}">${row._death?'\u271D ':'\u26A0 '}${row._label||rid}</option>`;
   });
   sel.innerHTML=opts;
-  // keep the previous choice, else jump to the first timepoint with no data
-  if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
-  else if(a && App.protocol){
-    const nextEmpty=App.protocol.timepoints.find(t=>!a.rows[t.id]);
-    if(nextEmpty) sel.value=nextEmpty.id;
-  }
+  // Always point at the next timepoint that still needs data, unless the
+  // user picked one that is still empty (then keep their choice).
+  const nextEmpty=(a&&App.protocol)?App.protocol.timepoints.find(t=>!a.rows[t.id]):null;
+  const prevStillEmpty = prev && a && !a.rows[prev] && [...sel.options].some(o=>o.value===prev);
+  if(prevStillEmpty) sel.value=prev;
+  else if(nextEmpty) sel.value=nextEmpty.id;
+  else if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
 }
 window.renderMainPhotoTp = renderMainPhotoTp;
 
 async function mainPhotoUpload(fileOrData){
+  if(!fileOrData){ toast('No photo received - try again'); return; }
   const tpId=$('#mainPhotoTp')?$('#mainPhotoTp').value:'';
-  if(!tpId){ toast('Choose a timepoint first'); return; }
+  if(!tpId){ toast('Choose a timepoint first (the dropdown above the buttons)'); return; }
   if(getOcrMethod()==='claude' && !getApiKey()){
-    toast('No API key on this device - add it under Photo / Settings');
+    toast('No API key on this device. Photo / Settings tab -> paste key -> Save. Then try again.');
+    showTab('settings');
+    return;
+  }
+  if(!window.isSecureContext){
+    toast('This page is not https - photo reading is blocked. Open the app from its https:// web address.');
     return;
   }
   const a=getActiveAnimal()||addAnimal({silent:true});
@@ -2940,6 +3076,7 @@ async function tpPhotoToCapture(file){
    for backup and moving between devices.
    ============================================================ */
 const SAVE_KEY='swineicu_session_v1';
+let _bootLoading=false;
 let _saveTimer=null;
 
 function collectSession(){
@@ -3103,6 +3240,7 @@ function showBackups(){
 window.showBackups = showBackups;
 
 function autosave(){
+  if(_bootLoading) return;      // never save the blank startup state over real data
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     try{
@@ -3276,8 +3414,10 @@ function openLabModal(imgData){
   pendingLabImg=imgData||null;
   const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
   $('#labPreview').innerHTML = imgData?`<img src="${imgData}" style="max-width:100%;border-radius:4px;border:1px solid var(--line)">`:'';
-  $('#labFields').innerHTML = `<div class="grid3">`+fields.map(f=>
-    `<div class="field" data-field="${f}"><label>${f}</label><input data-lab="${f}" inputmode="decimal"></div>`).join('')+`</div>`;
+  $('#labFields').innerHTML = `<div class="grid3">`+fields.map(f=>{
+    const u=(typeof LAB_UNITS!=='undefined'&&LAB_UNITS[f])?' <span style="text-transform:none;opacity:.7">('+LAB_UNITS[f]+')</span>':'';
+    return `<div class="field" data-field="${f}"><label>${f}${u}</label><input data-lab="${f}" inputmode="decimal"></div>`;
+  }).join('')+`</div>`;
   $('#ocrBtn').style.display = imgData ? 'block' : 'none';
   $('#ocrStatus').innerHTML = '';
   let opts='<option value="">- unlinked -</option>';
@@ -3632,6 +3772,11 @@ $('#mainPhotoFile') && $('#mainPhotoFile').addEventListener('change',e=>{
   if(e.target.files[0]) mainPhotoUpload(e.target.files[0]);
   e.target.value='';
 });
+$('#selfTestBtn') && $('#selfTestBtn').addEventListener('click',()=>$('#selfTestFile').click());
+$('#selfTestFile') && $('#selfTestFile').addEventListener('change',e=>{
+  if(e.target.files[0]) runSelfTest(e.target.files[0]);
+  e.target.value='';
+});
 $('#vitalPhoto') && $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
 
 let _pendingPhoto=null;
@@ -3720,7 +3865,19 @@ $('#sessionFile').addEventListener('change',e=>{
   e.target.value='';
 });
 $$('[data-close]').forEach(b=>b.addEventListener('click',()=>{b.closest('.modal-bg').classList.remove('show');}));
-$$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.classList.remove('show');}));
+$$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
+  if(e.target!==m) return;
+  // don't let a stray tap outside throw away values that were typed or read
+  if(m.id==='labModal'){
+    const filled=$$('#labFields [data-lab]').some(i=>i.value.trim()!=='');
+    if(filled && !confirm('Discard these lab values without saving?')) return;
+  }
+  if(m.id==='captureModal'){
+    const filled=$$('#capBody [data-k]').some(i=>i.dataset.k&&!i.dataset.k.startsWith('_')&&i.value.trim()!=='');
+    if(filled && !confirm('Discard this entry without saving?')) return;
+  }
+  m.classList.remove('show');
+}));
 
 (function(){
   var KEY='swineicu_apikey', METH='swineicu_ocrmethod';
@@ -3761,9 +3918,28 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)m.clas
   window.showTab=showTab;
 })();
 
+// Read the saved session BEFORE anything can overwrite it, then boot.
+var _savedRaw=null;
+try{ _savedRaw=localStorage.getItem(SAVE_KEY); }catch(e){}
+_bootLoading=true;                      // suppress autosave during startup
 loadProtocol(demoProtocol());
-// bring back anything from a previous session in this browser
-try{ restoreSession(); }catch(e){ console.error('restore failed',e); }
+_bootLoading=false;
+try{
+  if(_savedRaw){
+    const o=JSON.parse(_savedRaw);
+    const nA=(o.animals||[]).length;
+    const nR=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
+    if(nA||nR){
+      applySession(o);
+      const when=o.savedAt?new Date(o.savedAt).toLocaleString():'earlier';
+      toast(o._migrated
+        ? 'Restored your data from '+when+' ('+o._migrated+' row(s) updated to the new fields)'
+        : 'Restored your data from '+when);
+      const _st=$('#saveStatus');
+      if(_st){ _st.textContent='restored'; _st.style.color='var(--trace)'; }
+    }
+  }
+}catch(e){ console.error('restore failed',e); }
 // make sure every panel reflects the restored data
 try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
      renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
