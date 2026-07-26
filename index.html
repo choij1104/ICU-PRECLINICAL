@@ -149,6 +149,20 @@
   @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 rgba(255,90,82,0)}50%{box-shadow:0 0 14px rgba(255,90,82,.4)}}
   .spark{position:absolute;bottom:0;left:0;right:0;height:22px;opacity:.5}
 
+  /* Observer (read-only) mode hides every way to change data */
+  body.reader-mode #mainCamBtn, body.reader-mode #mainPhotoBtn,
+  body.reader-mode #captureNow, body.reader-mode #eventBtn, body.reader-mode #deathBtn,
+  body.reader-mode #addLab, body.reader-mode .atab.add,
+  body.reader-mode #timeline button[onclick*="openCapture"],
+  body.reader-mode #timeline button[onclick*="deleteRow"],
+  body.reader-mode button[onclick*="addTimepoint"],
+  body.reader-mode button[onclick*="deleteTimepoint"],
+  body.reader-mode button[onclick*="editAnimalInfo"],
+  body.reader-mode #clearAllBtn, body.reader-mode #eraseBtn{ display:none !important; }
+  body.reader-mode .reader-badge{ display:inline-flex !important; }
+  .reader-badge{ display:none; align-items:center; gap:5px; padding:3px 8px; border-radius:10px;
+    background:var(--accent-deep); color:#fff; font-size:11px; font-weight:600; }
+
   /* file inputs must not use display:none or iOS Safari blocks the picker */
   .hidden-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;
     clip:rect(0 0 0 0);white-space:nowrap;border:0;padding:0;margin:-1px}
@@ -261,13 +275,15 @@
     .col{padding:12px}
   }
 </style>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 </head>
 <body>
 <div class="app">
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v4.7</small>
+      Swine ICU <small>Current &middot; v4.9</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -322,6 +338,11 @@
     </aside>
 
     <aside class="col left" data-panel="settings">
+      <h2 class="sec">Live sharing (multi-device)</h2>
+      <div class="card">
+        <div id="syncPanel"></div>
+      </div>
+
       <h2 class="sec">Camera</h2>
       <div class="card">
         <div class="hint" style="margin:0">Photos are taken from <b>Timeline &amp; Labs &rarr; Open camera</b>. On a laptop you can pick an external/USB camera from the list inside the camera window. The first time you use it the browser will ask for camera permission.</div>
@@ -365,7 +386,8 @@
 
     <main class="col center" data-panel="live">
       <div id="liveArea">
-        <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span></h2>
+        <h2 class="sec">Current &mdash; <span id="liveAnimalLabel" onclick="renameAnimal()" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">no animal selected</span>
+          <span class="reader-badge" style="margin-left:8px">&#128065; OBSERVER - read only</span></h2>
         <div class="animals" id="animalTabsTop"></div>
         <div id="tpStrip" style="margin-bottom:10px"></div>
         <div id="currentHead" class="card" style="margin-bottom:12px"></div>
@@ -412,7 +434,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v4.7
+        Swine ICU &mdash; Preclinical Data Capture &middot; v4.9
       </div>
     </main>
 
@@ -1433,6 +1455,15 @@ function openCapture(tpId, prefill, photo){
   const srcNote = fromPhoto ? 'values extracted from photo - check & correct' :
                   (Object.keys(App.live).length? 'values pre-filled from live feed' : 'enter values manually');
   let body=`<div class="hint" style="margin-bottom:10px">${srcNote}</div>`;
+  if(fromPhoto && prefill){
+    const nRead=Object.keys(prefill).length;
+    const primary=['HR','CAs','CAd','MAP','FAs','FAd','FAmap','SpO2'];
+    const gotPrimary=primary.some(k=>prefill[k]!=null);
+    if(nRead>0 && !gotPrimary){
+      body+=`<div style="padding:8px 10px;border:1px solid var(--trace-amber);border-radius:var(--radius);background:rgba(240,181,55,.08);margin-bottom:10px;font-size:12px">
+        Only ${nRead} value(s) were read, and no HR/BP among them. If the monitor showed those numbers, retake the photo closer and sharper. You can also type them in below.</div>`;
+    }
+  }
   if(photo) body+=`<img src="${photo}" style="max-width:100%;border-radius:4px;border:1px solid var(--line);margin-bottom:12px">`;
   // clock time as written on the paper form, plus run minute for the graphs
   const existingRow=(getActiveAnimal()&&tpId)?getActiveAnimal().rows[tpId]:null;
@@ -1460,8 +1491,12 @@ function openCapture(tpId, prefill, photo){
   body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Patient monitor</div>`;
   body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
   if(vent.length){
-    const ventHasData = saved && vent.some(p=>saved[p.key]!=null&&saved[p.key]!=='');
-    const ventPrefilled = prefill && vent.some(p=>prefill[p.key]!=null);
+    // RR often appears on the monitor too, so it should not, by itself, spring
+    // the ventilator block open and hide the main vitals. Only open when a
+    // truly ventilator-only field (TV/PEEP/PIP/etc.) has a value.
+    const ventOnly = vent.filter(p=>p.key!=='RR');
+    const ventHasData = saved && ventOnly.some(p=>saved[p.key]!=null&&saved[p.key]!=='');
+    const ventPrefilled = prefill && ventOnly.some(p=>prefill[p.key]!=null);
     const openVent = ventHasData||ventPrefilled;
     body+=`<details ${openVent?'open':''} style="margin:14px 0 4px">
       <summary style="cursor:pointer;font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;font-weight:600">Ventilator (${vent.length} fields)${openVent?'':' - tap to open'}</summary>
@@ -3351,6 +3386,201 @@ function showBackups(){
 }
 window.showBackups = showBackups;
 
+
+/* ============================================================
+   LIVE SHARING (Firebase Realtime Database)
+   One or a few INPUT devices write; observers get a READ-ONLY
+   live view. Offline input keeps working and syncs on reconnect.
+   (c) 2026 HAKOYA LLC.
+   ============================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDFtmvTHxQJ67vWX6R7b-W4crCbCzYd9jk",
+  authDomain: "preclinical-icu.firebaseapp.com",
+  databaseURL: "https://preclinical-icu-default-rtdb.firebaseio.com",
+  projectId: "preclinical-icu",
+  storageBucket: "preclinical-icu.firebasestorage.app",
+  messagingSenderId: "554240739854",
+  appId: "1:554240739854:web:116a7a1902d7ce846f0a5f"
+};
+
+const Sync = {
+  db:null, ref:null, on:false, role:'off',   // 'off' | 'writer' | 'reader'
+  writerPass:'1234',                          // default; changeable in Settings
+  sessionId:'live',                           // shared room key
+  applying:false,                             // guard: don't echo remote->local->remote
+  lastPushed:'',                              // dedupe
+  connected:false
+};
+
+function syncInit(){
+  if(typeof firebase==='undefined'){ console.warn('Firebase SDK not loaded'); return false; }
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    Sync.db=firebase.database();
+    // remembered role/password on this device
+    try{
+      const savedPass=localStorage.getItem('swineicu_writerpass'); if(savedPass) Sync.writerPass=savedPass;
+      const savedRole=localStorage.getItem('swineicu_syncrole');
+      const savedRoom=localStorage.getItem('swineicu_syncroom'); if(savedRoom) Sync.sessionId=savedRoom;
+      if(savedRole==='writer'||savedRole==='reader') { /* auto-join below */ Sync._autoRole=savedRole; }
+    }catch(e){}
+    // connection indicator
+    Sync.db.ref('.info/connected').on('value', snap=>{
+      Sync.connected=!!snap.val();
+      renderSyncStatus();
+    });
+    return true;
+  }catch(e){ console.error('sync init failed', e); return false; }
+}
+
+function syncJoin(role){
+  if(!Sync.db && !syncInit()) { toast('Live sharing unavailable - check connection'); return; }
+  Sync.role=role; Sync.on=true;
+  try{ localStorage.setItem('swineicu_syncrole', role); localStorage.setItem('swineicu_syncroom', Sync.sessionId); }catch(e){}
+  // detach any previous listener
+  if(Sync.ref){ try{ Sync.ref.off(); }catch(e){} }
+  Sync.ref=Sync.db.ref('sessions/'+Sync.sessionId);
+
+  // pull remote changes into the app (both roles see live data)
+  Sync.ref.on('value', snap=>{
+    const remote=snap.val();
+    if(!remote || !remote.payload) return;
+    // writer ignores its own echo
+    if(Sync.role==='writer' && remote.updatedBy===Sync.deviceId() && remote.payload===Sync.lastPushed) return;
+    try{
+      const o=JSON.parse(remote.payload);
+      Sync.applying=true;
+      applySession(o);
+      // refresh every view
+      renderAnimalTabs&&renderAnimalTabs(); rebuildTable&&rebuildTable();
+      renderTimeline&&renderTimeline(); renderLabList&&renderLabList();
+      renderTrendPicker&&renderTrendPicker(); renderTrends&&renderTrends();
+      renderCurrent&&renderCurrent();
+      renderMainPhotoTp&&renderMainPhotoTp();
+      Sync.applying=false;
+      renderSyncStatus();
+      if(remote.updatedAt) Sync.lastRemoteAt=remote.updatedAt;
+    }catch(e){ Sync.applying=false; console.error('apply remote failed', e); }
+  }, err=>{ console.error('sync read error', err); toast('Live read error: '+err.message); });
+
+  applyRoleUI();
+  renderSyncStatus();
+  toast(role==='writer'?'Input mode - this device writes to the shared session':'Observer mode - read only, live view');
+}
+
+function syncLeave(){
+  if(Sync.ref){ try{ Sync.ref.off(); }catch(e){} Sync.ref=null; }
+  Sync.on=false; Sync.role='off';
+  try{ localStorage.removeItem('swineicu_syncrole'); }catch(e){}
+  applyRoleUI(); renderSyncStatus();
+  toast('Left the shared session - back to this device only');
+}
+
+/* push local state up (writer only). Called from autosave. */
+function syncPush(){
+  if(!Sync.on || Sync.role!=='writer' || Sync.applying) return;
+  if(!Sync.ref) return;
+  try{
+    const payload=JSON.stringify(collectSession());
+    if(payload===Sync.lastPushed) return;
+    Sync.lastPushed=payload;
+    Sync.ref.set({
+      payload:payload,
+      updatedAt:firebase.database.ServerValue.TIMESTAMP,
+      updatedBy:Sync.deviceId(),
+      version:'live1'
+    }).catch(e=>{ console.error('push failed', e); });
+  }catch(e){ console.error('syncPush', e); }
+}
+
+Sync.deviceId=function(){
+  let id;
+  try{ id=localStorage.getItem('swineicu_deviceid'); }catch(e){}
+  if(!id){ id='dev-'+Math.random().toString(36).slice(2,10); try{ localStorage.setItem('swineicu_deviceid', id); }catch(e){} }
+  return id;
+};
+
+/* claim writer role with the password */
+function syncClaimWriter(){
+  const pass=$('#syncPass')?$('#syncPass').value:'';
+  if(pass!==Sync.writerPass){ toast('Wrong password'); return; }
+  syncJoin('writer');
+  renderSyncPanel();
+}
+function syncBecomeReader(){ syncJoin('reader'); renderSyncPanel(); }
+
+/* hide input controls for readers */
+function applyRoleUI(){
+  const reader = Sync.on && Sync.role==='reader';
+  document.body.classList.toggle('reader-mode', reader);
+}
+
+function renderSyncStatus(){
+  const el=$('#syncStatus'); if(!el) return;
+  if(!Sync.on){ el.innerHTML='<span style="color:var(--ink-faint)">Not sharing - this device only</span>'; return; }
+  const dot = Sync.connected ? '<span style="color:var(--trace)">&#9679;</span>' : '<span style="color:var(--trace-amber)">&#9679;</span>';
+  const roleTxt = Sync.role==='writer' ? 'Input device (writing)' : 'Observer (read-only)';
+  const conn = Sync.connected ? 'online' : 'offline - will sync when reconnected';
+  el.innerHTML = dot+' <b>'+roleTxt+'</b> &middot; '+conn+' &middot; room "'+Sync.sessionId+'"';
+  // also reflect on the top status chip
+  const chip=$('#connlabel');
+  if(chip && Sync.on){ chip.textContent = Sync.role==='writer'?'LIVE - INPUT':'LIVE - VIEW'; }
+}
+
+function renderSyncPanel(){
+  const host=$('#syncPanel'); if(!host) return;
+  if(!Sync.on){
+    host.innerHTML=`
+      <div class="field" style="margin-bottom:8px">
+        <label>Session room (all devices must match)</label>
+        <input id="syncRoom" value="${Sync.sessionId}">
+      </div>
+      <div class="field" style="margin-bottom:8px">
+        <label>Writer password (only for the input device)</label>
+        <input id="syncPass" type="password" placeholder="password to write">
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn primary" style="flex:1;min-width:150px" onclick="syncSetRoomThen('writer')">Use as INPUT device</button>
+        <button class="btn" style="flex:1;min-width:150px" onclick="syncSetRoomThen('reader')">Watch (read-only)</button>
+      </div>
+      <div id="syncStatus" style="margin-top:10px;font-size:12px"></div>
+      <div class="hint" style="margin-top:8px">The input device writes; everyone else watching the same room sees it live. Input keeps working offline and syncs when the connection returns.</div>`;
+  } else {
+    host.innerHTML=`
+      <div id="syncStatus" style="font-size:12px;margin-bottom:10px"></div>
+      <button class="btn ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="syncLeave();renderSyncPanel()">Stop sharing on this device</button>
+      ${Sync.role==='writer'?`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+        <div class="field"><label>Change writer password</label><input id="newWriterPass" placeholder="new password"></div>
+        <button class="btn sm" style="width:auto;margin-top:6px" onclick="syncChangePass()">Save password</button>
+      </div>`:''}`;
+  }
+  renderSyncStatus();
+}
+
+function syncSetRoomThen(role){
+  const room=$('#syncRoom')?$('#syncRoom').value.trim():'';
+  if(room) { Sync.sessionId=room; try{ localStorage.setItem('swineicu_syncroom', room); }catch(e){} }
+  if(role==='writer') syncClaimWriter();
+  else syncBecomeReader();
+}
+
+function syncChangePass(){
+  const np=$('#newWriterPass')?$('#newWriterPass').value.trim():'';
+  if(!np){ toast('Enter a new password'); return; }
+  Sync.writerPass=np;
+  try{ localStorage.setItem('swineicu_writerpass', np); }catch(e){}
+  // also store it in the room so other devices can validate against it
+  toast('Writer password changed on this device');
+}
+
+window.Sync=Sync;
+window.syncInit=syncInit; window.syncJoin=syncJoin; window.syncLeave=syncLeave;
+window.syncPush=syncPush; window.syncClaimWriter=syncClaimWriter;
+window.syncBecomeReader=syncBecomeReader; window.renderSyncPanel=renderSyncPanel;
+window.syncSetRoomThen=syncSetRoomThen; window.syncChangePass=syncChangePass;
+window.renderSyncStatus=renderSyncStatus;
+
+
 function autosave(){
   if(_bootLoading) return;      // never save the blank startup state over real data
   clearTimeout(_saveTimer);
@@ -3358,6 +3588,7 @@ function autosave(){
     try{
       const payload=JSON.stringify(collectSession());
       localStorage.setItem(SAVE_KEY, payload);
+      if(typeof syncPush==='function') syncPush();   // live sharing (writer only)
       // keep a rolling copy every few minutes, not on every keystroke
       const nowMs=Date.now();
       if(!autosave._lastBackup || nowMs-autosave._lastBackup > 180000){
@@ -4061,6 +4292,13 @@ try{
     }
   }
 }catch(e){ console.error('restore failed',e); }
+// live sharing: connect and, if this device had a role, rejoin it
+try{
+  if(syncInit()){
+    renderSyncPanel();
+    if(Sync._autoRole){ syncJoin(Sync._autoRole); renderSyncPanel(); }
+  }
+}catch(e){ console.error('sync boot', e); }
 // make sure every panel reflects the restored data
 try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
      renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
