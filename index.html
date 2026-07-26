@@ -267,7 +267,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v4.5</small>
+      Swine ICU <small>Current &middot; v4.7</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -332,6 +332,7 @@
         <div class="hint" style="margin:0 0 8px">If a photo does not read, run this. It shows exactly where it stops.</div>
         <input type="file" id="selfTestFile" class="hidden-file" accept="image/*">
         <button class="btn" id="selfTestBtn">Test with a photo</button>
+        <button class="btn ghost" id="pingBtn" style="margin-top:8px">Test connection only (no photo)</button>
         <div id="selfTestOut" style="margin-top:10px;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
       </div>
 
@@ -347,6 +348,11 @@
         <div class="field" id="apiKeyField" style="margin-bottom:8px">
           <label>Anthropic API key</label>
           <input id="apiKey" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
+          <div class="field" style="margin-top:8px">
+            <label>Model</label>
+            <input id="apiModel" spellcheck="false" autocomplete="off" placeholder="claude-sonnet-4-6">
+            <div class="hint" style="margin-top:4px">Saved on this device. If the API answers <b>404 / model not found</b>, change this.</div>
+          </div>
           <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
             <button class="btn sm primary" id="saveKeyBtn" style="width:auto">Save key</button>
             <button class="btn sm ghost" id="clearKeyBtn" style="width:auto">Clear</button>
@@ -406,7 +412,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v4.5
+        Swine ICU &mdash; Preclinical Data Capture &middot; v4.7
       </div>
     </main>
 
@@ -1506,27 +1512,87 @@ If only ONE arterial pressure is displayed, treat it as the carotid line and ret
 /* Shrink a large photo before sending. Phone cameras produce 3-8 MB images;
    the API rejects anything over ~5 MB, and large images are slow. We cap the
    long edge and re-encode as JPEG. Returns a data URL. */
-function downscaleImage(dataURL, maxEdge=2000, quality=0.85){
+function downscaleImage(dataURL, maxEdge=1600, quality=0.82){
   return new Promise(resolve=>{
+    let done=false;
+    const finish=v=>{ if(!done){ done=true; resolve(v); } };
+    const t=setTimeout(()=>finish(dataURL), 6000);
     try{
       const img=new Image();
       img.onload=()=>{
-        let {width:w, height:h}=img;
-        const big=Math.max(w,h);
-        if(big<=maxEdge){ resolve(dataURL); return; }   // already small enough
-        const scale=maxEdge/big;
-        w=Math.round(w*scale); h=Math.round(h*scale);
-        const c=document.createElement('canvas');
-        c.width=w; c.height=h;
-        c.getContext('2d').drawImage(img,0,0,w,h);
-        resolve(c.toDataURL('image/jpeg', quality));
+        clearTimeout(t);
+        try{
+          let w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+          if(!w||!h){ finish(dataURL); return; }
+          const big=Math.max(w,h);
+          const scale=big>maxEdge?maxEdge/big:1;
+          w=Math.round(w*scale); h=Math.round(h*scale);
+          const c=document.createElement('canvas');
+          c.width=w; c.height=h;
+          c.getContext('2d').drawImage(img,0,0,w,h);
+          // ALWAYS emit JPEG - an iPhone can hand over image/heic, which the
+          // API rejects with 400. Re-encoding guarantees a supported format.
+          finish(c.toDataURL('image/jpeg', quality));
+        }catch(e){ finish(dataURL); }
       };
-      img.onerror=()=>resolve(dataURL);   // if it can't load, send the original
+      img.onerror=()=>{ clearTimeout(t); finish(dataURL); };
       img.src=dataURL;
-    }catch(e){ resolve(dataURL); }
+    }catch(e){ clearTimeout(t); finish(dataURL); }
   });
 }
 window.downscaleImage = downscaleImage;
+
+
+/* ============================================================
+   API TRANSPORT - one place that talks to Anthropic.
+   Adds: model as a setting (survives model renames), 60s timeout,
+   and a NETWORK label so a blocked connection is never mistaken for
+   a key or photo problem. (Merged from a parallel debugging session.)
+   ============================================================ */
+const MODEL_KEY='swineicu_model';
+const MODEL_DEFAULT='claude-sonnet-4-6';
+function getModel(){ try{ return (localStorage.getItem(MODEL_KEY)||MODEL_DEFAULT).trim()||MODEL_DEFAULT; }catch(e){ return MODEL_DEFAULT; } }
+window.getModel=getModel;
+
+async function callAnthropic(body, timeoutMs){
+  const key=getApiKey();
+  if(!key) throw new Error('No API key saved on this device.');
+  const ms=timeoutMs||60000;
+  const ctl=new AbortController();
+  const timer=setTimeout(()=>ctl.abort(), ms);
+  let res;
+  try{
+    res=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST', signal:ctl.signal,
+      headers:{'content-type':'application/json','x-api-key':key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify(Object.assign({model:getModel()}, body))
+    });
+  }catch(e){
+    clearTimeout(timer);
+    if(e&&e.name==='AbortError') throw new Error('NETWORK: no answer within '+Math.round(ms/1000)+' s.');
+    // Safari "Type error" / Chrome "Failed to fetch" / Firefox "NetworkError"
+    // all mean the request never reached the server.
+    throw new Error('NETWORK: the request never reached api.anthropic.com ('+((e&&(e.message||e.name))||'unknown')+')');
+  }
+  clearTimeout(timer);
+  if(!res.ok){
+    let detail=''; try{ const j=await res.json(); detail=(j&&j.error&&j.error.message)||''; }catch(_){}
+    if(res.status===401) throw new Error('HTTP 401 - the API key was rejected. '+detail);
+    if(res.status===404) throw new Error('HTTP 404 - model "'+getModel()+'" not found. Change the Model field under Photo / Settings. '+detail);
+    if(res.status===400) throw new Error('HTTP 400 - the request was rejected (often the image format). '+detail);
+    throw new Error('HTTP '+res.status+' - '+(detail||'no detail returned'));
+  }
+  return res.json();
+}
+window.callAnthropic=callAnthropic;
+
+function parseJSONReply(data){
+  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  const str=text.replace(/```json|```/g,'').trim();
+  try{ return JSON.parse(str); }
+  catch(_){ const mm=str.match(/\{[\s\S]*\}/); return mm?JSON.parse(mm[0]):{}; }
+}
 
 async function detectAndExtract(imageDataURL){
   const key=getApiKey();
@@ -1559,27 +1625,11 @@ Rules:
 - Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
 - Omit any field you cannot read confidently. NEVER guess a value.
 - Read decimals and negatives exactly (e.g. BEecf -5, pH 7.487, Lac 1.72).`;
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':key,
-      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2048,
+  const data=await callAnthropic({max_tokens:2048,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:media,data:b64}},
-        {type:'text',text:prompt}]}]})
-  });
-  if(!res.ok){
-    let msg='API error '+res.status;
-    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
-    if(res.status===401) msg='Invalid API key';
-    throw new Error(msg);
-  }
-  const data=await res.json();
-  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-  const jsonStr=text.replace(/```json|```/g,'').trim();
-  let parsed;
-  try{ parsed=JSON.parse(jsonStr); }
-  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{readouts:[]}; }
+        {type:'text',text:prompt}]}]});
+  let parsed=parseJSONReply(data); if(!parsed||typeof parsed!=='object') parsed={readouts:[]};
 
   let list=[];
   if(Array.isArray(parsed.readouts)) list=parsed.readouts;
@@ -1613,8 +1663,9 @@ Rules:
 async function claudeExtract(imageDataURL, fields){
   const key=getApiKey();
   if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  imageDataURL=await downscaleImage(imageDataURL);
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
-  if(!m) throw new Error('Bad image');
+  if(!m) throw new Error('That file is not a readable image.');
   const media=m[1], b64=m[2];
   const fieldList=fields.map(f=>`"${f.key}"${f.label&&f.label!==f.key?' ('+f.label+')':''}${f.unit?' in '+f.unit:''}`).join(', ');
   const prompt=`This photo is from a preclinical swine ICU experiment (an i-STAT analyzer screen, a Mindray patient monitor, or a handwritten data form). Read the numeric values shown and return ONLY a JSON object - no prose, no markdown fences.
@@ -1627,30 +1678,12 @@ Rules:
 - Omit any field you cannot read confidently. Do not guess.
 - If two BP readings are shown (e.g. femoral and carotid), map the first to femBP and second to carBP when those keys are requested.
 Return JSON only.`;
-  const res=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',
-    headers:{'Content-Type':'application/json','x-api-key':key,
-      'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-    body:JSON.stringify({
-      model:'claude-sonnet-4-6', max_tokens:1024,
+  const data=await callAnthropic({max_tokens:1024,
       messages:[{role:'user',content:[
         {type:'image',source:{type:'base64',media_type:media,data:b64}},
         {type:'text',text:prompt}
-      ]}]
-    })
-  });
-  if(!res.ok){
-    let msg='API error '+res.status;
-    try{const e=await res.json(); if(e.error&&e.error.message)msg=e.error.message;}catch(_){}
-    if(res.status===401) msg='Invalid API key';
-    throw new Error(msg);
-  }
-  const data=await res.json();
-  const text=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
-  const jsonStr=text.replace(/```json|```/g,'').trim();
-  let parsed;
-  try{ parsed=JSON.parse(jsonStr); }
-  catch(_){ const mm=jsonStr.match(/\{[\s\S]*\}/); parsed=mm?JSON.parse(mm[0]):{}; }
+      ]}]});
+  let parsed=parseJSONReply(data); if(!parsed||typeof parsed!=='object') parsed={};
   const out={};
   Object.entries(parsed).forEach(([k,v])=>{
     if(v===null||v==='')return;
@@ -2898,44 +2931,54 @@ async function runSelfTest(file){
   const o=$('#selfTestOut'); if(o) o.innerHTML='';
   stInfo('Started '+new Date().toLocaleTimeString());
 
-  // 1. secure context (camera + API need HTTPS)
   if(window.isSecureContext) stOK('Page is secure (HTTPS)');
-  else stBad('Page is NOT https - photo reading and camera will not work. Open the app from its https:// address.');
+  else { stBad('Page is NOT https - photo reading and camera are blocked. Open the app from its https:// address.'); return; }
 
-  // 2. API key present
   const key=getApiKey();
-  if(!key){ stBad('No API key saved on this device. Paste your key above and press Save, then test again.'); return; }
-  if(!/^sk-ant-/.test(key)) stBad('The saved key does not start with "sk-ant-". It may be incomplete.');
-  else stOK('API key is saved ('+key.slice(0,10)+'...'+key.slice(-4)+', length '+key.length+')');
+  if(!key){ stBad('No API key saved on this device. Paste it above, press Save, then test again.'); return; }
+  if(!/^sk-ant-/.test(key)) stBad('The saved key does not start with "sk-ant-". It may be truncated.');
+  else stOK('API key saved ('+key.slice(0,10)+'...'+key.slice(-4)+', length '+key.length+')');
+  stInfo('Model: '+getModel());
 
-  // 3. image loaded
-  const img=await new Promise((res,rej)=>{
-    const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=()=>rej(new Error('read failed')); r.readAsDataURL(file);
-  }).catch(e=>{ stBad('Could not read the file: '+e.message); return null; });
-  if(!img) return;
-  const kb=Math.round(img.length*0.75/1024);
-  stOK('Photo loaded ('+kb+' KB)');
-  if(kb>4500) stInfo('Large photo - it will still send, but a smaller one is faster.');
-
-  // 4. actually call the API
-  stInfo('Contacting Anthropic... (a few seconds)');
+  // STEP 1 - reach the API at all (text only). Separates a blocked network
+  // from an image/payload problem - the old test could not tell them apart.
+  stInfo('Step 1/2 - testing the connection (no photo)...');
   try{
-    const res=await detectAndExtract(img);
-    const nDev=(res.readouts||[]).length;
-    const nV=Object.keys(res.vitals||{}).length;
-    const nL=Object.keys(res.labs||{}).length;
-    if(nDev) stOK('Anthropic replied. Devices seen: '+res.readouts.map(r=>r.device+(r.cartridge?' '+r.cartridge:'')).join(', '));
-    else stInfo('Anthropic replied but saw no known device in this photo.');
-    if(nV) stOK('Vitals read: '+Object.keys(res.vitals).join(', '));
-    if(nL) stOK('Blood gas read: '+Object.keys(res.labs).join(', '));
-    if(!nV && !nL) stBad('No values could be read from this photo. Make sure the numbers are sharp, filled the frame, and nothing covers them.');
-    else stOK('Reading works. You can use Open camera / Choose a file on the Timeline tab.');
+    await callAnthropic({max_tokens:16, messages:[{role:'user', content:'ping'}]}, 20000);
+    stOK('Connection works - api.anthropic.com is reachable and the key is accepted.');
   }catch(err){
-    stBad('API call failed: '+err.message);
-    const m=String(err.message||'');
-    if(/401|invalid|authentication/i.test(m)) stInfo('The key was rejected. Make a fresh key at console.anthropic.com and paste the whole thing.');
-    else if(/credit|billing|quota|429/i.test(m)) stInfo('This looks like a billing/quota issue on the Anthropic account.');
-    else if(/Failed to fetch|NetworkError|Load failed/i.test(m)) stInfo('The network blocked the request. Some hospital/guest WiFi blocks it - try cellular data.');
+    const m1=String(err.message||'');
+    stBad('Step 1 failed: '+m1);
+    if(/^NETWORK/.test(m1)){
+      stInfo('The request never left this device or was blocked in transit. This is a NETWORK problem, not the app, the key, or the photo.');
+      stInfo('Do this: turn Wi-Fi OFF, switch to cellular data, and run this again. If it passes on cellular, the lab/guest Wi-Fi is filtering api.anthropic.com.');
+      stInfo('Also check: iOS Lockdown Mode, a content blocker, or a VPN/proxy profile.');
+    } else if(/401/.test(m1)) stInfo('Make a fresh key at console.anthropic.com and paste the whole string.');
+    else if(/404/.test(m1)) stInfo('Edit the Model field above - the model name is no longer valid.');
+    else if(/credit|billing|quota|429/i.test(m1)) stInfo('Billing or rate limit on the Anthropic account, not the app.');
+    return;
+  }
+
+  // STEP 2 - the real photo
+  if(!file){ stInfo('No photo given - connection test only.'); return; }
+  const img=await new Promise(res=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=()=>res(null); r.readAsDataURL(file); });
+  if(!img){ stBad('Could not read that file.'); return; }
+  stOK('Photo loaded ('+Math.round(img.length*0.75/1024)+' KB, '+img.split(';')[0].replace('data:','')+')');
+  const small=await downscaleImage(img);
+  stInfo('Sending as JPEG, '+Math.round(small.length*0.75/1024)+' KB after resizing.');
+  stInfo('Step 2/2 - reading the photo...');
+  try{
+    const res2=await detectAndExtract(img);
+    const nDev=(res2.readouts||[]).length, nV=Object.keys(res2.vitals||{}).length, nL=Object.keys(res2.labs||{}).length;
+    if(nDev) stOK('Devices seen: '+res2.readouts.map(r=>r.device+(r.cartridge?' '+r.cartridge:'')).join(', '));
+    else stInfo('Replied, but saw no known device in this photo.');
+    if(nV) stOK('Vitals read: '+Object.keys(res2.vitals).join(', '));
+    if(nL) stOK('Blood gas read: '+Object.keys(res2.labs).join(', '));
+    if(!nV && !nL) stBad('No values read. Fill the frame with the screen/form, keep it sharp, nothing covering the numbers.');
+    else stOK('Photo reading works. Use Open camera / Choose a file on the Timeline tab.');
+  }catch(err2){
+    stBad('Step 2 failed: '+err2.message);
+    if(/400/.test(String(err2.message))) stInfo('The image format was rejected. Try the in-app camera instead of the photo library.');
   }
 }
 window.runSelfTest = runSelfTest;
@@ -2946,7 +2989,9 @@ window.runSelfTest = runSelfTest;
 function showUploadError(msg){
   msg=String(msg||'Unknown error');
   let hint='';
-  if(/401|invalid|authentication/i.test(msg)) hint='The API key was rejected. Make a fresh key at console.anthropic.com and paste the whole thing under Photo / Settings.';
+  if(/^NETWORK/.test(msg)) hint='The request never reached Anthropic. This is the network, not the app. Turn Wi-Fi off and use cellular data, then run "Test connection only" on the Photo / Settings tab.';
+  else if(/404/.test(msg)) hint='The model name is no longer valid. Edit the Model field under Photo / Settings.';
+  else if(/401|invalid|authentication/i.test(msg)) hint='The API key was rejected. Make a fresh key at console.anthropic.com and paste the whole thing under Photo / Settings.';
   else if(/credit|billing|quota|429|rate/i.test(msg)) hint='This is a billing or rate-limit issue on the Anthropic account, not the app.';
   else if(/Failed to fetch|NetworkError|Load failed|network/i.test(msg)) hint='The network blocked the request. Hospital or guest WiFi often blocks it - try cellular data, or the self-test on the Settings tab.';
   else if(/529|overloaded/i.test(msg)) hint='Anthropic is temporarily overloaded. Wait a few seconds and try again.';
@@ -3008,7 +3053,11 @@ async function mainPhotoUpload(fileOrData){
   const a=getActiveAnimal()||addAnimal({silent:true});
   const tp=App.protocol&&App.protocol.timepoints.find(t=>t.id===tpId);
   const tpLabel=(a.rows[tpId]&&a.rows[tpId]._label)||(tp&&tp.label)||tpId;
-  const run=async img=>{
+  const run=async rawImg=>{
+    let img=rawImg;
+    // Shrink first. iPhone photos are large (and sometimes HEIC); re-encoding
+    // to a small JPEG here makes them render in the modal and send to the API.
+    try{ img=await downscaleImage(rawImg, 2000, 0.85); }catch(e){ img=rawImg; }
     toast('Reading photo for '+tpLabel+'...');
     // show the photo immediately with a reading indicator, so it is obvious
     // that something is happening on a slow connection
@@ -3058,8 +3107,13 @@ async function mainPhotoUpload(fileOrData){
   // a data URL comes straight from the in-app camera; a File needs reading
   if(typeof fileOrData==='string' && fileOrData.startsWith('data:')) return run(fileOrData);
   const reader=new FileReader();
-  reader.onload=e=>run(e.target.result);
-  reader.readAsDataURL(fileOrData);
+  reader.onload=e=>{
+    if(!e.target.result){ showUploadError('The photo could not be read from the file.'); return; }
+    run(e.target.result);
+  };
+  reader.onerror=()=>showUploadError('The phone could not read that photo file. Try Open camera instead, or a different photo.');
+  try{ reader.readAsDataURL(fileOrData); }
+  catch(err){ showUploadError('Could not open the photo: '+err.message); }
 }
 
 /* ============================================================
@@ -3831,6 +3885,7 @@ $('#mainPhotoFile') && $('#mainPhotoFile').addEventListener('change',e=>{
   e.target.value='';
 });
 $('#selfTestBtn') && $('#selfTestBtn').addEventListener('click',()=>$('#selfTestFile').click());
+$('#pingBtn') && $('#pingBtn').addEventListener('click',()=>runSelfTest(null));
 $('#selfTestFile') && $('#selfTestFile').addEventListener('change',e=>{
   if(e.target.files[0]) runSelfTest(e.target.files[0]);
   e.target.value='';
@@ -3961,6 +4016,14 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
     toast('API key cleared');
   });
   $('#ocrMethod') && $('#ocrMethod').addEventListener('change',function(e){ safeSet(METH,e.target.value); });
+  // Model field (from the merged patch): fill it and persist edits
+  var mdl=$('#apiModel');
+  if(mdl){
+    mdl.value=(typeof getModel==='function')?getModel():'claude-sonnet-4-6';
+    mdl.addEventListener('input',function(){
+      try{ localStorage.setItem('swineicu_model', mdl.value.trim()||'claude-sonnet-4-6'); }catch(e){}
+    });
+  }
 })();
 
 (function(){
