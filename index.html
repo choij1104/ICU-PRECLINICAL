@@ -283,7 +283,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v4.9</small>
+      Swine ICU <small>Current &middot; v5.0</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -434,7 +434,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v4.9
+        Swine ICU &mdash; Preclinical Data Capture &middot; v5.0
       </div>
     </main>
 
@@ -3433,6 +3433,51 @@ function syncInit(){
   }catch(e){ console.error('sync init failed', e); return false; }
 }
 
+/* refresh every view after remote data is applied */
+function syncRenderAll(){
+  try{
+    renderAnimalTabs&&renderAnimalTabs(); rebuildTable&&rebuildTable();
+    renderTimeline&&renderTimeline(); renderLabList&&renderLabList();
+    renderTrendPicker&&renderTrendPicker(); renderTrends&&renderTrends();
+    renderCurrent&&renderCurrent();
+    renderMainPhotoTp&&renderMainPhotoTp();
+  }catch(e){ console.error('syncRenderAll', e); }
+}
+
+/* true when this device holds no real data yet (fresh browser / cleared storage) */
+function syncSessionIsEmpty(o){
+  try{
+    const animals=(o&&o.animals)||[];
+    if(!animals.length) return true;
+    const rows=animals.reduce((t,a)=>t+Object.keys((a&&a.rows)||{}).length,0);
+    return rows===0;
+  }catch(e){ return false; }
+}
+
+/* attach the live listener. The INPUT device never adopts remote state. */
+function syncAttachListener(){
+  if(!Sync.ref) return;
+  Sync.ref.on('value', snap=>{
+    const remote=snap.val();
+    if(!remote || !remote.payload) return;
+    // INPUT device is the single source of truth - never let the cloud overwrite it
+    if(Sync.role==='writer'){
+      if(remote.updatedAt) Sync.lastRemoteAt=remote.updatedAt;
+      renderSyncStatus();
+      return;
+    }
+    try{
+      const o=JSON.parse(remote.payload);
+      Sync.applying=true;
+      applySession(o);
+      syncRenderAll();
+      Sync.applying=false;
+      renderSyncStatus();
+      if(remote.updatedAt) Sync.lastRemoteAt=remote.updatedAt;
+    }catch(e){ Sync.applying=false; console.error('apply remote failed', e); }
+  }, err=>{ console.error('sync read error', err); toast('Live read error: '+err.message); });
+}
+
 function syncJoin(role){
   if(!Sync.db && !syncInit()) { toast('Live sharing unavailable - check connection'); return; }
   Sync.role=role; Sync.on=true;
@@ -3441,27 +3486,36 @@ function syncJoin(role){
   if(Sync.ref){ try{ Sync.ref.off(); }catch(e){} }
   Sync.ref=Sync.db.ref('sessions/'+Sync.sessionId);
 
-  // pull remote changes into the app (both roles see live data)
-  Sync.ref.on('value', snap=>{
-    const remote=snap.val();
-    if(!remote || !remote.payload) return;
-    // writer ignores its own echo
-    if(Sync.role==='writer' && remote.updatedBy===Sync.deviceId() && remote.payload===Sync.lastPushed) return;
-    try{
-      const o=JSON.parse(remote.payload);
-      Sync.applying=true;
-      applySession(o);
-      // refresh every view
-      renderAnimalTabs&&renderAnimalTabs(); rebuildTable&&rebuildTable();
-      renderTimeline&&renderTimeline(); renderLabList&&renderLabList();
-      renderTrendPicker&&renderTrendPicker(); renderTrends&&renderTrends();
-      renderCurrent&&renderCurrent();
-      renderMainPhotoTp&&renderMainPhotoTp();
-      Sync.applying=false;
-      renderSyncStatus();
-      if(remote.updatedAt) Sync.lastRemoteAt=remote.updatedAt;
-    }catch(e){ Sync.applying=false; console.error('apply remote failed', e); }
-  }, err=>{ console.error('sync read error', err); toast('Live read error: '+err.message); });
+  if(role==='writer'){
+    // Publish this device's state immediately, before any remote snapshot can arrive.
+    // One exception: a blank device adopts the existing room instead of wiping it.
+    var _finish=function(){
+      Sync.lastPushed='';                 // bypass the dedupe guard on first push
+      syncPush();                         // bypass the 400 ms autosave debounce
+      syncAttachListener();
+    };
+    var _once=null;
+    try{ _once=Sync.ref.once('value'); }catch(e){ _once=null; }
+    if(_once && typeof _once.then==='function'){
+      _once.then(function(snap){
+        try{
+          var remote=snap&&snap.val&&snap.val();
+          if(remote && remote.payload && syncSessionIsEmpty(collectSession())){
+            Sync.applying=true;
+            applySession(JSON.parse(remote.payload));
+            syncRenderAll();
+            Sync.applying=false;
+            toast('This device was empty - adopted the existing shared session');
+          }
+        }catch(e){ Sync.applying=false; console.error('sync adopt failed', e); }
+        _finish();
+      }).catch(function(e){ console.error('sync join read', e); _finish(); });
+    } else {
+      _finish();
+    }
+  } else {
+    syncAttachListener();
+  }
 
   applyRoleUI();
   renderSyncStatus();
@@ -3577,6 +3631,7 @@ window.Sync=Sync;
 window.syncInit=syncInit; window.syncJoin=syncJoin; window.syncLeave=syncLeave;
 window.syncPush=syncPush; window.syncClaimWriter=syncClaimWriter;
 window.syncBecomeReader=syncBecomeReader; window.renderSyncPanel=renderSyncPanel;
+window.syncAttachListener=syncAttachListener; window.syncSessionIsEmpty=syncSessionIsEmpty;
 window.syncSetRoomThen=syncSetRoomThen; window.syncChangePass=syncChangePass;
 window.renderSyncStatus=renderSyncStatus;
 
