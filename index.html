@@ -149,6 +149,10 @@
   @keyframes alarmpulse{0%,100%{box-shadow:0 0 0 rgba(255,90,82,0)}50%{box-shadow:0 0 14px rgba(255,90,82,.4)}}
   .spark{position:absolute;bottom:0;left:0;right:0;height:22px;opacity:.5}
 
+  /* file inputs must not use display:none or iOS Safari blocks the picker */
+  .hidden-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0;padding:0;margin:-1px}
+
   /* Current-tab timepoint strip */
   .tpstrip{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
   .tpchip{padding:5px 10px;border:1px solid var(--line);border-radius:14px;background:var(--panel);
@@ -263,10 +267,10 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v4.3</small>
+      Swine ICU <small>Current &middot; v4.5</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
-    <input type="file" id="uploadPhotoFile" hidden accept="image/*">
+    <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
     <div class="conn" id="conn">
       <span class="led"></span>
       <span class="label" id="connlabel">MANUAL ENTRY</span>
@@ -291,7 +295,7 @@
           </svg>
           Drop protocol file<br><span style="font-size:11px">PDF &middot; DOCX &middot; TXT</span>
         </div>
-        <input type="file" id="protoFile" hidden accept=".pdf,.docx,.txt">
+        <input type="file" id="protoFile" class="hidden-file" accept=".pdf,.docx,.txt">
         <div class="hint">The interface rebuilds itself from the protocol &mdash; timepoints, measured parameters, and sampling events become the live timeline and input fields.</div>
         <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
           <div class="hint" style="margin:0 0 6px">Structured paper-form entry (H-CARE set):</div>
@@ -326,7 +330,7 @@
       <h2 class="sec">Check photo reading</h2>
       <div class="card">
         <div class="hint" style="margin:0 0 8px">If a photo does not read, run this. It shows exactly where it stops.</div>
-        <input type="file" id="selfTestFile" hidden accept="image/*">
+        <input type="file" id="selfTestFile" class="hidden-file" accept="image/*">
         <button class="btn" id="selfTestBtn">Test with a photo</button>
         <div id="selfTestOut" style="margin-top:10px;font-family:var(--mono);font-size:12px;line-height:1.6"></div>
       </div>
@@ -393,7 +397,7 @@
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn sm primary" style="width:auto" onclick="saveSessionFile()">Save file</button>
           <button class="btn sm" style="width:auto" onclick="document.getElementById('sessionFile').click()">Load file</button>
-          <input type="file" id="sessionFile" hidden accept=".json,application/json">
+          <input type="file" id="sessionFile" class="hidden-file" accept=".json,application/json">
           <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="clearSavedData()">Erase everything</button>
         </div>
         <div style="border-top:1px solid var(--line);margin:10px 0 8px"></div>
@@ -402,7 +406,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v4.3
+        Swine ICU &mdash; Preclinical Data Capture &middot; v4.5
       </div>
     </main>
 
@@ -437,7 +441,8 @@
           <button class="btn cap" id="mainCamBtn" style="flex:1;min-width:150px">Open camera</button>
           <button class="btn" id="mainPhotoBtn" style="flex:1;min-width:150px">Choose a file</button>
         </div>
-        <input type="file" id="mainPhotoFile" hidden accept="image/*">
+        <input type="file" id="mainPhotoFile" class="hidden-file" accept="image/*">
+        <div id="uploadErr" style="display:none;margin-top:8px"></div>
         <div class="hint" style="margin-top:6px">One place for every photo. Monitor, ventilator and i-STAT are all recognised automatically &mdash; vitals go to the timepoint, blood gas goes to the labs for that same timepoint. Several devices in one photo are read together.</div>
 
         <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
@@ -448,10 +453,10 @@
         <button class="btn" id="captureNow">Type values (no photo)</button>
         <button class="btn amber" id="eventBtn" style="margin-top:8px">&#9888; Record EVENT (between timepoints)</button>
         <button class="btn" id="deathBtn" style="margin-top:8px;background:var(--alarm);border-color:var(--alarm);color:#fff;font-weight:700">&#10013; DEATH POINT (final sample)</button>
-        <input type="file" id="deathPhoto" hidden accept="image/*">
-        <input type="file" id="eventPhoto" hidden accept="image/*">
-        <input type="file" id="tpPhoto" hidden accept="image/*">
-        <input type="file" id="vitalPhoto" hidden accept="image/*">
+        <input type="file" id="deathPhoto" class="hidden-file" accept="image/*">
+        <input type="file" id="eventPhoto" class="hidden-file" accept="image/*">
+        <input type="file" id="tpPhoto" class="hidden-file" accept="image/*">
+        <input type="file" id="vitalPhoto" class="hidden-file" accept="image/*">
         <div class="hint" style="text-align:center;margin-top:6px">Use <b>EVENT</b> for anything unplanned &mdash; arrhythmia, sudden BP drop, bleeding, drug reaction.</div>
       </div>
       <div class="timeline" id="timeline">
@@ -461,7 +466,7 @@
       <h2 class="sec" style="margin-top:8px">Blood labs</h2>
       <div class="card">
         <button class="btn ghost" id="addLab">+ Enter lab values by hand</button>
-        <input type="file" id="labFile" hidden accept="image/*">
+        <input type="file" id="labFile" class="hidden-file" accept="image/*">
         <div class="hint" style="margin-top:6px">For i-STAT photos use <b>Upload a photo</b> above &mdash; it reads the cartridge and files the values here automatically.</div>
         <div id="labList" style="margin-top:10px"></div>
       </div>
@@ -555,7 +560,7 @@
       <button class="btn sm" style="width:auto" onclick="hcRenameAnimal()">Rename</button>
       <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
-      <input type="file" id="hcPhotoFile" hidden accept="image/*">
+      <input type="file" id="hcPhotoFile" class="hidden-file" accept="image/*">
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteAnimal()">Delete animal</button>
@@ -1497,9 +1502,36 @@ If only ONE arterial pressure is displayed, treat it as the carotid line and ret
   }
 };
 
+
+/* Shrink a large photo before sending. Phone cameras produce 3-8 MB images;
+   the API rejects anything over ~5 MB, and large images are slow. We cap the
+   long edge and re-encode as JPEG. Returns a data URL. */
+function downscaleImage(dataURL, maxEdge=2000, quality=0.85){
+  return new Promise(resolve=>{
+    try{
+      const img=new Image();
+      img.onload=()=>{
+        let {width:w, height:h}=img;
+        const big=Math.max(w,h);
+        if(big<=maxEdge){ resolve(dataURL); return; }   // already small enough
+        const scale=maxEdge/big;
+        w=Math.round(w*scale); h=Math.round(h*scale);
+        const c=document.createElement('canvas');
+        c.width=w; c.height=h;
+        c.getContext('2d').drawImage(img,0,0,w,h);
+        resolve(c.toDataURL('image/jpeg', quality));
+      };
+      img.onerror=()=>resolve(dataURL);   // if it can't load, send the original
+      img.src=dataURL;
+    }catch(e){ resolve(dataURL); }
+  });
+}
+window.downscaleImage = downscaleImage;
+
 async function detectAndExtract(imageDataURL){
   const key=getApiKey();
   if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  imageDataURL=await downscaleImage(imageDataURL);   // keep under the API size limit
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('Bad image');
   const media=m[1], b64=m[2];
@@ -1628,6 +1660,7 @@ Return JSON only.`;
 }
 async function extractFromPhoto(imageDataURL, fields, tesseractMapper){
   if(getOcrMethod()==='claude'){
+    imageDataURL=await downscaleImage(imageDataURL);
     return {values: await claudeExtract(imageDataURL, fields), method:'claude'};
   }
   if(!window.Tesseract) await loadScript('https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js');
@@ -2907,6 +2940,31 @@ async function runSelfTest(file){
 }
 window.runSelfTest = runSelfTest;
 
+
+/* A photo-read error, shown where it can be read (a toast is too brief on a
+   phone). Includes the likely cause and stays until dismissed. */
+function showUploadError(msg){
+  msg=String(msg||'Unknown error');
+  let hint='';
+  if(/401|invalid|authentication/i.test(msg)) hint='The API key was rejected. Make a fresh key at console.anthropic.com and paste the whole thing under Photo / Settings.';
+  else if(/credit|billing|quota|429|rate/i.test(msg)) hint='This is a billing or rate-limit issue on the Anthropic account, not the app.';
+  else if(/Failed to fetch|NetworkError|Load failed|network/i.test(msg)) hint='The network blocked the request. Hospital or guest WiFi often blocks it - try cellular data, or the self-test on the Settings tab.';
+  else if(/529|overloaded/i.test(msg)) hint='Anthropic is temporarily overloaded. Wait a few seconds and try again.';
+  else hint='Run "Test with a photo" on the Photo / Settings tab to see which step fails.';
+  const host=$('#uploadErr');
+  if(host){
+    host.style.display='block';
+    host.innerHTML=`<div style="padding:10px 12px;border:1px solid var(--alarm);border-radius:var(--radius);background:rgba(224,57,43,.06)">
+      <div style="color:var(--alarm);font-weight:600;margin-bottom:4px">Photo could not be read</div>
+      <div style="font-family:var(--mono);font-size:12px;margin-bottom:6px">${msg.replace(/</g,'&lt;')}</div>
+      <div class="hint" style="margin:0">${hint}</div>
+      <button class="btn sm ghost" style="width:auto;margin-top:8px" onclick="document.getElementById('uploadErr').style.display='none'">Dismiss</button>
+    </div>`;
+  }
+  toast('Photo could not be read - see the message on the Timeline tab');
+}
+window.showUploadError = showUploadError;
+
 function renderMainPhotoTp(){
   const sel=$('#mainPhotoTp'); if(!sel) return;
   const a=getActiveAnimal();
@@ -2994,7 +3052,7 @@ async function mainPhotoUpload(fileOrData){
       toast((seen?seen+': ':'')+'read '+parts.join(' + ')+' value(s) - check & save');
     }catch(err){
       $('#labModal').classList.remove('show');
-      toast('Extraction failed: '+err.message);
+      showUploadError(err.message);
     }
   };
   // a data URL comes straight from the in-app camera; a File needs reading
