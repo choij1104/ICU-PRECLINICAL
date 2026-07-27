@@ -1241,9 +1241,14 @@ function hcApplyImport(){
     const d=hcA()[sheet];
     if(!d[it.rid]) d[it.rid]={};
     Object.entries(it.vals).forEach(([k,v])=>{ d[it.rid][k]=v; nCells++; });
-    if(img && !d[it.rid]._photo) d[it.rid]._photo=img;
     touched.push(it.rid); nRows++;
   });
+  // keep ONE copy of the page, not one per row - a dozen copies overruns local storage
+  if(img){
+    const A=hcA();
+    if(!A._sheetPhoto) A._sheetPhoto={};
+    A._sheetPhoto[sheet]=img;
+  }
   if(!nRows){ toast('Nothing selected'); document.getElementById('hcImportModal').classList.remove('show'); return; }
   // push the imported rows into the main record so Current, Timeline and Trends see them
   touched.forEach(rid=>{
@@ -1279,7 +1284,8 @@ function hcMirrorVitalsRow(rid){
     };
     const ca=bp(src.carBP); if(ca){ put('CAs',ca.s); put('CAd',ca.d); put('MAP',ca.m); }
     const fa=bp(src.femBP); if(fa){ put('FAs',fa.s); put('FAd',fa.d); put('FAmap',fa.m); }
-    if(!Object.keys(vals).length) return;
+    // a row carrying only a written clock time still means that timepoint happened
+    if(!Object.keys(vals).length && !src.time) return;
     let a=hcSrcAnimal(); if(!a) a=addAnimal({silent:true});
     if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef.offsetMin!=null?tpDef.offsetMin:null)};
     Object.assign(a.rows[tpId], vals);
@@ -1373,7 +1379,7 @@ async function hcPhotoToRow(file){
       const {values:vals} = await extractFromPhoto(ev.target.result, fields, mapper);
       const d=hcA()[sheet]; if(!d[rid])d[rid]={};
       Object.assign(d[rid], vals);
-      d[rid]._photo=ev.target.result;
+      d[rid]._photo=await downscaleImage(ev.target.result, 900, 0.7);
       hcRenderSheet();
       if(sheet==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(rid);
       const n=Object.keys(vals).length;
