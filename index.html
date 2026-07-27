@@ -213,6 +213,9 @@
   .atab.on{border-color:var(--accent);color:#fff;background:var(--accent-deep)}
   .atab.add{color:var(--accent);border-style:dashed}
 
+  /* Data sheet: a cell showing a value pulled from the app (not typed here) */
+  input.hcauto{color:var(--accent);font-style:italic;background:rgba(74,144,217,.07);border-style:dashed}
+  th.hcgrp{font-size:10px;letter-spacing:.6px;text-transform:uppercase;background:var(--panel-2)}
   .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--radius)}
   table{border-collapse:collapse;width:100%;font-family:var(--mono);font-size:11.5px}
   th,td{padding:6px 9px;text-align:right;white-space:nowrap;border-bottom:1px solid var(--line)}
@@ -283,7 +286,7 @@
   <header class="topbar">
     <div class="brand">
       <span class="dot"></span>
-      Swine ICU <small>Current &middot; v5.0</small>
+      Swine ICU <small>Current &middot; v5.2</small>
     </div>
     <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -434,7 +437,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
-        Swine ICU &mdash; Preclinical Data Capture &middot; v5.0
+        Swine ICU &mdash; Preclinical Data Capture &middot; v5.2
       </div>
     </main>
 
@@ -533,6 +536,23 @@
   </div>
 </div>
 
+<div class="modal-bg" id="hcImportModal" style="z-index:60">
+  <div class="modal" style="max-width:900px">
+    <div class="modal-head">
+      <h3 id="hcImportTitle">Review what was read from the sheet</h3>
+      <button class="x" data-close>&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="hint" style="margin-bottom:12px">Nothing is saved until you press <b>Apply</b>. Untick any row you don't want, or change the timepoint a row was matched to. Values already on the sheet are shown so you can see what would be replaced.</div>
+      <div id="hcImportBody"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
+        <button class="btn primary" id="hcImportApply" style="flex:1;min-width:160px">Apply to sheet</button>
+        <button class="btn ghost" id="hcImportCancel" style="flex:1;min-width:120px">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <div class="modal-bg" id="camModal">
@@ -589,7 +609,10 @@
       <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
       <input type="file" id="hcPhotoFile" class="hidden-file" accept="image/*">
+      <input type="file" id="hcSheetFile" class="hidden-file" accept="image/*">
+      <button class="btn sm cap" id="hcSheetPhoto" style="width:auto">Read whole sheet from photo</button>
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
+      <button class="btn sm" style="width:auto" onclick="hcRefresh()">Refresh from app</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteAnimal()">Delete animal</button>
       <button class="btn sm ghost" id="hcClose" style="width:auto">Close</button>
@@ -622,18 +645,24 @@ const HCARE = {
     '90 mins post deflation','T6 - 120 min post deflation','150 min post deflation',
     'T7 - 180 min post deflation','210 min post deflation','T8 - 240 min post deflation (EOS)'
   ],
+  /* Column order follows the printed form Ver.7.2.26.
+     Keys are unchanged from earlier versions so existing sheets keep their data. */
   vitalsCols:[
     {k:'time',label:'Time',type:'t'},
     {k:'hr',label:'HR',type:'n'},
-    {k:'femBP',label:'Fem Art BP (MAP)',type:'bp'},
-    {k:'carBP',label:'Carotid BP (MAP)',type:'bp'},
+    {k:'carBP',label:'Carotid BP & MAP',type:'bp'},
+    {k:'femBP',label:'Fem Art BP & MAP',type:'bp'},
     {k:'rr',label:'RR',type:'n'},
     {k:'spo2',label:'SpO2',type:'n'},
     {k:'etco2',label:'etCO2',type:'n'},
     {k:'temp',label:'Temp',type:'n'},
-    {k:'urine',label:'Urine',type:'n'},
-    {k:'istat',label:'iSTAT check',type:'c'},
-    {k:'labs',label:'Labs drawn',type:'x'},
+    {k:'iso',label:'Iso%',type:'n'},
+    {k:'o2',label:'Oxygen',type:'n'},
+    {k:'air',label:'Air',type:'n'},
+    {k:'urine',label:'Urine mL',type:'n'},
+    {k:'urineCollect',label:'Urine collected',type:'c'},
+    {k:'istat',label:'iSTATs CG4 & Chem8',type:'c'},
+    {k:'labs',label:'Labs',type:'x'},
   ],
   vitalsLabs:{0:'Pre-op: CBC, CMP, ABG (CG4, CG8)',1:'Chem, Coag, Plasma x5, Urine',2:'Coag, Plasma x5, Urine',5:'Coag, Plasma x5, Urine',
     7:'Coag, Plasma x5, Urine',9:'Coag, Plasma x5, Urine',11:'Coag, Plasma x5, Urine',13:'Chem, Coag, Plasma x5, Urine'},
@@ -644,11 +673,23 @@ const HCARE = {
     'T5 - 1 hr post REBOA deflation','T6 - 2 hr post deflation',
     'T7 - 3 hr post deflation','T8 - 4 hr post deflation'
   ],
+  /* Ver.7.2.26 splits the panel into CG4 and Chem8. Na, Ca, BUN and Crea are new. */
   istatCols:[
-    {k:'lactate',label:'Lactate'},{k:'k',label:'K'},{k:'glu',label:'Glu'},
-    {k:'hgb',label:'Hgb'},{k:'ph',label:'pH'},{k:'pco2',label:'pCO2'},
-    {k:'po2',label:'pO2'},{k:'hco3',label:'HCO3'},{k:'be',label:'Base Excess'},
-    {k:'so2',label:'sO2'},{k:'notes',label:'Notes',wide:true}
+    {k:'lactate',label:'Lactate',grp:'CG4'},
+    {k:'ph',label:'pH',grp:'CG4'},
+    {k:'pco2',label:'pCO2',grp:'CG4'},
+    {k:'po2',label:'pO2',grp:'CG4'},
+    {k:'be',label:'Base Excess',grp:'CG4'},
+    {k:'hco3',label:'HCO3',grp:'CG4'},
+    {k:'so2',label:'sO2',grp:'CG4'},
+    {k:'na',label:'Na',grp:'Chem8'},
+    {k:'k',label:'K',grp:'Chem8'},
+    {k:'ca',label:'Ca',grp:'Chem8'},
+    {k:'glu',label:'Glu',grp:'Chem8'},
+    {k:'bun',label:'BUN',grp:'Chem8'},
+    {k:'crea',label:'Crea',grp:'Chem8'},
+    {k:'hgb',label:'Hgb',grp:'Chem8'},
+    {k:'notes',label:'Notes',wide:true}
   ],
 };
 
@@ -722,30 +763,129 @@ function hcCaseSheet(){
   </div>`;
 }
 
+/* ---- Auto-fill: read values already held in the main record ---------------
+   A sheet row is linked to a timepoint by the T-number in its label.
+   Anything typed into a cell wins; auto values only fill the blanks. */
+function hcRowTp(sheet, rid){
+  const rows = sheet==='vitals' ? HCARE.vitalsRows : HCARE.istatRows;
+  const m = String(rows[rid]||'').match(/\bT(\d+)\b/i);
+  return m ? 'T'+m[1] : null;
+}
+function hcSrcAnimal(){
+  const byName = App.animals.find(x=>x.id===HCARE.animal);
+  if(byName) return byName;
+  let act=null;
+  try{ act = (typeof getActiveAnimal==='function') ? getActiveAnimal() : null; }catch(e){}
+  // the sheet's animal name often differs from the record id - never end up with nothing
+  return act || App.animals[0] || null;
+}
+function hcLabValues(a, tpId){
+  const out={};
+  (a.labs||[]).forEach(l=>{ if(l.tp===tpId) Object.assign(out, l.values||{}); });
+  const r = a.rows && a.rows[tpId];
+  if(r) Object.keys(r).forEach(k=>{
+    if(k.indexOf('lab_')===0 && out[k.slice(4)]==null) out[k.slice(4)]=r[k];
+  });
+  return out;
+}
+const HC_ISTAT_MAP={lactate:'Lactate',ph:'pH',pco2:'pCO2',po2:'pO2',be:'BE',hco3:'HCO3',
+  so2:'sO2',na:'Na',k:'K',ca:'iCa',glu:'Glucose',bun:'BUN',crea:'Creatinine',hgb:'Hb'};
+
+function hcAutoVals(sheet, rid){
+  const out={};
+  try{
+    const a=hcSrcAnimal(); if(!a) return out;
+    const tpId=hcRowTp(sheet, rid); if(!tpId) return out;
+    if(sheet==='vitals'){
+      const r=(a.rows||{})[tpId]; if(!r) return out;
+      const g=k=>(r[k]===''||r[k]==null)?null:r[k];
+      const put=(k,v)=>{ if(v!=null&&v!=='') out[k]=v; };
+      if(r._ts){
+        const d=new Date(r._ts);
+        put('time', String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0'));
+      }
+      const bp=(s,dia,m)=>{
+        if(g(s)==null && g(dia)==null) return null;
+        return (g(s)??'')+'/'+(g(dia)??'')+(g(m)!=null?'('+g(m)+')':'');
+      };
+      put('hr', g('HR'));
+      put('carBP', bp('CAs','CAd','MAP'));
+      put('femBP', bp('FAs','FAd','FAmap'));
+      put('rr', g('RR'));   put('spo2', g('SpO2'));
+      put('etco2', g('EtCO2')); put('temp', g('Temp'));
+      put('urine', g('Urine'));
+      if(Object.keys(hcLabValues(a, tpId)).length) out.istat=true;
+    } else {
+      const v=hcLabValues(a, tpId);
+      Object.keys(HC_ISTAT_MAP).forEach(ck=>{
+        const lv=v[HC_ISTAT_MAP[ck]];
+        if(lv!=null && lv!=='') out[ck]=lv;
+      });
+    }
+  }catch(e){ /* auto-fill must never break the sheet */ }
+  return out;
+}
+
 function hcGrid(sheet,rows,cols){
   const d=hcA()[sheet];
-  const cell=(rid,col)=>{
-    const val=(d[rid]&&d[rid][col.k]!=null)?String(d[rid][col.k]).replace(/"/g,'&quot;'):'';
-    if(col.type==='c') return `<input type="checkbox" data-g="${sheet}" data-r="${rid}" data-k="${col.k}" ${val?'checked':''}>`;
+  let autoCount=0;
+  const cell=(rid,col,auto)=>{
+    const raw=(d[rid]&&d[rid][col.k]!=null)?d[rid][col.k]:'';
+    const val=String(raw).replace(/"/g,'&quot;');
+    if(col.type==='c'){
+      const on = raw!=='' ? !!raw : !!auto[col.k];
+      const isAuto = raw==='' && !!auto[col.k];
+      if(isAuto) autoCount++;
+      return `<input type="checkbox" data-g="${sheet}" data-r="${rid}" data-k="${col.k}" ${on?'checked':''}${isAuto?' class="hcauto" title="From the app"':''}>`;
+    }
     if(col.type==='x') return `<span style="font-size:10px;color:var(--ink-faint)">${HCARE.vitalsLabs[rid]||''}</span>`;
-    if(col.type==='bp') return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${val}" placeholder="120/80(93)" style="width:108px">`;
+    const useAuto = (raw==='' || raw==null) && auto[col.k]!=null && auto[col.k]!=='';
+    if(useAuto) autoCount++;
+    const shown = useAuto ? String(auto[col.k]).replace(/"/g,'&quot;') : val;
+    const cls = useAuto ? ' class="hcauto" title="From the app - type here to override"' : '';
+    if(col.type==='bp') return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${shown}"${cls} placeholder="120/80(93)" style="width:108px">`;
     const w = col.wide?'width:160px':'width:62px';
-    return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${val}" inputmode="${col.type==='t'?'numeric':'decimal'}" style="${w}">`;
+    return `<input data-g="${sheet}" data-r="${rid}" data-k="${col.k}" value="${shown}"${cls} inputmode="${col.type==='t'?'numeric':'decimal'}" style="${w}">`;
   };
+  const body = rows.map((r,rid)=>{
+    const auto=hcAutoVals(sheet, rid);
+    return `<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
+      ${cols.map(c=>`<td>${cell(rid,c,auto)}</td>`).join('')}
+      <td style="white-space:nowrap">
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button>
+      </td></tr>`;
+  }).join('');
+
+  // grouped header (CG4 / Chem8) when the columns declare a group
+  const hasGrp = cols.some(c=>c.grp);
+  let head='';
+  if(hasGrp){
+    let spans=[], cur=null;
+    cols.forEach(c=>{
+      const g=c.grp||'';
+      if(cur && cur.g===g) cur.n++; else { cur={g,n:1}; spans.push(cur); }
+    });
+    head = `<tr><th rowspan="2" style="min-width:200px">Timepoint</th>`
+         + spans.map(s=>`<th class="hcgrp" colspan="${s.n}">${s.g||'&nbsp;'}</th>`).join('')
+         + `<th rowspan="2">Clear</th></tr>`
+         + `<tr>${cols.map(c=>`<th>${c.label}</th>`).join('')}</tr>`;
+  } else {
+    head = `<tr><th style="min-width:200px">Timepoint</th>${cols.map(c=>`<th>${c.label}</th>`).join('')}<th>Clear</th></tr>`;
+  }
+
+  const legend = autoCount
+    ? `<b style="color:var(--accent)">${autoCount}</b> cell${autoCount>1?'s':''} filled from the app (blue italic). Type over any of them to replace with your own reading.`
+    : `Values you record elsewhere in the app appear here automatically once the row's timepoint has data.`;
+
   return `
   <div class="tablewrap" style="overflow:auto">
     <table>
-      <thead><tr><th style="min-width:200px">Timepoint</th>${cols.map(c=>`<th>${c.label}</th>`).join('')}<th>Clear</th></tr></thead>
-      <tbody>
-        ${rows.map((r,rid)=>`<tr><td style="text-align:left;white-space:normal;min-width:200px"><span onclick="hcRenameRow('${sheet}',${rid})" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename this timepoint">${r}</span></td>
-          ${cols.map(c=>`<td>${cell(rid,c)}</td>`).join('')}
-          <td style="white-space:nowrap">
-            <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="hcClearRow('${sheet}',${rid})">Clear</button>
-          </td></tr>`).join('')}
-      </tbody>
+      <thead>${head}</thead>
+      <tbody>${body}</tbody>
     </table>
   </div>
-  <div class="hint" style="margin-top:8px">BP cells: top row of the paper = Femoral, bottom = Carotid. Enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties that row.</div>`;
+  <div class="hint" style="margin-top:8px">${legend}<br>
+  BP cells: enter as <b>sys/dia(MAP)</b> e.g. 120/80(93). Tap a <b>timepoint name</b> to rename it. <b>Clear</b> empties the row and lets the app's values show again.</div>`;
 }
 
 /* Photo straight into one sheet row - no row number prompt */
@@ -886,7 +1026,12 @@ function hcBind(){
       const {g,r,k}=el.dataset;
       const d=hcA()[g]; if(!d[r])d[r]={};
       d[r][k]= el.type==='checkbox'?el.checked:el.value;
+      el.classList.remove('hcauto');   // this cell is now the operator's own value
       if(g==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(parseInt(r));
+      if(g==='vitals' && typeof hcMirrorVitalsRow==='function'){
+        clearTimeout(HCARE._vt);
+        HCARE._vt=setTimeout(()=>hcMirrorVitalsRow(parseInt(r)), 500);
+      }
       if(window.autosave) autosave();
     };
     el.addEventListener(el.type==='checkbox'?'change':'input',handler);
@@ -905,8 +1050,7 @@ function hcMirrorIstatRow(rid){
     if(!App.protocol || !App.protocol.timepoints.find(t=>t.id===tpId)) return;
     const tpDef=App.protocol.timepoints.find(t=>t.id===tpId);
     const src=(hcA().istat||{})[rid]; if(!src) return;
-    const map={lactate:'Lactate',k:'K',glu:'Glucose',hgb:'Hb',ph:'pH',
-               pco2:'pCO2',po2:'pO2',hco3:'HCO3',be:'BE',so2:'sO2'};
+    const map=HC_ISTAT_MAP;
     const vals={};
     Object.entries(src).forEach(([k,v])=>{
       if(k.startsWith('_')||k==='notes') return;
@@ -917,7 +1061,7 @@ function hcMirrorIstatRow(rid){
     });
     if(!Object.keys(vals).length) return;
     // find the animal in the main record with this name, else the active one
-    let a=App.animals.find(x=>x.id===HCARE.animal) || getActiveAnimal();
+    let a=hcSrcAnimal();
     if(!a) a=addAnimal({silent:true});
     if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef&&tpDef.offsetMin!=null)?tpDef.offsetMin:null};
     Object.assign(a.rows[tpId], prefixKeys(vals));
@@ -930,6 +1074,224 @@ function hcMirrorIstatRow(rid){
     if(typeof renderMainPhotoTp==='function') renderMainPhotoTp();
   }catch(e){ /* mirroring must never break sheet entry */ }
 }
+/* Re-read the main record and repaint the sheet. Typed values are untouched. */
+function hcRefresh(){
+  hcRenderSheet();
+  toast('Sheet refreshed from the app');
+}
+window.hcRefresh=hcRefresh; window.hcAutoVals=hcAutoVals; window.hcRowTp=hcRowTp;
+
+/* ==================================================================
+   WHOLE-SHEET PHOTO IMPORT
+   One photo of the printed form -> every timepoint row at once.
+   Nothing is written until the operator approves it on a review screen.
+   ================================================================== */
+
+const HC_VITALS_KEYS=['time','hr','carBP','femBP','rr','spo2','etco2','temp','iso','o2','air','urine'];
+const HC_ISTAT_KEYS=['lactate','ph','pco2','po2','be','hco3','so2','na','k','ca','glu','bun','crea','hgb','notes'];
+
+function hcSheetPrompt(){
+  return `This photo shows a complete printed data form from a preclinical swine ICU experiment (H-CARE REBOA study). The entries are HANDWRITTEN. The page may be rotated 90 or 180 degrees - read it in whatever orientation makes sense.
+
+There are two form types:
+ - "vitals": one row per timepoint, columns Time, HR, Carotid BP & MAP, Fem Art BP & MAP, RR, SpO2, etCO2, Temp, Iso%, Oxygen, Air, Urine, iSTATs, Labs
+ - "istat": one row per timepoint, columns grouped as CG4 (Lactate, pH, pCO2, pO2, Base Excess, HCO3, sO2) and Chem8 (Na, K, Ca, Glu, BUN, Crea, Hgb), plus Notes
+
+Decide which type this is, then return ONLY JSON - no prose, no markdown fences:
+{"kind":"vitals","rows":[{"timepoint":"<row label exactly as printed>","hr":129,...}, ...]}
+
+Field keys for vitals: ${HC_VITALS_KEYS.join(', ')}
+Field keys for istat: ${HC_ISTAT_KEYS.join(', ')}
+
+Rules:
+- Include one object for every row that has ANY handwritten entry. Skip rows that are completely blank.
+- "timepoint" must be the printed row label from the left-hand column, copied as closely as you can read it.
+- Blood pressure as the string "sys/dia(MAP)", e.g. "96/64(75)". Use the printed COLUMN HEADERS to decide which is Carotid (carBP) and which is Femoral (femBP) - do not assume an order.
+- "time" as digits only, e.g. 1048.
+- All other values are numbers with no units.
+- If a value was crossed out and rewritten, use the final value.
+- Omit any cell you cannot read confidently. Never guess. An omitted cell is far better than a wrong one.
+Return JSON only.`;
+}
+
+async function hcReadWholeSheet(file){
+  if(getOcrMethod()!=='claude'){ toast('Whole-sheet reading needs the AI reader - switch it on under Photo / Settings'); return; }
+  if(!getApiKey()){ toast('No API key - add it under Photo / Settings'); return; }
+  const reader=new FileReader();
+  reader.onload=async ev=>{
+    toast('Reading the whole sheet - this takes a few seconds...');
+    try{
+      let img=await downscaleImage(ev.target.result, 1800);
+      const m=img.match(/^data:(image\/\w+);base64,(.+)$/);
+      if(!m) throw new Error('That file is not a readable image.');
+      const data=await callAnthropic({max_tokens:4096, messages:[{role:'user',content:[
+        {type:'image',source:{type:'base64',media_type:m[1],data:m[2]}},
+        {type:'text',text:hcSheetPrompt()}
+      ]}]});
+      const parsed=parseJSONReply(data);
+      if(!parsed||!Array.isArray(parsed.rows)||!parsed.rows.length){
+        toast('Nothing readable found on that photo'); return;
+      }
+      const kind = parsed.kind==='istat' ? 'istat' : 'vitals';
+      hcShowImport(kind, parsed.rows, img);
+    }catch(err){ toast('Sheet read failed: '+err.message); }
+  };
+  reader.readAsDataURL(file);
+}
+
+/* Match a printed row label to a row of the sheet. -1 when unsure. */
+function hcMatchRow(sheet, label){
+  const rows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  // the sheet labels carry a "T5 - " prefix that the paper does not; drop it before
+  // comparing, otherwise its digit competes with the real minute values
+  const strip=s=>String(s||'').replace(/\bT\s*\d+\s*[-\u2013\u2014:]?\s*/ig,' ');
+  const norm=s=>strip(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+  const L=norm(label); if(!L) return -1;
+  const tm=String(label||'').match(/\bT\s*(\d+)\b/i);
+  if(tm){
+    const i=rows.findIndex(r=>new RegExp('\\bT'+tm[1]+'\\b','i').test(r));
+    if(i>=0) return i;
+  }
+  let best=-1, score=0;
+  rows.forEach((r,i)=>{
+    const R=norm(r);
+    if(R===L){ best=i; score=999; return; }
+    if(score===999) return;
+    const toks=L.split(' ').filter(t=>t.length>2);
+    let s=toks.filter(t=>R.indexOf(t)>=0).length;
+    const ln=(L.match(/\d+/g)||[]).join(','), rn=(R.match(/\d+/g)||[]).join(',');
+    if(ln && ln===rn) s+=3; else if(ln && rn && ln!==rn) s-=2;
+    if(s>score){ score=s; best=i; }
+  });
+  return score>=2 ? best : -1;
+}
+
+let _hcImport=null;
+function hcShowImport(sheet, rows, img){
+  const keys = sheet==='vitals'?HC_VITALS_KEYS:HC_ISTAT_KEYS;
+  const cols = sheet==='vitals'?HCARE.vitalsCols:HCARE.istatCols;
+  const labelOf=k=>{ const c=cols.find(x=>x.k===k); return c?c.label:k; };
+  const sheetRows = sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const items=rows.map(r=>{
+    const vals={};
+    keys.forEach(k=>{ if(r[k]!=null && r[k]!=='') vals[k]=r[k]; });
+    return {read:r.timepoint||'', rid:hcMatchRow(sheet, r.timepoint), vals, use:Object.keys(vals).length>0};
+  }).filter(it=>Object.keys(it.vals).length);
+
+  _hcImport={sheet, items, img};
+
+  if(!items.length){ toast('No usable values on that photo'); return; }
+
+  const opts=(sel)=>sheetRows.map((r,i)=>`<option value="${i}" ${i===sel?'selected':''}>${r}</option>`).join('');
+  const existing=(rid,k)=>{
+    if(rid<0) return '';
+    const d=hcA()[sheet][rid];
+    return (d&&d[k]!=null&&d[k]!=='')?String(d[k]):'';
+  };
+
+  const body=items.map((it,idx)=>{
+    const cells=Object.entries(it.vals).map(([k,v])=>{
+      const old=existing(it.rid,k);
+      const warn = old && String(old)!==String(v);
+      return `<span style="display:inline-block;margin:2px 10px 2px 0;font-size:12px">
+        <b style="color:var(--ink-faint);font-weight:600">${labelOf(k)}</b>
+        <span style="font-family:var(--mono);color:${warn?'var(--amber,#c98a00)':'var(--ink)'}">${v}</span>
+        ${warn?`<s style="color:var(--ink-faint);font-family:var(--mono)">${old}</s>`:''}
+      </span>`;
+    }).join('');
+    const unmatched = it.rid<0;
+    return `<div style="border:1px solid ${unmatched?'var(--alarm)':'var(--line)'};border-radius:4px;padding:9px 11px;margin-bottom:8px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+        <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer">
+          <input type="checkbox" data-imp="${idx}" ${it.use&&!unmatched?'checked':''}>
+          <span style="color:var(--ink-faint)">read as</span> <b>${it.read||'(no label)'}</b>
+        </label>
+        <span style="color:var(--ink-faint);font-size:12px">&rarr;</span>
+        <select data-imprid="${idx}" style="padding:4px 7px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-size:12px;max-width:280px">
+          <option value="-1" ${unmatched?'selected':''}>- not matched - pick a row -</option>
+          ${opts(it.rid)}
+        </select>
+      </div>
+      <div>${cells}</div>
+    </div>`;
+  }).join('');
+
+  const nUnmatched=items.filter(i=>i.rid<0).length;
+  document.getElementById('hcImportTitle').textContent =
+    `${sheet==='vitals'?'Vitals':'iSTAT'} sheet - ${items.length} row${items.length>1?'s':''} read`;
+  document.getElementById('hcImportBody').innerHTML =
+    (nUnmatched?`<div style="color:var(--alarm);font-size:12px;margin-bottom:10px">${nUnmatched} row${nUnmatched>1?'s':''} could not be matched to a timepoint - choose one, or leave unticked to skip.</div>`:'')
+    + body;
+  document.getElementById('hcImportModal').classList.add('show');
+}
+
+function hcApplyImport(){
+  if(!_hcImport) return;
+  const {sheet, items, img}=_hcImport;
+  document.querySelectorAll('[data-imprid]').forEach(sel=>{
+    items[+sel.dataset.imprid].rid = parseInt(sel.value);
+  });
+  document.querySelectorAll('[data-imp]').forEach(cb=>{
+    items[+cb.dataset.imp].use = cb.checked;
+  });
+  let nRows=0, nCells=0;
+  const touched=[];
+  items.forEach(it=>{
+    if(!it.use || it.rid<0 || it.rid>=(sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows).length) return;
+    const d=hcA()[sheet];
+    if(!d[it.rid]) d[it.rid]={};
+    Object.entries(it.vals).forEach(([k,v])=>{ d[it.rid][k]=v; nCells++; });
+    if(img && !d[it.rid]._photo) d[it.rid]._photo=img;
+    touched.push(it.rid); nRows++;
+  });
+  if(!nRows){ toast('Nothing selected'); document.getElementById('hcImportModal').classList.remove('show'); return; }
+  // push the imported rows into the main record so Current, Timeline and Trends see them
+  touched.forEach(rid=>{
+    if(sheet==='istat') hcMirrorIstatRow(rid);
+    else hcMirrorVitalsRow(rid);
+  });
+  _hcImport=null;
+  document.getElementById('hcImportModal').classList.remove('show');
+  hcRenderSheet();
+  if(window.autosave) autosave();
+  toast(`Imported ${nCells} value${nCells>1?'s':''} across ${nRows} timepoint${nRows>1?'s':''} - please check them against the paper`);
+}
+
+/* Mirror a vitals sheet row into the main record (same idea as hcMirrorIstatRow) */
+function hcMirrorVitalsRow(rid){
+  try{
+    const tpId=hcRowTp('vitals', rid); if(!tpId) return;
+    if(!App.protocol) return;
+    const tpDef=App.protocol.timepoints.find(t=>t.id===tpId); if(!tpDef) return;
+    const src=(hcA().vitals||{})[rid]; if(!src) return;
+    const num=v=>(v===''||v==null)?null:(isNaN(+v)?null:+v);
+    const vals={};
+    const put=(k,v)=>{ if(v!=null) vals[k]=v; };
+    put('HR',   num(src.hr));
+    put('RR',   num(src.rr));
+    put('SpO2', num(src.spo2));
+    put('EtCO2',num(src.etco2));
+    put('Temp', num(src.temp));
+    put('Urine',num(src.urine));
+    const bp=(s)=>{
+      const m=String(s||'').match(/(-?\d+(?:\.\d+)?)\s*\/\s*(-?\d+(?:\.\d+)?)\s*(?:\((-?\d+(?:\.\d+)?)\))?/);
+      return m?{s:+m[1], d:+m[2], m:(m[3]!=null?+m[3]:null)}:null;
+    };
+    const ca=bp(src.carBP); if(ca){ put('CAs',ca.s); put('CAd',ca.d); put('MAP',ca.m); }
+    const fa=bp(src.femBP); if(fa){ put('FAs',fa.s); put('FAd',fa.d); put('FAmap',fa.m); }
+    if(!Object.keys(vals).length) return;
+    let a=hcSrcAnimal(); if(!a) a=addAnimal({silent:true});
+    if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef.offsetMin!=null?tpDef.offsetMin:null)};
+    Object.assign(a.rows[tpId], vals);
+    if(src.time) a.rows[tpId]._sheetTime=String(src.time);
+    rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends();
+    renderCurrent(); renderAnimalTabs();
+    if(typeof renderMainPhotoTp==='function') renderMainPhotoTp();
+  }catch(e){ /* mirroring must never break the sheet */ }
+}
+window.hcMirrorVitalsRow=hcMirrorVitalsRow;
+window.hcMatchRow=hcMatchRow; window.hcShowImport=hcShowImport; window.hcApplyImport=hcApplyImport;
+
 function hcExportCSV(){
   const lines=[];
   const a=HCARE.animal, A=hcA();
@@ -937,17 +1299,28 @@ function hcExportCSV(){
   lines.push('# CASE SETUP');
   lines.push('animal,'+a);
   Object.entries(A.case).forEach(([k,v])=>lines.push(`${k},"${String(v).replace(/"/g,'""')}"`));
+  // export the value actually shown: what was typed, else what the app supplied
+  const val=(sheet,rid,row,k)=>{
+    const v=row[k];
+    if(v!=null && v!=='') return v;
+    const auto=hcAutoVals(sheet,rid)[k];
+    return (auto==null||auto==='')?'':auto;
+  };
   lines.push(''); lines.push('# VITALS');
-  lines.push(['timepoint',...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>c.k)].join(','));
+  const vcols=HCARE.vitalsCols.filter(c=>c.type!=='x');
+  lines.push(['timepoint',...vcols.map(c=>c.k)].join(','));
   HCARE.vitalsRows.forEach((r,rid)=>{
     const row=A.vitals[rid]||{};
-    lines.push([`"${r}"`,...HCARE.vitalsCols.filter(c=>c.type!=='x').map(c=>(row[c.k]??''))].join(','));
+    lines.push([`"${r}"`,...vcols.map(c=>val('vitals',rid,row,c.k))].join(','));
   });
   lines.push(''); lines.push('# iSTAT');
   lines.push(['timepoint',...HCARE.istatCols.map(c=>c.k)].join(','));
   HCARE.istatRows.forEach((r,rid)=>{
     const row=A.istat[rid]||{};
-    lines.push([`"${r}"`,...HCARE.istatCols.map(c=>{const x=row[c.k]??'';return c.k==='notes'?`"${String(x).replace(/"/g,'""')}"`:x;})].join(','));
+    lines.push([`"${r}"`,...HCARE.istatCols.map(c=>{
+      const x=val('istat',rid,row,c.k);
+      return c.k==='notes'?`"${String(x).replace(/"/g,'""')}"`:x;
+    })].join(','));
   });
   const blob=new Blob([lines.join('\n')],{type:'text/csv'});
   const url=URL.createObjectURL(blob);const el=document.createElement('a');
@@ -964,6 +1337,15 @@ document.getElementById('hcExport').addEventListener('click',hcExportCSV);
 document.getElementById('hcPhotoFile').addEventListener('change',e=>{
   if(e.target.files[0]) hcPhotoToRow(e.target.files[0]);
   e.target.value='';
+});
+document.getElementById('hcSheetPhoto').addEventListener('click',()=>document.getElementById('hcSheetFile').click());
+document.getElementById('hcSheetFile').addEventListener('change',e=>{
+  if(e.target.files[0]) hcReadWholeSheet(e.target.files[0]);
+  e.target.value='';
+});
+document.getElementById('hcImportApply').addEventListener('click',hcApplyImport);
+document.getElementById('hcImportCancel').addEventListener('click',()=>{
+  _hcImport=null; document.getElementById('hcImportModal').classList.remove('show');
 });
 
 async function hcPhotoToRow(file){
@@ -1015,7 +1397,8 @@ function hcMapVitals(text){
 function hcMapIstat(text){
   const out={};
   const alias={lactate:'lactate',lac:'lactate',k:'k',glu:'glu',glucose:'glu',hgb:'hgb',hb:'hgb',
-    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2'};
+    ph:'ph',pco2:'pco2',po2:'po2',hco3:'hco3',be:'be','beecf':'be',so2:'so2',
+    na:'na',sodium:'na',ca:'ca',ica:'ca',bun:'bun',urea:'bun',crea:'crea',creat:'crea',creatinine:'crea'};
   text.split(/\n+/).forEach(line=>{
     const mm=line.match(/^[\s|>*]*([A-Za-z][A-Za-z0-9]{0,7})\b[^0-9\-]{0,8}(-?\d+\.?\d*)/);
     if(mm){const k=alias[mm[1].toLowerCase().replace(/[^a-z0-9]/g,'')]; if(k&&out[k]===undefined)out[k]=parseFloat(mm[2]);}
@@ -1068,7 +1451,7 @@ const DEFAULT_VITALS = [
   {key:'MV',   label:'MV',    unit:'L/min',group:'vent', lo:1,  hi:20},
 ];
 
-const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','Creatinine'];
+const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','BUN','Creatinine'];
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -1711,7 +2094,8 @@ Rules:
 - Keys must exactly match the field keys given above.
 - Values are numbers only (no units). For blood pressure use the string "sys/dia(MAP)" e.g. "120/80(93)".
 - Omit any field you cannot read confidently. Do not guess.
-- If two BP readings are shown (e.g. femoral and carotid), map the first to femBP and second to carBP when those keys are requested.
+- If two BP readings are shown, use the printed labels or column headers to decide which is carotid (carBP / CAs-CAd-MAP) and which is femoral (femBP / FAs-FAd-FAmap). On this study's forms the Carotid column is printed first. Do not rely on position alone.
+- The page may be rotated 90 or 180 degrees; read it in whatever orientation makes sense.
 Return JSON only.`;
   const data=await callAnthropic({max_tokens:1024,
       messages:[{role:'user',content:[
