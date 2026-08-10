@@ -1889,6 +1889,7 @@ function editAnimalInfo(){
   const sheet=HCARE.data[a.id]&&HCARE.data[a.id].case?HCARE.data[a.id].case:{};
   const v=k=>(a.info[k]!=null&&a.info[k]!=='')?a.info[k]:(sheet[k]||'');
   $('#capTitle').textContent='Study details - '+a.id;
+  const _t=$('#capTitle'); _t.onclick=null; _t.style.cursor=''; _t.style.textDecoration=''; _t.title='';
   $('#capBody').innerHTML=`
     <div class="grid2" style="margin-bottom:4px">
       <div class="field"><label>Animal #</label><input data-i="animalNo" value="${a.id}"></div>
@@ -1969,6 +1970,29 @@ function openCapture(tpId, prefill, photo){
   let tp = tpId ? App.protocol.timepoints.find(t=>t.id===tpId) : null;
   const fromPhoto = !!photo;
   $('#capTitle').textContent = tp ? `${tp.label}` : (fromPhoto?'Vitals from photo':'Edit / enter vitals');
+  // Tap the title to rename this timepoint (e.g., relabel a slot as the EOS
+  // sample). Only for scheduled timepoints, and never for observers.
+  const capT=$('#capTitle');
+  if(tp && !document.body.classList.contains('reader-mode')){
+    capT.style.cursor='pointer';
+    capT.style.textDecoration='underline dotted';
+    capT.title='Tap to rename this timepoint';
+    capT.onclick=()=>{
+      const cur=App.protocol.timepoints.find(t=>t.id===tpId); if(!cur) return;
+      const nn=prompt('Rename timepoint:', cur.label);
+      if(nn===null) return;
+      const clean=String(nn).trim();
+      if(!clean){ toast('Name cannot be empty'); return; }
+      const old=cur.label;
+      cur.label=clean;
+      capT.textContent=clean;
+      if(window.logEvent) logEvent('rename-tp',{tp:tpId, from:old, to:clean});
+      rebuildTable(); renderTimeline(); renderCurrent(); renderTrends(); autosave();
+      toast('Timepoint renamed');
+    };
+  } else {
+    capT.style.cursor=''; capT.style.textDecoration=''; capT.title=''; capT.onclick=null;
+  }
   const elapsed = App.runStart ? `+${Math.round((Date.now()-App.runStart)/60000)} min` : '';
   const srcNote = fromPhoto ? 'values extracted from photo - check & correct' :
                   (Object.keys(App.live).length? 'values pre-filled from live feed' : 'enter values manually');
