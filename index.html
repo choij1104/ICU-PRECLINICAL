@@ -2939,11 +2939,29 @@ function renderTrends(){
 }
 window.renderTrends = renderTrends;
 
+/* The run-minute of the animal's death row, if one exists - same x logic as
+   trendPoints so the chart and the marker always agree. */
+function animalDeathMin(){
+  const a=getActiveAnimal(); if(!a) return null;
+  let best=null;
+  Object.entries(a.rows||{}).forEach(([rid,r])=>{
+    if(!r||!r._death) return;
+    let x=r._runMin;
+    if(x==null && App.protocol){
+      const tp=App.protocol.timepoints.find(t=>t.id===rid);
+      if(tp && tp.offsetMin!=null) x=tp.offsetMin;
+    }
+    if(x!=null && (best==null||x<best)) best=x;
+  });
+  return best;
+}
+
 function trendSVG(pts, meta){
   const W=680,PL=48,PR=14,PT=14;
   // The x-axis shows EVERY scheduled timepoint, recorded or not, so the shape
   // of the study is always visible and gaps are obvious.
-  const axisPts=[];
+  const axisPtsBuild=[];
+  let axisPts=axisPtsBuild;
   const seenX=new Set();
   if(App.protocol) App.protocol.timepoints.forEach(tp=>{
     const off=tp.offsetMin!=null?tp.offsetMin:0;
@@ -2957,6 +2975,20 @@ function trendSVG(pts, meta){
     seenX.add(p.x);
   }});
   axisPts.sort((a,b)=>a.x-b.x);
+  // ── Death-aware axis ─────────────────────────────────────────────
+  // If the animal died, the study ended there: scheduled slots after the
+  // death vanish from the axis, and any data recorded under a later slot
+  // (e.g., an EOS sample written into the T8 row) is drawn AT the death,
+  // so the chart never claims the run lasted longer than the animal did.
+  const deathMin=animalDeathMin();
+  if(deathMin!=null){
+    pts.forEach(p=>{ if(p.x>deathMin){ p.x=deathMin; p.clamped=true; } });
+    pts.sort((a,b)=>a.x-b.x);
+    axisPts=axisPts.filter(ap=>ap.x<=deathMin);
+    if(!axisPts.some(ap=>ap.death||ap.x===deathMin))
+      axisPts.push({x:deathMin, tag:'DEATH', full:'Death point', scheduled:false, death:true});
+    axisPts.sort((a,b)=>a.x-b.x);
+  }
   const manyPts=Math.max(pts.length, axisPts.length)>7;
   const PB=manyPts?54:38, H=manyPts?226:210;
   const xs=(axisPts.length?axisPts:pts).map(p=>p.x), ys=pts.map(p=>p.y);
@@ -2979,7 +3011,7 @@ function trendSVG(pts, meta){
   const dots=pts.map(p=>{
     const c=p.death?'var(--alarm)':(p.event?'var(--trace-amber)':'var(--accent)');
     const rr=(p.death||p.event)?4.5:3.2;
-    return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${rr}" fill="${c}"><title>${p.label}: ${p.y}${meta.unit?' '+meta.unit:''}</title></circle>`;
+    return `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="${rr}" fill="${c}"${p.clamped?' stroke="var(--alarm)" stroke-width="1.5"':''}><title>${p.label}: ${p.y}${meta.unit?' '+meta.unit:''}${p.clamped?' (recorded under a later scheduled slot; shown at death)':''}</title></circle>`;
   }).join('');
   // x labels: first, middle, last
   // X axis: label EVERY point with its timepoint name (T1, T2, EVENT...).
