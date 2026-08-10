@@ -1855,7 +1855,7 @@ function renderTimeline(){
     const evHtml = (tp.events&&tp.events.length)
       ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:4px;line-height:1.5">${tp.events.map(e=>'> '+e).join('<br>')}</div>` : '';
     return `
-      <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}">
+      <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}"${done&&!document.body.classList.contains('reader-mode')?' draggable="true" title="Drag onto another timepoint (or the red zone) to move this data"':''}>
         <div class="tdot"></div>
         <div class="tbody">
           <div class="ttime"><span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${tp.label}</span></div>
@@ -1876,6 +1876,56 @@ function renderTimeline(){
       </div>`;
   }).join('');
 }
+
+/* ── Drag & drop on the timeline ─────────────────────────────────────
+   Drag a recorded row onto another timepoint to move all its data there,
+   or onto the red zone (appears while dragging) to move it to the DEATH
+   point. Touch devices use the capture-modal "Move" dropdown instead. */
+(function(){
+  const tl=document.getElementById('timeline'); if(!tl) return;
+  let dragId=null;
+  function killZone(){ const z=document.getElementById('deathDropZone'); if(z) z.remove(); }
+  tl.addEventListener('dragstart',e=>{
+    const row=e.target.closest('.tp[draggable="true"]'); if(!row) return;
+    dragId=row.dataset.tp;
+    e.dataTransfer.effectAllowed='move';
+    try{e.dataTransfer.setData('text/plain',dragId);}catch(_){}
+    row.style.opacity='.45';
+    if(!document.getElementById('deathDropZone')){
+      const z=document.createElement('div');
+      z.id='deathDropZone';
+      z.innerHTML='&#10013; Drop here to move this data to the DEATH point';
+      z.style.cssText='margin-top:10px;padding:14px;border:2px dashed var(--alarm);border-radius:8px;color:var(--alarm);font-weight:600;font-size:12.5px;text-align:center;background:var(--alarm-soft)';
+      tl.appendChild(z);
+    }
+  });
+  tl.addEventListener('dragover',e=>{
+    if(!dragId) return;
+    const t=e.target.closest('.tp,[id="deathDropZone"]'); if(!t) return;
+    if(t.classList&&t.classList.contains('tp')&&t.dataset.tp===dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect='move';
+    t.style.outline='2px solid var(--accent)'; t.style.outlineOffset='2px';
+  });
+  tl.addEventListener('dragleave',e=>{
+    const t=e.target.closest('.tp,[id="deathDropZone"]');
+    if(t){ t.style.outline=''; t.style.outlineOffset=''; }
+  });
+  tl.addEventListener('drop',e=>{
+    if(!dragId) return;
+    e.preventDefault();
+    const zone=e.target.closest('[id="deathDropZone"]');
+    const row=e.target.closest('.tp');
+    const src=dragId; dragId=null; killZone();
+    tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
+    if(zone){ moveRowData(src,'DEATH'); return; }
+    if(row && row.dataset.tp && row.dataset.tp!==src) moveRowData(src, row.dataset.tp);
+  });
+  tl.addEventListener('dragend',()=>{
+    dragId=null; killZone();
+    tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
+  });
+})();
 
 function countdownFor(tp){
   if(!App.runStart) return {text:'', active:false};
@@ -2400,17 +2450,15 @@ function logEvent(type, detail){
 window.logEvent=logEvent;
 
 /* Move an entire row - values, bound labs, photo - to another timepoint or
-   to the DEATH point. Existing values at the target are never overwritten. */
-function moveRowTo(fromId){
+   to the DEATH point. Existing values at the target are never overwritten.
+   Used by the capture-modal dropdown AND by drag & drop on the timeline. */
+function moveRowData(fromId, target){
   const a=getActiveAnimal(); if(!a) return;
   const src=a.rows[fromId]; if(!src){ toast('Nothing recorded here to move'); return; }
-  const sel=document.getElementById('capMoveTarget'); if(!sel) return;
-  const target=sel.value;
   const fromLabel=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===fromId)||{}).label)||fromId;
 
   let destKey;
   if(target==='DEATH'){
-    // find an existing death row wherever it was filed
     destKey=Object.keys(a.rows).find(k=>a.rows[k]&&a.rows[k]._death)||null;
     if(!destKey){
       let runMin=null;
@@ -2440,7 +2488,6 @@ function moveRowTo(fromId){
     }
     if(dest[k]==null||dest[k]===''){ dest[k]=v; moved++; }
   });
-  // re-point any lab entries bound to the source timepoint
   let labsMoved=0;
   (a.labs||[]).forEach(l=>{ if(l.tp===fromId){ l.tp=destKey; labsMoved++; } });
   delete a.rows[fromId];
@@ -2449,6 +2496,11 @@ function moveRowTo(fromId){
   $('#captureModal').classList.remove('show');
   rebuildTable(); renderTimeline(); renderCurrent(); renderTrends(); renderAnimalTabs(); autosave();
   toast('Moved '+moved+' value'+(moved===1?'':'s')+(labsMoved?' + '+labsMoved+' lab entr'+(labsMoved===1?'y':'ies'):'')+' to '+(target==='DEATH'?'the DEATH point':destKey));
+}
+window.moveRowData=moveRowData;
+function moveRowTo(fromId){
+  const sel=document.getElementById('capMoveTarget'); if(!sel) return;
+  moveRowData(fromId, sel.value);
 }
 window.moveRowTo=moveRowTo;
 
