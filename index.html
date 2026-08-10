@@ -1197,6 +1197,7 @@ Rules:
 - "time" as digits only, e.g. 1048.
 - All other values are numbers with no units.
 - If a value was crossed out and rewritten, use the final value.
+- If a ROW is marked as the terminal sample - the printed label is crossed out or annotated with handwriting such as "EOS", "euthanasia", "expired", "death", or a euthanasia time note - add "eos": true to that row's object. Only flag a row when such markings are clearly present.
 - Omit any cell you cannot read confidently. Never guess. An omitted cell is far better than a wrong one.
 Return JSON only.`;
 }
@@ -1262,7 +1263,7 @@ function hcShowImport(sheet, rows, img){
   const items=rows.map(r=>{
     const vals={};
     keys.forEach(k=>{ if(r[k]!=null && r[k]!=='') vals[k]=r[k]; });
-    return {read:r.timepoint||'', rid:hcMatchRow(sheet, r.timepoint), vals, use:Object.keys(vals).length>0};
+    return {read:r.timepoint||'', rid:hcMatchRow(sheet, r.timepoint), vals, use:Object.keys(vals).length>0, eos:!!r.eos};
   }).filter(it=>Object.keys(it.vals).length);
 
   _hcImport={sheet, items, img};
@@ -1305,6 +1306,9 @@ function hcShowImport(sheet, rows, img){
           <option value="-1" ${unmatched?'selected':''}>- not matched - pick a row -</option>
           ${opts(it.rid)}
         </select>
+        <label style="display:flex;gap:5px;align-items:center;font-size:11.5px;cursor:pointer;color:var(--alarm);font-weight:600;margin-left:auto" title="Tick if this row is the terminal / euthanasia sample. Applying will also record the animal's DEATH point.">
+          <input type="checkbox" data-impdeath="${idx}" ${it.eos?'checked':''}> DEATH sample${it.eos?' (detected)':''}
+        </label>
       </div>
       <div>${cells}</div>
       ${covLine}
@@ -1343,6 +1347,9 @@ function hcApplyImport(){
   document.querySelectorAll('[data-imp]').forEach(cb=>{
     items[+cb.dataset.imp].use = cb.checked;
   });
+  document.querySelectorAll('[data-impdeath]').forEach(cb=>{
+    items[+cb.dataset.impdeath].death = cb.checked;
+  });
   let nRows=0, nCells=0;
   const touched=[];
   items.forEach(it=>{
@@ -1371,6 +1378,49 @@ function hcApplyImport(){
   const allRows=(sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows).length;
   const stillEmpty=allRows-new Set(touched).size;
   if(window.logEvent) logEvent('sheet-import',{sheet, rows:nRows, values:nCells});
+
+  // ── DEATH sample from the sheet ──────────────────────────────────
+  // A row ticked as the terminal sample also records the animal's DEATH
+  // point, so the trends and timeline end where the animal did. Values
+  // stay authoritative in the sheet; the app row is the marker.
+  const deathIt=items.find(it=>it.death && it.use && it.rid>=0);
+  if(deathIt){
+    const a=getActiveAnimal();
+    if(a && !Object.values(a.rows||{}).some(r=>r&&r._death)){
+      let runMin=null;
+      // vitals sheets carry a clock column - derive run minute from it
+      const t=deathIt.vals.time!=null?String(deathIt.vals.time).replace(/\D/g,''):'';
+      if(App.runStart && t.length>=3 && t.length<=4){
+        const hh=+t.slice(0,t.length-2), mm=+t.slice(-2);
+        if(hh<24 && mm<60){
+          const d=new Date(App.runStart); d.setHours(hh,mm,0,0);
+          if(d.getTime()<App.runStart) d.setDate(d.getDate()+1);
+          runMin=Math.round((d.getTime()-App.runStart)/60000);
+        }
+      }
+      if(runMin==null){
+        const v=prompt('DEATH sample - run minute (minutes from on-table)?\nLeave blank if unknown.');
+        if(v!==null && String(v).trim()!==''){ const n=parseInt(v); if(!isNaN(n)) runMin=n; }
+      }
+      const label=(sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows)[deathIt.rid]||deathIt.read;
+      a.rows['DEATH']={_ts:nowTs(), _death:true, _runMin:runMin,
+        _label:'DEATH - EOS sample (from sheet photo)',
+        _note:'Terminal / euthanasia sample imported from the '+sheet+' sheet photo (row: '+label+').'};
+      // carry the cleanly-mappable vitals onto the marker so Current shows them
+      if(sheet==='vitals'){
+        const map={hr:'HR', rr:'RR', spo2:'SpO2', etco2:'EtCO2', temp:'Temp', urine:'Urine'};
+        Object.entries(map).forEach(([hk,ak])=>{
+          const v=deathIt.vals[hk];
+          if(v!=null && v!=='' && !isNaN(+v)) a.rows['DEATH'][ak]=+v;
+        });
+      }
+      if(window.logEvent) logEvent('death-from-sheet',{animal:a.id, row:label, runMin});
+      rebuildTable(); renderTimeline(); renderCurrent(); renderTrends();
+      toast('DEATH point recorded from the sheet'+(runMin!=null?(' at +'+runMin+' min'):''));
+    } else if(a){
+      toast('A DEATH point already exists - sheet row imported as data only');
+    }
+  }
   toast(`Imported ${nCells} value${nCells>1?'s':''} across ${nRows} timepoint${nRows>1?'s':''}`
     +(stillEmpty>0?` - ${stillEmpty} timepoint${stillEmpty>1?'s':''} still without photo data`:' - every timepoint written')
     +`. Check against the paper.`);
