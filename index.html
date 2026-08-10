@@ -115,10 +115,9 @@
   .conn.sim .led{background:#E8B44C;box-shadow:0 0 8px rgba(232,180,76,.9)}
   .conn .label{color:var(--ink-on-dark-dim);letter-spacing:.4px}
 
-  .runclock{font-family:var(--mono);font-size:12.5px;color:var(--ink-on-dark-dim);
-    padding:5px 12px;background:rgba(255,255,255,.07);border-radius:8px;
-    border:1px solid rgba(255,255,255,.12)}
-  .runclock b{color:#fff}
+  .runclock{font-family:var(--mono);font-size:11px;color:var(--ink-on-dark-dim);
+    letter-spacing:.6px;display:flex;align-items:center;gap:7px;cursor:default}
+  .runclock b{color:#fff;font-size:13px;letter-spacing:0}
 
   .tabbar{display:flex;gap:2px;
     background:linear-gradient(180deg,var(--bezel-deep-2) 0%,var(--bezel-deep-2) 100%);
@@ -364,7 +363,7 @@
       <span class="dot"></span>
       Auravyx Preclinical <small>Current &middot; v5.2</small>
     </div>
-    <div class="runclock" id="runclock">RUN <b id="runtime">&mdash;</b></div>
+    <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
     <div class="conn" id="conn">
       <span class="led"></span>
@@ -378,6 +377,7 @@
     <button class="tabbtn" data-tab="trends">Trends</button>
     <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
     <button class="tabbtn" data-tab="settings">Photo / Settings</button>
+    <button class="tabbtn" data-tab="log">Study Log</button>
   </nav>
 
   <div class="body">
@@ -536,6 +536,17 @@
       <div id="trendCharts"></div>
     </main>
 
+    <aside class="col left" data-panel="log">
+      <h2 class="sec">Study log</h2>
+      <div class="card">
+        <div id="logSummary" class="hint" style="font-size:12px;margin:0 0 4px"></div>
+      </div>
+      <h2 class="sec">Action history</h2>
+      <div class="card">
+        <div id="logList" style="font-size:12px"></div>
+      </div>
+    </aside>
+
     <aside class="col right" data-panel="timeline">
       <h2 class="sec">Timeline</h2>
       <div class="card" style="padding:12px">
@@ -685,7 +696,7 @@
       <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
       <input type="file" id="hcPhotoFile" class="hidden-file" accept="image/*">
-      <input type="file" id="hcSheetFile" class="hidden-file" accept="image/*">
+      <input type="file" id="hcSheetFile" class="hidden-file" accept="image/*" multiple>
       <button class="btn sm cap" id="hcSheetPhoto" style="width:auto">Read whole sheet from photo</button>
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
       <button class="btn sm" style="width:auto" onclick="hcRefresh()">Refresh from app</button>
@@ -1206,11 +1217,11 @@ async function hcReadWholeSheet(file){
       ]}]});
       const parsed=parseJSONReply(data);
       if(!parsed||!Array.isArray(parsed.rows)||!parsed.rows.length){
-        toast('Nothing readable found on that photo'); return;
+        toast('Nothing readable found on that photo'); hcNextSheetInQueue(); return;
       }
       const kind = parsed.kind==='istat' ? 'istat' : 'vitals';
       hcShowImport(kind, parsed.rows, img);
-    }catch(err){ toast('Sheet read failed: '+err.message); }
+    }catch(err){ toast('Sheet read failed: '+err.message); hcNextSheetInQueue(); }
   };
   reader.readAsDataURL(file);
 }
@@ -1275,6 +1286,13 @@ function hcShowImport(sheet, rows, img){
         ${warn?`<s style="color:var(--ink-faint);font-family:var(--mono)">${old}</s>`:''}
       </span>`;
     }).join('');
+    // coverage: which expected fields did the photo NOT yield for this row?
+    const expect = keys.filter(k=>k!=='notes');
+    const missing = expect.filter(k=>!(k in it.vals));
+    const covLine = missing.length
+      ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:5px">
+           ${expect.length-missing.length}/${expect.length} fields read &middot; not read: ${missing.map(labelOf).join(', ')}</div>`
+      : `<div style="font-size:11px;color:var(--trace);margin-top:5px">All ${expect.length} fields read</div>`;
     const unmatched = it.rid<0;
     return `<div style="border:1px solid ${unmatched?'var(--alarm)':'var(--line)'};border-radius:4px;padding:9px 11px;margin-bottom:8px">
       <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
@@ -1289,14 +1307,29 @@ function hcShowImport(sheet, rows, img){
         </select>
       </div>
       <div>${cells}</div>
+      ${covLine}
     </div>`;
   }).join('');
 
   const nUnmatched=items.filter(i=>i.rid<0).length;
+  // sheet rows the photo produced nothing for - the operator must know these are still empty
+  const foundRids=new Set(items.map(i=>i.rid).filter(r=>r>=0));
+  const notFound=sheetRows.map((r,i)=>foundRids.has(i)?null:r).filter(Boolean);
+  const notFoundLine = notFound.length
+    ? `<div style="border:1px solid var(--line-strong);background:var(--amber-soft);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:12px;color:var(--trace-amber)">
+         <b>${notFound.length} timepoint${notFound.length>1?'s':''} not found on this photo</b> (will stay empty): ${notFound.join(', ')}</div>`
+    : `<div style="border:1px solid var(--line);background:var(--trace-soft);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:12px;color:var(--trace)">
+         <b>Every timepoint row on the sheet was found on this photo.</b></div>`;
   document.getElementById('hcImportTitle').textContent =
-    `${sheet==='vitals'?'Vitals':'iSTAT'} sheet - ${items.length} row${items.length>1?'s':''} read`;
+    `${sheet==='vitals'?'Vitals':'iSTAT'} sheet - ${items.length} row${items.length>1?'s':''} read`
+    + (_hcSheetQueue.length?` (${_hcSheetQueue.length} more photo${_hcSheetQueue.length>1?'s':''} queued after this)`:'');
+  const thumbLine =
+    `<div style="margin-bottom:10px"><img src="${img}" alt="the photo being reviewed"
+       style="max-height:140px;max-width:100%;border:1px solid var(--line);border-radius:6px;display:block"></div>`;
   document.getElementById('hcImportBody').innerHTML =
-    (nUnmatched?`<div style="color:var(--alarm);font-size:12px;margin-bottom:10px">${nUnmatched} row${nUnmatched>1?'s':''} could not be matched to a timepoint - choose one, or leave unticked to skip.</div>`:'')
+    thumbLine
+    + notFoundLine
+    + (nUnmatched?`<div style="color:var(--alarm);font-size:12px;margin-bottom:10px">${nUnmatched} row${nUnmatched>1?'s':''} could not be matched to a timepoint - choose one, or leave unticked to skip.</div>`:'')
     + body;
   document.getElementById('hcImportModal').classList.add('show');
 }
@@ -1325,7 +1358,7 @@ function hcApplyImport(){
     if(!A._sheetPhoto) A._sheetPhoto={};
     A._sheetPhoto[sheet]=img;
   }
-  if(!nRows){ toast('Nothing selected'); document.getElementById('hcImportModal').classList.remove('show'); return; }
+  if(!nRows){ toast('Nothing selected'); document.getElementById('hcImportModal').classList.remove('show'); hcNextSheetInQueue(); return; }
   // push the imported rows into the main record so Current, Timeline and Trends see them
   touched.forEach(rid=>{
     if(sheet==='istat') hcMirrorIstatRow(rid);
@@ -1335,7 +1368,13 @@ function hcApplyImport(){
   document.getElementById('hcImportModal').classList.remove('show');
   hcRenderSheet();
   if(window.autosave) autosave();
-  toast(`Imported ${nCells} value${nCells>1?'s':''} across ${nRows} timepoint${nRows>1?'s':''} - please check them against the paper`);
+  const allRows=(sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows).length;
+  const stillEmpty=allRows-new Set(touched).size;
+  if(window.logEvent) logEvent('sheet-import',{sheet, rows:nRows, values:nCells});
+  toast(`Imported ${nCells} value${nCells>1?'s':''} across ${nRows} timepoint${nRows>1?'s':''}`
+    +(stillEmpty>0?` - ${stillEmpty} timepoint${stillEmpty>1?'s':''} still without photo data`:' - every timepoint written')
+    +`. Check against the paper.`);
+  hcNextSheetInQueue();
 }
 
 /* Mirror a vitals sheet row into the main record (same idea as hcMirrorIstatRow) */
@@ -1421,13 +1460,26 @@ document.getElementById('hcPhotoFile').addEventListener('change',e=>{
   e.target.value='';
 });
 document.getElementById('hcSheetPhoto').addEventListener('click',()=>document.getElementById('hcSheetFile').click());
+let _hcSheetQueue=[];
 document.getElementById('hcSheetFile').addEventListener('change',e=>{
-  if(e.target.files[0]) hcReadWholeSheet(e.target.files[0]);
+  const fs=[...e.target.files];
+  if(fs.length){
+    _hcSheetQueue=fs.slice(1);
+    if(_hcSheetQueue.length) toast(`${fs.length} photos selected - reading them one at a time`);
+    hcReadWholeSheet(fs[0]);
+  }
   e.target.value='';
 });
+/* After one photo is applied or cancelled, move on to the next queued photo. */
+function hcNextSheetInQueue(){
+  if(!_hcSheetQueue.length) return;
+  const f=_hcSheetQueue.shift();
+  setTimeout(()=>hcReadWholeSheet(f), 400);
+}
 document.getElementById('hcImportApply').addEventListener('click',hcApplyImport);
 document.getElementById('hcImportCancel').addEventListener('click',()=>{
   _hcImport=null; document.getElementById('hcImportModal').classList.remove('show');
+  hcNextSheetInQueue();
 });
 
 async function hcPhotoToRow(file){
@@ -1504,6 +1556,7 @@ const App = {
   source: null,
   live: {},
   runStart: null,
+  audit: [],   /* append-only action log: who did what, when (writer/observer) */
   sparkData: {},
 };
 
@@ -1951,7 +2004,7 @@ function openCapture(tpId, prefill, photo){
     else if(saved && saved[p.key]!=null && saved[p.key]!=='') v=saved[p.key];   // keep what was recorded
     else { const live=App.live[p.key]; if(live&&live.value!=null && !fromPhoto) v=live.value; }
     return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
-      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"${ocr?` data-ocrval="${v}"`:''}></div>`;
   };
   body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Patient monitor</div>`;
   body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
@@ -2243,6 +2296,19 @@ function mapMonitorText(text){
   return out;
 }
 
+/* ── Audit log ──────────────────────────────────────────────────────
+   Every data-changing action leaves a row: timestamp, action, detail.
+   The log itself is append-only in the UI and travels with the save
+   file / live session so reviewers can reconstruct what happened. */
+function logEvent(type, detail){
+  try{
+    if(!Array.isArray(App.audit)) App.audit=[];
+    App.audit.push({ts:nowTs(), type, ...detail});
+    if(App.audit.length>1500) App.audit.splice(0, App.audit.length-1500);
+  }catch(e){}
+}
+window.logEvent=logEvent;
+
 function saveCapture(tpId){
   const a=getActiveAnimal(); if(!a)return;
   // first record of the study starts the run clock, so countdowns and
@@ -2280,6 +2346,15 @@ function saveCapture(tpId){
     a.rows[rid]=row;
   }
   $('#captureModal').classList.remove('show');
+  // OCR accuracy: fields the AI filled - accepted unchanged vs corrected by hand
+  let ocrAcc=0, ocrCorr=0;
+  inputs.forEach(inp=>{
+    if(inp.dataset.ocrval===undefined) return;
+    if(String(inp.value).trim()===String(inp.dataset.ocrval).trim()) ocrAcc++; else ocrCorr++;
+  });
+  logEvent('capture',{animal:a.id, tp:tpId||label,
+    nVals:Object.keys(row).filter(k=>!k.startsWith('_')).length,
+    ...(ocrAcc+ocrCorr?{ocrAccepted:ocrAcc, ocrCorrected:ocrCorr}:{})});
   rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast(`Saved ${tpId||label} for ${a.id}`);
   // if the same photo also contained lab values, open the lab form next
@@ -2487,7 +2562,7 @@ function recordDeath(prefill, photo){
     let v=''; let ocr=false;
     if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
     return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
-      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"${ocr?` data-ocrval="${v}"`:''}></div>`;
   };
   body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Final vitals</div>`;
   body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
@@ -2644,7 +2719,7 @@ function recordEvent(prefill, photo){
     if(prefill && prefill[p.key]!=null){ v=prefill[p.key]; ocr=true; }
     else { const live=App.live[p.key]; if(live&&live.value!=null&&!photo) v=live.value; }
     return `<div class="field ${ocr?'ocr-filled':''}" data-field="${p.key}"><label>${p.label} (${p.unit})</label>
-      <input data-k="${p.key}" value="${v}" inputmode="decimal"></div>`;
+      <input data-k="${p.key}" value="${v}" inputmode="decimal"${ocr?` data-ocrval="${v}"`:''}></div>`;
   };
   body+=`<div style="font-size:11px;letter-spacing:.5px;color:var(--ink-faint);text-transform:uppercase;margin-bottom:8px">Vitals at this moment (optional)</div>`;
   body+=`<div class="grid3">${mon.map(fieldFor).join('')}</div>`;
@@ -3698,6 +3773,7 @@ function collectSession(){
     copyright:'(c) 2026 Jae H. Choi, PhD, DVSc · HAKOYA LLC. All rights reserved.',
     savedAt:nowTs(),
     runStart:App.runStart,
+    audit:(App.audit||[]).slice(-1500),
     protocol:App.protocol?{
       name:App.protocol.name,
       timepoints:App.protocol.timepoints,
@@ -3788,6 +3864,7 @@ function applySession(o){
   App.animals=Array.isArray(o.animals)?o.animals:[];
   App.activeAnimal=o.activeAnimal||(App.animals[0]&&App.animals[0].id)||null;
   App.runStart=o.runStart||null;
+  App.audit=Array.isArray(o.audit)?o.audit:[];
   if(o.hcare){
     if(o.hcare.data) HCARE.data=o.hcare.data;
     if(o.hcare.animal) HCARE.animal=o.hcare.animal;
@@ -4190,6 +4267,7 @@ function deleteRow(rid){
   const label=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===rid)||{}).label)||a.rows[rid]._label||rid;
   if(!confirm('Delete the recorded data for:\n\n'+label+'\n\nThis cannot be undone.')) return;
   delete a.rows[rid];
+  if(window.logEvent) logEvent('delete-row',{animal:a.id, tp:label});
   rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('Deleted '+label);
 }
@@ -4212,6 +4290,7 @@ function clearAllRows(){
   if(!n){ toast('Nothing recorded yet'); return; }
   if(!confirm('Delete ALL '+n+' recorded timepoint(s) for '+a.id+'?\n\nThis cannot be undone.')) return;
   a.rows={};
+  if(window.logEvent) logEvent('clear-all-rows',{animal:a.id, removed:n});
   rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
   toast('All timepoints cleared for '+a.id);
 }
@@ -4222,6 +4301,7 @@ function deleteAnimal(){
   const a=getActiveAnimal(); if(!a) return;
   if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all instead'); return; }
   if(!confirm('Delete animal "'+a.id+'" and ALL its data?\n\nThis cannot be undone.')) return;
+  if(window.logEvent) logEvent('delete-animal',{animal:a.id, rows:Object.keys(a.rows||{}).length});
   App.animals=App.animals.filter(x=>x.id!==a.id);
   App.activeAnimal=App.animals[0].id;
   renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel();
@@ -4590,6 +4670,99 @@ setInterval(()=>{
   }
 }, 1000);
 
+/* ── "Animal on table" start time ─────────────────────────────────
+   Tap RUN TIME to set when prep began (cannulation, surgery).
+   Elapsed then covers the whole prep window, so the gap between
+   on-table and the Baseline capture IS the prep time. */
+(function(){
+  const rc=document.getElementById('runclock');
+  if(!rc) return;
+  rc.style.cursor='pointer';
+  rc.title='Elapsed since the animal went on the table. Tap to set the start time (when prep/cannulation began). Starts by itself at the first capture if never set.';
+  rc.addEventListener('click',()=>{
+    if(document.body.classList.contains('reader-mode')) return;
+    const cur=App.runStart?new Date(App.runStart):null;
+    const def=cur?String(cur.getHours()).padStart(2,'0')+String(cur.getMinutes()).padStart(2,'0'):'';
+    const v=prompt('Animal on table - start time, 24h HHMM (e.g., 0930).\nLeave blank to start NOW.'
+      +(cur?'\nCurrent start: '+def:''), def);
+    if(v===null) return;
+    let t=Date.now();
+    const s=String(v).trim();
+    if(s!==''){
+      const m=s.match(/^(\d{1,2}):?(\d{2})$/);
+      if(!m){ toast('Time not understood - use HHMM like 0930'); return; }
+      const hh=+m[1], mm=+m[2];
+      if(hh>23||mm>59){ toast('Time not understood - use HHMM like 0930'); return; }
+      const d=new Date(); d.setHours(hh,mm,0,0);
+      // typed time is later than now -> they mean before midnight, use yesterday
+      if(d.getTime()>Date.now()+60000) d.setDate(d.getDate()-1);
+      t=d.getTime();
+    }
+    App.runStart=t;
+    if(window.logEvent) logEvent('on-table',{at:new Date(t).toTimeString().slice(0,5)});
+    if(window.autosave) autosave();
+    const hhmm=new Date(t).toTimeString().slice(0,5);
+    toast('On table at '+hhmm+' - run clock now counts from prep start');
+  });
+})();
+
+/* ── Study Log tab ──────────────────────────────────────────────────
+   Summary numbers for the study record (animals, values, OCR accuracy)
+   plus the append-only action history. Everything comes from App data
+   and App.audit - nothing here can change the record. */
+function renderStudyLog(){
+  const sumEl=document.getElementById('logSummary');
+  const listEl=document.getElementById('logList');
+  if(!sumEl||!listEl) return;
+  const audit=Array.isArray(App.audit)?App.audit:[];
+
+  let nRows=0, nVals=0;
+  (App.animals||[]).forEach(a=>{
+    Object.values(a.rows||{}).forEach(r=>{
+      nRows++;
+      nVals+=Object.keys(r).filter(k=>!k.startsWith('_')&&!k.startsWith('lab_')).length;
+    });
+  });
+  let acc=0, corr=0, sheetVals=0;
+  audit.forEach(e=>{
+    if(e.type==='capture'){ acc+=e.ocrAccepted||0; corr+=e.ocrCorrected||0; }
+    if(e.type==='sheet-import') sheetVals+=e.values||0;
+  });
+  const ocrTot=acc+corr;
+  const ocrLine = ocrTot
+    ? `AI photo reads: <b>${ocrTot}</b> fields - accepted unchanged <b style="color:var(--trace)">${acc}</b> (${Math.round(acc/ocrTot*100)}%), corrected by hand <b style="color:var(--trace-amber)">${corr}</b>`
+    : `AI photo reads: none logged yet`;
+  const runLine = App.runStart
+    ? `On table since <b>${new Date(App.runStart).toTimeString().slice(0,5)}</b> - elapsed ${fmtClock(Date.now()-App.runStart)}`
+    : `Run clock not started`;
+  sumEl.innerHTML =
+    `Animals: <b>${(App.animals||[]).length}</b> &middot; recorded timepoints: <b>${nRows}</b> &middot; values in record: <b>${nVals}</b>`
+    +(sheetVals?` &middot; values from sheet photos: <b>${sheetVals}</b>`:'')
+    +`<br>${ocrLine}<br>${runLine}`
+    +`<br><span style="color:var(--ink-faint)">These numbers come from this session's record and travel with the save file.</span>`;
+
+  if(!audit.length){ listEl.innerHTML='<div class="empty">No actions logged yet. Captures, sheet imports and deletions will appear here.</div>'; return; }
+  const label={capture:'Capture saved','sheet-import':'Sheet photo imported','delete-row':'Row deleted',
+    'clear-all-rows':'All rows cleared','delete-animal':'Animal deleted','on-table':'On-table time set'};
+  listEl.innerHTML = audit.slice().reverse().map(e=>{
+    const parts=[];
+    if(e.animal) parts.push(e.animal);
+    if(e.tp) parts.push(e.tp);
+    if(e.nVals!=null) parts.push(e.nVals+' values');
+    if(e.ocrAccepted!=null||e.ocrCorrected!=null) parts.push(`OCR ${e.ocrAccepted||0} kept / ${e.ocrCorrected||0} fixed`);
+    if(e.sheet) parts.push(e.sheet+' sheet');
+    if(e.rows!=null) parts.push(e.rows+' rows');
+    if(e.values!=null) parts.push(e.values+' values');
+    if(e.removed!=null) parts.push(e.removed+' removed');
+    if(e.at) parts.push('at '+e.at);
+    return `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <span style="font-family:var(--mono);color:var(--ink-faint);white-space:nowrap;font-size:11px">${e.ts||''}</span>
+      <span><b>${label[e.type]||e.type}</b>${parts.length?' - '+parts.join(' &middot; '):''}</span>
+    </div>`;
+  }).join('');
+}
+window.renderStudyLog=renderStudyLog;
+
 $('#drop').addEventListener('click',()=>$('#protoFile').click());
 $('#protoFile').addEventListener('change',e=>{if(e.target.files[0])handleProtocolFile(e.target.files[0]);});
 ['dragover','dragenter'].forEach(ev=>$('#drop').addEventListener(ev,e=>{e.preventDefault();$('#drop').classList.add('over');}));
@@ -4783,6 +4956,7 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
     document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
     document.querySelectorAll('.col[data-panel]').forEach(c=>c.classList.toggle('active', c.dataset.panel===name));
     var body=document.querySelector('.body'); if(body) body.scrollTop=0;
+    if(name==='log' && window.renderStudyLog) renderStudyLog();
   }
   document.querySelectorAll('.tabbtn').forEach(b=>{
     b.addEventListener('click',()=>showTab(b.dataset.tab));
