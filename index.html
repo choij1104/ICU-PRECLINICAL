@@ -76,6 +76,13 @@
   }
   button{font-family:inherit;cursor:pointer}
   input,select,textarea{font-family:inherit}
+  /* body forces -webkit-text-fill-color to ink (anti dark-mode inversion).
+     Components that sit on dark/colored backgrounds must follow their own color. */
+  header.topbar, header.topbar *,
+  .tabbar, .tabbar *, .tabbtn,
+  .toast, .toast *,
+  .btn.primary, .btn.cap,
+  .tpchip.sel, .atab.on, .reader-badge{-webkit-text-fill-color:currentColor}
   :focus-visible{outline:2px solid var(--accent);outline-offset:2px}
   @media (prefers-reduced-motion: reduce){
     *,*::before,*::after{animation-duration:.01ms !important;transition-duration:.01ms !important}
