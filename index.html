@@ -2101,6 +2101,22 @@ function openCapture(tpId, prefill, photo){
     body+=`<div class="field"><label>Label this timepoint</label>
       <input data-k="_label" value="${elapsed||'manual'}"></div>`;
   }
+  // Filed under the wrong slot? Move the whole row (values + labs + photo)
+  // to another timepoint or to the DEATH point.
+  if(tpId && a && a.rows[tpId] && !fromPhoto){
+    const others=(App.protocol?App.protocol.timepoints:[]).filter(t=>t.id!==tpId)
+      .map(t=>`<option value="${t.id}">${t.label}</option>`).join('');
+    body+=`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+      <div class="hint" style="margin:0 0 6px">Filed under the wrong timepoint? Move ALL of this row's data (values, labs, photo) to:</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <select id="capMoveTarget" style="flex:1;min-width:170px;padding:7px 9px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel);color:var(--ink);font-size:12.5px">
+          <option value="DEATH">&#10013; DEATH point</option>
+          ${others}
+        </select>
+        <button class="btn sm" style="width:auto" onclick="moveRowTo('${tpId}')">Move</button>
+      </div>
+    </div>`;
+  }
   body+=`<button class="btn primary" onclick="saveCapture('${tpId||''}')">Save timepoint</button>`;
   $('#capBody').innerHTML=body;
   $$('#capBody [data-k]').forEach(inp=>inp.addEventListener('input',()=>{const w=inp.closest('.field');if(w)w.classList.remove('ocr-filled');},{once:true}));
@@ -2382,6 +2398,59 @@ function logEvent(type, detail){
   }catch(e){}
 }
 window.logEvent=logEvent;
+
+/* Move an entire row - values, bound labs, photo - to another timepoint or
+   to the DEATH point. Existing values at the target are never overwritten. */
+function moveRowTo(fromId){
+  const a=getActiveAnimal(); if(!a) return;
+  const src=a.rows[fromId]; if(!src){ toast('Nothing recorded here to move'); return; }
+  const sel=document.getElementById('capMoveTarget'); if(!sel) return;
+  const target=sel.value;
+  const fromLabel=(App.protocol&&(App.protocol.timepoints.find(t=>t.id===fromId)||{}).label)||fromId;
+
+  let destKey;
+  if(target==='DEATH'){
+    // find an existing death row wherever it was filed
+    destKey=Object.keys(a.rows).find(k=>a.rows[k]&&a.rows[k]._death)||null;
+    if(!destKey){
+      let runMin=null;
+      const v=prompt('No DEATH point exists yet - creating one.\nRun minute of death (minutes from on-table)?\nLeave blank if unknown.');
+      if(v===null) return;
+      if(String(v).trim()!==''){ const n=parseInt(v); if(!isNaN(n)) runMin=n; }
+      a.rows['DEATH']={_ts:nowTs(), _death:true, _runMin:runMin,
+        _label:'DEATH - EOS sample', _note:'Created while moving data from '+fromLabel+'.'};
+      destKey='DEATH';
+    }
+  } else {
+    if(target===fromId) return;
+    destKey=target;
+    if(!a.rows[destKey]){
+      const tpDef=App.protocol?App.protocol.timepoints.find(t=>t.id===destKey):null;
+      a.rows[destKey]={_ts:nowTs(), _runMin:(tpDef&&tpDef.offsetMin!=null)?tpDef.offsetMin:null};
+    }
+  }
+  const dest=a.rows[destKey];
+  if(!confirm('Move ALL data recorded under\n\n'+fromLabel+'\n\ninto '+(target==='DEATH'?'the DEATH point':destKey)+'?\n\nValues already present at the target are kept; the '+fromId+' row will be emptied.')) return;
+
+  let moved=0;
+  Object.entries(src).forEach(([k,v])=>{
+    if(k.startsWith('_')){
+      if(k==='_photo' && !dest._photo){ dest._photo=v; }
+      return;
+    }
+    if(dest[k]==null||dest[k]===''){ dest[k]=v; moved++; }
+  });
+  // re-point any lab entries bound to the source timepoint
+  let labsMoved=0;
+  (a.labs||[]).forEach(l=>{ if(l.tp===fromId){ l.tp=destKey; labsMoved++; } });
+  delete a.rows[fromId];
+
+  if(window.logEvent) logEvent('move-row',{animal:a.id, from:fromLabel, to:(target==='DEATH'?'DEATH':destKey), values:moved, labs:labsMoved});
+  $('#captureModal').classList.remove('show');
+  rebuildTable(); renderTimeline(); renderCurrent(); renderTrends(); renderAnimalTabs(); autosave();
+  toast('Moved '+moved+' value'+(moved===1?'':'s')+(labsMoved?' + '+labsMoved+' lab entr'+(labsMoved===1?'y':'ies'):'')+' to '+(target==='DEATH'?'the DEATH point':destKey));
+}
+window.moveRowTo=moveRowTo;
 
 function saveCapture(tpId){
   const a=getActiveAnimal(); if(!a)return;
