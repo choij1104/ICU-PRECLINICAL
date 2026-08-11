@@ -241,6 +241,8 @@
   .group-tag::after{content:"";flex:1;height:1px;background:var(--line)}
 
   .timeline{position:relative}
+  #timeline .tp[draggable="true"]{user-select:none;-webkit-user-drag:element;cursor:grab}
+  #timeline .tp[draggable="true"]:active{cursor:grabbing}
   .tp{display:flex;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);align-items:flex-start}
   .tp:last-child{border-bottom:none}
   .tp .tdot{width:11px;height:11px;border-radius:50%;background:var(--panel-2);border:2px solid var(--line-strong);
@@ -1964,17 +1966,30 @@ window.repositionTimepoint=repositionTimepoint;
    Drop ONTO a row  -> move the dragged row's DATA into it.
    Drop into a GAP  -> reposition the dragged TIMEPOINT there (graphs follow).
    Drop on the red zone -> move the data to the DEATH point.
+   Listeners live on document so they survive ANY re-render of the panel.
    Touch devices use the capture-modal "Move" dropdown instead. */
 (function(){
-  const tl=document.getElementById('timeline'); if(!tl) return;
   let dragId=null;
+  const tlNow=()=>document.getElementById('timeline');
+  // Freeze list re-renders from the MOMENT the pointer goes down on a row,
+  // not only after dragstart - otherwise a re-render between mousedown and
+  // dragstart destroys the pressed element and the drag never begins.
+  document.addEventListener('pointerdown',e=>{
+    if(e.target.closest&&e.target.closest('#timeline .tp[draggable="true"], #tpStrip .tpchip[draggable="true"]'))
+      window._tlDragging=true;
+  }, true);
+  document.addEventListener('pointerup',()=>{
+    if(!dragId) window._tlDragging=false;
+  }, true);
   function killExtras(){
+    const tl=tlNow(); if(!tl) return;
     const z=document.getElementById('deathDropZone'); if(z) z.remove();
     tl.querySelectorAll('.tp-gap').forEach(g=>g.remove());
+    tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
   }
   function makeGaps(){
-    const rows=[...tl.querySelectorAll('.tp')].filter(r=>r.dataset.tp!=='__death');
-    rows.forEach(row=>{
+    const tl=tlNow(); if(!tl) return;
+    [...tl.querySelectorAll('.tp')].filter(r=>r.dataset.tp!=='__death').forEach(row=>{
       if(row.dataset.tp===dragId) return;
       const g=document.createElement('div');
       g.className='tp-gap'; g.dataset.before=row.dataset.tp;
@@ -1986,16 +2001,17 @@ window.repositionTimepoint=repositionTimepoint;
     end.style.cssText='height:12px;margin:2px 0;border:1px dashed transparent;border-radius:6px;transition:.1s';
     tl.appendChild(end);
   }
-  tl.addEventListener('dragstart',e=>{
-    const row=e.target.closest('.tp[draggable="true"]'); if(!row) return;
+  document.addEventListener('dragstart',e=>{
+    const row=e.target.closest&&e.target.closest('#timeline .tp[draggable="true"]'); if(!row) return;
     dragId=row.dataset.tp;
     window._tlDragging=true;
     e.dataTransfer.effectAllowed='move';
     try{e.dataTransfer.setData('text/plain',dragId);}catch(_){}
     row.style.opacity='.45';
     makeGaps();
+    const tl=tlNow();
     const a=getActiveAnimal();
-    if(a && a.rows[dragId] && !document.getElementById('deathDropZone')){
+    if(tl && a && a.rows[dragId] && !document.getElementById('deathDropZone')){
       const z=document.createElement('div');
       z.id='deathDropZone';
       z.innerHTML='&#10013; Drop here to move this data to the DEATH point';
@@ -2003,9 +2019,9 @@ window.repositionTimepoint=repositionTimepoint;
       tl.appendChild(z);
     }
   });
-  tl.addEventListener('dragover',e=>{
+  document.addEventListener('dragover',e=>{
     if(!dragId) return;
-    const t=e.target.closest('.tp,.tp-gap,[id="deathDropZone"]'); if(!t) return;
+    const t=e.target.closest&&e.target.closest('#timeline .tp, #timeline .tp-gap, [id="deathDropZone"]'); if(!t) return;
     if(t.classList.contains('tp')&&(t.dataset.tp===dragId||t.dataset.tp==='__death')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect='move';
@@ -2015,27 +2031,27 @@ window.repositionTimepoint=repositionTimepoint;
       t.style.outline='2px solid var(--accent)'; t.style.outlineOffset='2px';
     }
   });
-  tl.addEventListener('dragleave',e=>{
-    const t=e.target.closest('.tp,.tp-gap,[id="deathDropZone"]');
+  document.addEventListener('dragleave',e=>{
+    if(!dragId) return;
+    const t=e.target.closest&&e.target.closest('#timeline .tp, #timeline .tp-gap, [id="deathDropZone"]');
     if(!t) return;
     if(t.classList.contains('tp-gap')){ t.style.borderColor='transparent'; t.style.background=''; t.style.height='12px'; }
     else { t.style.outline=''; t.style.outlineOffset=''; }
   });
-  tl.addEventListener('drop',e=>{
+  document.addEventListener('drop',e=>{
     if(!dragId) return;
+    const gap=e.target.closest&&e.target.closest('#timeline .tp-gap');
+    const zone=e.target.closest&&e.target.closest('[id="deathDropZone"]');
+    const row=e.target.closest&&e.target.closest('#timeline .tp');
+    if(!gap&&!zone&&!row) return;
     e.preventDefault();
-    const gap=e.target.closest('.tp-gap');
-    const zone=e.target.closest('[id="deathDropZone"]');
-    const row=e.target.closest('.tp');
     const src=dragId; dragId=null; window._tlDragging=false; killExtras();
-    tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
     if(gap){ repositionTimepoint(src, gap.dataset.before||null); return; }
     if(zone){ moveRowData(src,'DEATH'); return; }
     if(row && row.dataset.tp && row.dataset.tp!==src && row.dataset.tp!=='__death') moveRowData(src, row.dataset.tp);
   });
-  tl.addEventListener('dragend',()=>{
+  document.addEventListener('dragend',()=>{
     dragId=null; window._tlDragging=false; killExtras();
-    tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
   });
 })();
 
@@ -3457,6 +3473,98 @@ function selectCurrentTp(rid){
 }
 window.selectCurrentTp = selectCurrentTp;
 
+/* ── Drag & drop on the timepoint chip strip (Current tab) ──────────
+   Same grammar as the timeline. Listeners live on document so they
+   survive every re-render of the strip. */
+(function(){
+  let dragId=null;
+  const hostNow=()=>document.getElementById('tpStrip');
+  const stripNow=()=>{const h=hostNow(); return h?h.querySelector('.tpstrip'):null;};
+  function clean(){
+    const h=hostNow(); if(!h) return;
+    h.querySelectorAll('.chip-gap').forEach(g=>g.remove());
+    const z=document.getElementById('chipDeathZone'); if(z) z.remove();
+    h.querySelectorAll('.tpchip').forEach(c=>{c.style.opacity='';c.style.outline='';c.style.outlineOffset='';});
+    window._tlDragging=false;
+  }
+  function makeGaps(){
+    const strip=stripNow(); if(!strip) return;
+    strip.querySelectorAll('.tpchip[data-proto="1"]').forEach(chip=>{
+      if(chip.dataset.rid===dragId) return;
+      const g=document.createElement('div');
+      g.className='chip-gap'; g.dataset.before=chip.dataset.rid;
+      g.style.cssText='width:10px;align-self:stretch;min-height:24px;border-radius:5px;border:1px dashed transparent;transition:.1s';
+      chip.parentNode.insertBefore(g, chip);
+    });
+    const end=document.createElement('div');
+    end.className='chip-gap'; end.dataset.before='';
+    end.style.cssText='width:10px;align-self:stretch;min-height:24px;border-radius:5px;border:1px dashed transparent;transition:.1s';
+    strip.appendChild(end);
+  }
+  document.addEventListener('dragstart',e=>{
+    const chip=e.target.closest&&e.target.closest('#tpStrip .tpchip[draggable="true"]'); if(!chip) return;
+    dragId=chip.dataset.rid;
+    window._tlDragging=true;
+    e.dataTransfer.effectAllowed='move';
+    try{e.dataTransfer.setData('text/plain',dragId);}catch(_){}
+    chip.style.opacity='.4';
+    if(chip.dataset.proto==='1') makeGaps();
+    const a=getActiveAnimal();
+    const strip=stripNow();
+    if(a && a.rows[dragId] && strip && !document.getElementById('chipDeathZone')){
+      const z=document.createElement('div');
+      z.id='chipDeathZone';
+      z.innerHTML='&#10013; DEATH';
+      z.style.cssText='padding:5px 11px;border:2px dashed var(--alarm);border-radius:15px;color:var(--alarm);font-weight:700;font-size:11.5px;background:var(--alarm-soft)';
+      strip.appendChild(z);
+    }
+  });
+  document.addEventListener('dragover',e=>{
+    if(!dragId) return;
+    const t=e.target.closest&&e.target.closest('#tpStrip .tpchip, #tpStrip .chip-gap, [id="chipDeathZone"]'); if(!t) return;
+    if(t.classList.contains('tpchip')&&(t.dataset.rid===dragId||t.dataset.death==='1')) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect='move';
+    if(t.classList.contains('chip-gap')){ t.style.borderColor='var(--accent)'; t.style.background='var(--accent-soft)'; t.style.width='22px'; }
+    else { t.style.outline='2px solid var(--accent)'; t.style.outlineOffset='2px'; }
+  });
+  document.addEventListener('dragleave',e=>{
+    if(!dragId) return;
+    const t=e.target.closest&&e.target.closest('#tpStrip .tpchip, #tpStrip .chip-gap, [id="chipDeathZone"]'); if(!t) return;
+    if(t.classList.contains('chip-gap')){ t.style.borderColor='transparent'; t.style.background=''; t.style.width='10px'; }
+    else { t.style.outline=''; t.style.outlineOffset=''; }
+  });
+  document.addEventListener('drop',e=>{
+    if(!dragId) return;
+    const gap=e.target.closest&&e.target.closest('#tpStrip .chip-gap');
+    const zone=e.target.closest&&e.target.closest('[id="chipDeathZone"]');
+    const chip=e.target.closest&&e.target.closest('#tpStrip .tpchip');
+    if(!gap&&!zone&&!chip) return;
+    e.preventDefault();
+    const src=dragId; dragId=null;
+    const a=getActiveAnimal();
+    clean();
+    if(gap){
+      const srcIsProto=App.protocol&&App.protocol.timepoints.some(t=>t.id===src);
+      if(!srcIsProto){ toast('Only scheduled timepoints can be repositioned'); return; }
+      repositionTimepoint(src, gap.dataset.before||null);
+      return;
+    }
+    if(zone){
+      if(!(a&&a.rows[src])){ toast('That timepoint has no data to move'); return; }
+      moveRowData(src,'DEATH'); return;
+    }
+    if(chip && chip.dataset.rid && chip.dataset.rid!==src){
+      if(!(a&&a.rows[src])){ toast('That timepoint has no data to move'); return; }
+      const target=chip.dataset.death==='1' ? 'DEATH'
+        : (App.protocol&&App.protocol.timepoints.some(t=>t.id===chip.dataset.rid)) ? chip.dataset.rid : null;
+      if(!target){ toast('Cannot move data onto an event'); return; }
+      moveRowData(src, target);
+    }
+  });
+  document.addEventListener('dragend',()=>{ if(dragId!==null){ dragId=null; clean(); } });
+})();
+
 function renderTpStrip(selectedId){
   const host=$('#tpStrip'); if(!host) return;
   const a=getActiveAnimal();
@@ -3477,7 +3585,7 @@ function renderTpStrip(selectedId){
     else cls.push('pending');
     if(selectedId===tp.id) cls.push('sel');
     chips.push({x:(row&&row._runMin!=null)?row._runMin:(tp.offsetMin??0),
-      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${tp.id}')" title="${tp.label}${done?'':' (not recorded yet)'}">
+      html:`<div class="${cls.join(' ')}" data-rid="${tp.id}" data-proto="1"${!document.body.classList.contains('reader-mode')?' draggable="true"':''} onclick="selectCurrentTp('${tp.id}')" title="${tp.label}${done?'':' (not recorded yet)'} - drag onto another chip to move data, into a gap to reposition">
         <span class="dotm"></span>${short}</div>`});
   });
 
@@ -3492,7 +3600,7 @@ function renderTpStrip(selectedId){
     if(isD) short='DEATH';
     else { const m=label.match(/EVENT\s*(\d+)/i); if(m) short='EV'+m[1]; else short=label.split(/[-–(]/)[0].trim().slice(0,10); }
     chips.push({x:row._runMin!=null?row._runMin:9999,
-      html:`<div class="${cls.join(' ')}" onclick="selectCurrentTp('${rid}')" title="${label}">
+      html:`<div class="${cls.join(' ')}" data-rid="${rid}"${isD?' data-death="1"':''}${!document.body.classList.contains('reader-mode')&&!isD?' draggable="true"':''} onclick="selectCurrentTp('${rid}')" title="${label}">
         <span class="dotm"></span>${short}</div>`});
   });
 
