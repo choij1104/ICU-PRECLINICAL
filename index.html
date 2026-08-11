@@ -203,6 +203,7 @@
   body.reader-mode #captureNow, body.reader-mode #eventBtn, body.reader-mode #deathBtn,
   body.reader-mode #addLab, body.reader-mode .atab.add,
   body.reader-mode #timeline button[onclick*="openCapture"],
+  body.reader-mode #timeline button[onclick*="recordDeath"],
   body.reader-mode #timeline button[onclick*="deleteRow"],
   body.reader-mode button[onclick*="addTimepoint"],
   body.reader-mode button[onclick*="deleteTimepoint"],
@@ -450,7 +451,7 @@
           <input id="apiKey" type="password" placeholder="sk-ant-..." spellcheck="false" autocomplete="off">
           <div class="field" style="margin-top:8px">
             <label>Model</label>
-            <input id="apiModel" spellcheck="false" autocomplete="off" placeholder="claude-sonnet-4-6">
+            <input id="apiModel" spellcheck="false" autocomplete="off" placeholder="claude-fable-5">
             <div class="hint" style="margin-top:4px">Saved on this device. If the API answers <b>404 / model not found</b>, change this.</div>
           </div>
           <div style="display:flex;gap:8px;margin-top:6px;align-items:center">
@@ -1385,7 +1386,16 @@ function hcApplyImport(){
   // stay authoritative in the sheet; the app row is the marker.
   const deathIt=items.find(it=>it.death && it.use && it.rid>=0);
   if(deathIt){
-    const a=getActiveAnimal();
+    // attach the death to the APP animal that corresponds to this SHEET's
+    // animal - the two lists are separate, and the active app animal may be
+    // a different pig entirely
+    const sheetName=String(HCARE.animal||'').trim().toLowerCase();
+    let a=(App.animals||[]).find(x=>String(x.id||'').trim().toLowerCase()===sheetName)||null;
+    let matchNote='';
+    if(!a){
+      if((App.animals||[]).length===1){ a=App.animals[0]; matchNote=' (matched to the only app animal, '+a.id+')'; }
+      else { a=getActiveAnimal(); if(a) matchNote=' (no app animal named "'+HCARE.animal+'" - attached to the ACTIVE animal '+a.id+' - verify!)'; }
+    }
     if(a && !Object.values(a.rows||{}).some(r=>r&&r._death)){
       let runMin=null;
       // vitals sheets carry a clock column - derive run minute from it
@@ -1416,7 +1426,7 @@ function hcApplyImport(){
       }
       if(window.logEvent) logEvent('death-from-sheet',{animal:a.id, row:label, runMin});
       rebuildTable(); renderTimeline(); renderCurrent(); renderTrends();
-      toast('DEATH point recorded from the sheet'+(runMin!=null?(' at +'+runMin+' min'):''));
+      toast('DEATH point recorded on '+a.id+(runMin!=null?(' at +'+runMin+' min'):'')+matchNote);
     } else if(a){
       toast('A DEATH point already exists - sheet row imported as data only');
     }
@@ -1853,7 +1863,10 @@ function renderTimeline(){
   const deathMin=animalDeathMin();
   const deathKey=a?Object.keys(a.rows||{}).find(k=>a.rows[k]&&a.rows[k]._death):null;
   const deathRow=deathKey?a.rows[deathKey]:null;
-  const deathHtml=deathRow?`
+  // when the death was merged INTO a scheduled timepoint, that row itself is
+  // marked - a separate card would show the same death twice
+  const deathMerged = deathKey && App.protocol && App.protocol.timepoints.some(t=>t.id===deathKey);
+  const deathHtml=(deathRow && !deathMerged)?`
       <div class="tp done" data-tp="__death" style="background:var(--alarm-soft);border-radius:8px;padding:11px 10px">
         <div class="tdot" style="background:var(--alarm);border-color:var(--alarm)"></div>
         <div class="tbody">
@@ -1881,7 +1894,7 @@ function renderTimeline(){
       <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}"${!skipped&&!document.body.classList.contains('reader-mode')?' draggable="true" title="Drag onto another timepoint to move DATA - drag into a gap to REPOSITION this timepoint (the graphs follow)"':''}${skipped?' style="opacity:.45"':''}>
         <div class="tdot"></div>
         <div class="tbody">
-          <div class="ttime"><span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${tp.label}</span></div>
+          <div class="ttime">${deathMerged&&deathKey===tp.id?'<span style="color:var(--alarm)">&#10013;</span> ':''}<span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted${deathMerged&&deathKey===tp.id?';color:var(--alarm)':''}" title="Tap to rename">${tp.label}</span>${deathMerged&&deathKey===tp.id?' <span style="font-size:10px;color:var(--alarm);font-weight:700">DEATH</span>':''}</div>
           <div class="ttasks">${tp.tasks.join(' - ')}</div>
           ${evHtml}
           ${done
@@ -1921,6 +1934,7 @@ function repositionTimepoint(id, beforeId){
     newOff=(others.length?Math.max(...others.map(t=>t.offsetMin||0)):0)+10;
   } else {
     const idx=others.findIndex(t=>t.id===beforeId);
+    if(idx<0) return;   // unknown drop anchor - ignore rather than crash
     const next=others[idx];
     const prev=idx>0?others[idx-1]:null;
     const nOff=next.offsetMin!=null?next.offsetMin:0;
@@ -2342,7 +2356,7 @@ window.downscaleImage = downscaleImage;
    a key or photo problem. (Merged from a parallel debugging session.)
    ============================================================ */
 const MODEL_KEY='swineicu_model';
-const MODEL_DEFAULT='claude-sonnet-4-6';
+const MODEL_DEFAULT='claude-fable-5';
 function getModel(){ try{ return (localStorage.getItem(MODEL_KEY)||MODEL_DEFAULT).trim()||MODEL_DEFAULT; }catch(e){ return MODEL_DEFAULT; } }
 window.getModel=getModel;
 
@@ -2607,7 +2621,17 @@ function saveCapture(tpId){
   const a=getActiveAnimal(); if(!a)return;
   // first record of the study starts the run clock, so countdowns and
   // run minutes work without the user having to press anything
-  if(!App.runStart && !Object.keys(a.rows).length) App.runStart=Date.now();
+  // Start the run clock at the first live capture, whenever it has not
+  // started yet - even if rows already exist from a sheet import or a
+  // restored session. If this capture is a scheduled timepoint with a
+  // positive offset (e.g., first capture is T3 at +40 min), back-date the
+  // start so the clock agrees with the schedule.
+  if(!App.runStart){
+    const tpDef0=(App.protocol&&tpId)?App.protocol.timepoints.find(t=>t.id===tpId):null;
+    const off0=(tpDef0&&tpDef0.offsetMin!=null&&tpDef0.offsetMin>0)?tpDef0.offsetMin:0;
+    App.runStart=Date.now()-off0*60000;
+    if(off0>0) toast('Run clock started, aligned to '+tpId+' (+'+off0+' min)');
+  }
   const inputs=$$('#capBody [data-k]');
   const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
   let label=tpId;
@@ -4347,8 +4371,22 @@ function syncAttachListener(){
   }, err=>{ console.error('sync read error', err); toast('Live read error: '+err.message); });
 }
 
-function syncJoin(role){
+function syncJoin(role, opts){
+  opts=opts||{};
   if(!Sync.db && !syncInit()) { toast('Live sharing unavailable - check connection'); return; }
+  // Watching must not silently destroy this device's own recorded data.
+  if(role==='reader' && !opts.rejoin){
+    try{
+      const cur=collectSession();
+      if(!syncSessionIsEmpty(cur)){
+        if(!confirm('This device has its own recorded data.\n\nWatching the shared session will REPLACE what is shown here with the room\'s data. A backup of this device\'s data is saved to "Earlier copies" first.\n\nContinue?')) return;
+        try{ rotateBackup(JSON.stringify(cur)); }catch(e){}
+      }
+    }catch(e){}
+  } else if(role==='reader' && opts.rejoin){
+    // silent safety copy on automatic rejoin after a reload
+    try{ const cur=collectSession(); if(!syncSessionIsEmpty(cur)) rotateBackup(JSON.stringify(cur)); }catch(e){}
+  }
   Sync.role=role; Sync.on=true;
   try{ localStorage.setItem('swineicu_syncrole', role); localStorage.setItem('swineicu_syncroom', Sync.sessionId); }catch(e){}
   // detach any previous listener
@@ -4411,6 +4449,7 @@ function syncPush(){
       payload:payload,
       updatedAt:firebase.database.ServerValue.TIMESTAMP,
       updatedBy:Sync.deviceId(),
+      writerPassHash:Sync.writerPassHash||(Sync.writerPass?syncHash(Sync.writerPass):null),
       version:'live1'
     }).catch(e=>{ console.error('push failed', e); });
   }catch(e){ console.error('syncPush', e); }
@@ -4423,12 +4462,24 @@ Sync.deviceId=function(){
   return id;
 };
 
-/* claim writer role with the password */
+/* claim writer role with the password - validated against the ROOM, not this
+   device, so a changed password protects the session everywhere */
+function syncHash(s){let h=5381;const t=String(s);for(let i=0;i<t.length;i++){h=((h<<5)+h+t.charCodeAt(i))>>>0;}return 'h'+h.toString(36);}
 function syncClaimWriter(){
   const pass=$('#syncPass')?$('#syncPass').value:'';
-  if(pass!==Sync.writerPass){ toast('Wrong password'); return; }
-  syncJoin('writer');
-  renderSyncPanel();
+  if(!pass){ toast('Enter the writer password'); return; }
+  if(!Sync.db && !syncInit()){ toast('Live sharing unavailable - check connection'); return; }
+  const room=Sync.sessionId;
+  Sync.db.ref('sessions/'+room).once('value').then(snap=>{
+    const remote=snap&&snap.val?snap.val():null;
+    const roomHash=remote&&remote.writerPassHash;
+    if(roomHash && roomHash!==syncHash(pass)){ toast('Wrong password for this room'); return; }
+    Sync.writerPass=pass; Sync.writerPassHash=syncHash(pass);
+    try{ localStorage.setItem('swineicu_writerpass', pass); }catch(e){}
+    syncJoin('writer');
+    renderSyncPanel();
+    if(!roomHash) toast('Password set for room "'+room+'" - other devices must use it');
+  }).catch(e=>{ toast('Could not reach the room: '+e.message); });
 }
 function syncBecomeReader(){ syncJoin('reader'); renderSyncPanel(); }
 
@@ -4439,8 +4490,14 @@ function applyRoleUI(){
 }
 
 function renderSyncStatus(){
-  const el=$('#syncStatus'); if(!el) return;
-  if(!Sync.on){ el.innerHTML='<span style="color:var(--ink-faint)">Not sharing - this device only</span>'; return; }
+  const el=$('#syncStatus');
+  if(!Sync.on){
+    if(el) el.innerHTML='<span style="color:var(--ink-faint)">Not sharing - this device only</span>';
+    const chip0=$('#connlabel');
+    if(chip0 && /^LIVE/.test(chip0.textContent)) chip0.textContent='MANUAL ENTRY';
+    return;
+  }
+  if(!el) return;
   const dot = Sync.connected ? '<span style="color:var(--trace)">&#9679;</span>' : '<span style="color:var(--trace-amber)">&#9679;</span>';
   const roleTxt = Sync.role==='writer' ? 'Input device (writing)' : 'Observer (read-only)';
   const conn = Sync.connected ? 'online' : 'offline - will sync when reconnected';
@@ -4490,10 +4547,13 @@ function syncSetRoomThen(role){
 function syncChangePass(){
   const np=$('#newWriterPass')?$('#newWriterPass').value.trim():'';
   if(!np){ toast('Enter a new password'); return; }
+  if(Sync.role!=='writer'){ toast('Only the input device can change the password'); return; }
   Sync.writerPass=np;
+  Sync.writerPassHash=syncHash(np);
   try{ localStorage.setItem('swineicu_writerpass', np); }catch(e){}
-  // also store it in the room so other devices can validate against it
-  toast('Writer password changed on this device');
+  Sync.lastPushed='';   // force the next push so the room stores the new hash
+  syncPush();
+  toast('Writer password changed for room "'+Sync.sessionId+'"');
 }
 
 window.Sync=Sync;
@@ -4989,7 +5049,11 @@ function handleLabFile(file){
 }
 
 setInterval(()=>{
-  $('#runtime').textContent = App.runStart?fmtClock(Date.now()-App.runStart):'-';
+  // a dead animal's clock freezes at the death - it must not keep counting
+  const _dm=(typeof animalDeathMin==='function')?animalDeathMin():null;
+  $('#runtime').textContent =
+    _dm!=null ? '\u2020 '+fmtClock(_dm*60000)
+    : App.runStart ? fmtClock(Date.now()-App.runStart) : '-';
   if(App.protocol && document.hidden===false && !window._tlDragging){
     const tl=$('#timeline');
     if(tl && tl.querySelector('.tp')) renderTimeline();
@@ -5069,7 +5133,9 @@ function renderStudyLog(){
 
   if(!audit.length){ listEl.innerHTML='<div class="empty">No actions logged yet. Captures, sheet imports and deletions will appear here.</div>'; return; }
   const label={capture:'Capture saved','sheet-import':'Sheet photo imported','delete-row':'Row deleted',
-    'clear-all-rows':'All rows cleared','delete-animal':'Animal deleted','on-table':'On-table time set'};
+    'clear-all-rows':'All rows cleared','delete-animal':'Animal deleted','on-table':'On-table time set',
+    'rename-tp':'Timepoint renamed','move-row':'Row data moved','reorder-tp':'Timepoint repositioned',
+    'death-from-sheet':'DEATH point from sheet photo'};
   listEl.innerHTML = audit.slice().reverse().map(e=>{
     const parts=[];
     if(e.animal) parts.push(e.animal);
@@ -5081,6 +5147,8 @@ function renderStudyLog(){
     if(e.values!=null) parts.push(e.values+' values');
     if(e.removed!=null) parts.push(e.removed+' removed');
     if(e.at) parts.push('at '+e.at);
+    if(e.from!=null&&e.to!=null) parts.push(e.from+' \u2192 '+e.to);
+    if(e.runMin!=null) parts.push('+'+e.runMin+' min');
     return `<div style="display:flex;gap:10px;padding:6px 0;border-bottom:1px solid var(--line)">
       <span style="font-family:var(--mono);color:var(--ink-faint);white-space:nowrap;font-size:11px">${e.ts||''}</span>
       <span><b>${label[e.type]||e.type}</b>${parts.length?' - '+parts.join(' &middot; '):''}</span>
@@ -5270,9 +5338,9 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
   // Model field (from the merged patch): fill it and persist edits
   var mdl=$('#apiModel');
   if(mdl){
-    mdl.value=(typeof getModel==='function')?getModel():'claude-sonnet-4-6';
+    mdl.value=(typeof getModel==='function')?getModel():'claude-fable-5';
     mdl.addEventListener('input',function(){
-      try{ localStorage.setItem('swineicu_model', mdl.value.trim()||'claude-sonnet-4-6'); }catch(e){}
+      try{ localStorage.setItem('swineicu_model', mdl.value.trim()||'claude-fable-5'); }catch(e){}
     });
   }
 })();
@@ -5317,7 +5385,7 @@ try{
 try{
   if(syncInit()){
     renderSyncPanel();
-    if(Sync._autoRole){ syncJoin(Sync._autoRole); renderSyncPanel(); }
+    if(Sync._autoRole){ syncJoin(Sync._autoRole, {rejoin:true}); renderSyncPanel(); }
   }
 }catch(e){ console.error('sync boot', e); }
 // make sure every panel reflects the restored data
