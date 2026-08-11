@@ -366,7 +366,7 @@
       <span class="dot"></span>
       Auravyx Preclinical <small>Current &middot; v5.2</small>
     </div>
-    <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b></div>
+    <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:9px;line-height:1;cursor:pointer">&#9632;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
     <div class="conn" id="conn">
       <span class="led"></span>
@@ -1619,6 +1619,7 @@ const App = {
   live: {},
   runStart: null,
   audit: [],   /* append-only action log: who did what, when (writer/observer) */
+  runEnd: null,  /* set when the run clock is stopped by hand */
   sparkData: {},
 };
 
@@ -2057,6 +2058,7 @@ window.repositionTimepoint=repositionTimepoint;
 
 function countdownFor(tp){
   if(animalDeathMin()!=null) return {text:'', active:false};  // the animal died - nothing is "due" anymore
+  if(App.runEnd) return {text:'', active:false};              // clock stopped by hand - study over
   if(!App.runStart) return {text:'', active:false};
   const elapsed=(Date.now()-App.runStart)/60000;
   const diff=tp.offsetMin-elapsed;
@@ -4233,6 +4235,7 @@ function collectSession(){
     savedAt:nowTs(),
     runStart:App.runStart,
     audit:(App.audit||[]).slice(-1500),
+    runEnd:App.runEnd||null,
     protocol:App.protocol?{
       name:App.protocol.name,
       timepoints:App.protocol.timepoints,
@@ -4324,6 +4327,7 @@ function applySession(o){
   App.activeAnimal=o.activeAnimal||(App.animals[0]&&App.animals[0].id)||null;
   App.runStart=o.runStart||null;
   App.audit=Array.isArray(o.audit)?o.audit:[];
+  App.runEnd=o.runEnd||null;
   if(o.hcare){
     if(o.hcare.data) HCARE.data=o.hcare.data;
     if(o.hcare.animal) HCARE.animal=o.hcare.animal;
@@ -4746,7 +4750,7 @@ function clearSavedData(){
   if(!confirm('Erase ALL data in the app and the autosave?\n\nA copy is kept under "Earlier copies" so this can be undone, but export or save a file as well if the data matters.')) return;
   try{ rotateBackup(localStorage.getItem(SAVE_KEY)||JSON.stringify(collectSession())); }catch(e){}
   try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
-  App.animals=[]; App.activeAnimal=null; App.runStart=null;
+  App.animals=[]; App.activeAnimal=null; App.runStart=null; App.runEnd=null;
   HCARE.data={}; HCARE.animal=null;
   addAnimal({silent:true});
   hcAddAnimal(true);
@@ -5158,11 +5162,15 @@ function handleLabFile(file){
 }
 
 setInterval(()=>{
-  // a dead animal's clock freezes at the death - it must not keep counting
+  // display priority: death freeze > manual stop > running > not started
   const _dm=(typeof animalDeathMin==='function')?animalDeathMin():null;
   $('#runtime').textContent =
     _dm!=null ? '\u2020 '+fmtClock(_dm*60000)
+    : (App.runStart&&App.runEnd) ? '\u25A0 '+fmtClock(App.runEnd-App.runStart)
     : App.runStart ? fmtClock(Date.now()-App.runStart) : '-';
+  const stopBtn=document.getElementById('runStopBtn');
+  if(stopBtn) stopBtn.style.display =
+    (App.runStart && !App.runEnd && _dm==null && !document.body.classList.contains('reader-mode')) ? 'inline-block' : 'none';
   // Update ONLY the countdown text in place. Rebuilding the whole timeline
   // every second destroyed the buttons mid-tap, so taps were sometimes lost.
   if(App.protocol && document.hidden===false && !window._tlDragging){
@@ -5187,6 +5195,16 @@ setInterval(()=>{
   rc.title='Elapsed since the animal went on the table. Tap to set the start time (when prep/cannulation began). Starts by itself at the first capture if never set.';
   rc.addEventListener('click',()=>{
     if(document.body.classList.contains('reader-mode')) return;
+    // stopped clock: tapping offers to resume
+    if(App.runStart && App.runEnd){
+      if(confirm('Run clock is stopped at '+fmtClock(App.runEnd-App.runStart)+'.\n\nResume it? (elapsed continues in real time)')){
+        App.runEnd=null;
+        if(window.logEvent) logEvent('run-resume',{});
+        if(window.autosave) autosave();
+        toast('Run clock resumed');
+      }
+      return;
+    }
     const cur=App.runStart?new Date(App.runStart):null;
     const def=cur?String(cur.getHours()).padStart(2,'0')+String(cur.getMinutes()).padStart(2,'0'):'';
     const v=prompt('Animal on table - start time, 24h HHMM (e.g., 0930).\nLeave blank to start NOW.'
@@ -5209,6 +5227,18 @@ setInterval(()=>{
     if(window.autosave) autosave();
     const hhmm=new Date(t).toTimeString().slice(0,5);
     toast('On table at '+hhmm+' - run clock now counts from prep start');
+  });
+  const sb=document.getElementById('runStopBtn');
+  if(sb) sb.addEventListener('click',e=>{
+    e.stopPropagation();   // must not open the start-time prompt underneath
+    if(document.body.classList.contains('reader-mode')) return;
+    if(!App.runStart || App.runEnd) return;
+    const el=fmtClock(Date.now()-App.runStart);
+    if(!confirm('Stop the run clock?\n\nElapsed freezes at '+el+'. Tap RUN TIME later to resume.')) return;
+    App.runEnd=Date.now();
+    if(window.logEvent) logEvent('run-stop',{at:el});
+    if(window.autosave) autosave();
+    toast('Run clock stopped at '+el);
   });
 })();
 
@@ -5251,7 +5281,7 @@ function renderStudyLog(){
   const label={capture:'Capture saved','sheet-import':'Sheet photo imported','delete-row':'Row deleted',
     'clear-all-rows':'All rows cleared','delete-animal':'Animal deleted','on-table':'On-table time set',
     'rename-tp':'Timepoint renamed','move-row':'Row data moved','reorder-tp':'Timepoint repositioned',
-    'death-from-sheet':'DEATH point from sheet photo'};
+    'death-from-sheet':'DEATH point from sheet photo','run-stop':'Run clock stopped','run-resume':'Run clock resumed'};
   listEl.innerHTML = audit.slice().reverse().map(e=>{
     const parts=[];
     if(e.animal) parts.push(e.animal);
