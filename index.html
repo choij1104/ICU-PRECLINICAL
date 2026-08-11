@@ -2266,7 +2266,8 @@ function openCapture(tpId, prefill, photo){
   }
   // Filed under the wrong slot? Move the whole row (values + labs + photo)
   // to another timepoint or to the DEATH point.
-  if(tpId && a && a.rows[tpId] && !fromPhoto){
+  const _mvA=getActiveAnimal();
+  if(tpId && _mvA && _mvA.rows[tpId] && !fromPhoto){
     const others=(App.protocol?App.protocol.timepoints:[]).filter(t=>t.id!==tpId)
       .map(t=>`<option value="${t.id}">${t.label}</option>`).join('');
     body+=`<div style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
@@ -5054,9 +5055,16 @@ setInterval(()=>{
   $('#runtime').textContent =
     _dm!=null ? '\u2020 '+fmtClock(_dm*60000)
     : App.runStart ? fmtClock(Date.now()-App.runStart) : '-';
+  // Update ONLY the countdown text in place. Rebuilding the whole timeline
+  // every second destroyed the buttons mid-tap, so taps were sometimes lost.
   if(App.protocol && document.hidden===false && !window._tlDragging){
-    const tl=$('#timeline');
-    if(tl && tl.querySelector('.tp')) renderTimeline();
+    document.querySelectorAll('#timeline .tp').forEach(el=>{
+      const tp=App.protocol.timepoints.find(t=>t.id===el.dataset.tp); if(!tp) return;
+      const cd=countdownFor(tp);
+      const cdEl=el.querySelector('.countdown');
+      if(cdEl) cdEl.textContent=cd.text;
+      el.classList.toggle('active', !!cd.active);
+    });
   }
 }, 1000);
 
