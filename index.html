@@ -1849,13 +1849,36 @@ function renderTimeline(){
   const tl=$('#timeline'); const p=App.protocol;
   if(!p||!p.timepoints.length){tl.innerHTML='<div class="empty">Upload a protocol to build the timeline.</div>';return;}
   const a=getActiveAnimal();
-  tl.innerHTML = p.timepoints.map(tp=>{
+  // death-aware: after the animal dies, later timepoints are "not reached"
+  const deathMin=animalDeathMin();
+  const deathKey=a?Object.keys(a.rows||{}).find(k=>a.rows[k]&&a.rows[k]._death):null;
+  const deathRow=deathKey?a.rows[deathKey]:null;
+  const deathHtml=deathRow?`
+      <div class="tp done" data-tp="__death" style="background:var(--alarm-soft);border-radius:8px;padding:11px 10px">
+        <div class="tdot" style="background:var(--alarm);border-color:var(--alarm)"></div>
+        <div class="tbody">
+          <div class="ttime" style="color:var(--alarm)">&#10013; ${deathRow._label||'DEATH - final sample'}${deathMin!=null?` <span style="font-family:var(--mono);font-weight:400">(+${deathMin} min)</span>`:''}</div>
+          ${deathRow._note?`<div class="ttasks">${String(deathRow._note).slice(0,110)}${String(deathRow._note).length>110?'&hellip;':''}</div>`:''}
+          <div class="twhen">recorded ${tsShort(deathRow._ts)}</div>
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn sm" onclick="recordDeath()">Edit death point</button>
+          </div>
+        </div>
+      </div>`:'';
+  let deathInserted=false;
+  let html='';
+  p.timepoints.forEach(tp=>{
     const done = a && a.rows[tp.id];
+    const skipped = !done && deathMin!=null && (tp.offsetMin==null || tp.offsetMin>deathMin);
+    // slot the DEATH entry between the last reached point and the first skipped one
+    if(deathHtml && !deathInserted && deathKey!==tp.id && tp.offsetMin!=null && deathMin!=null && tp.offsetMin>deathMin){
+      html+=deathHtml; deathInserted=true;
+    }
     const cd = countdownFor(tp);
     const evHtml = (tp.events&&tp.events.length)
       ? `<div style="font-size:11px;color:var(--trace-amber);margin-top:4px;line-height:1.5">${tp.events.map(e=>'> '+e).join('<br>')}</div>` : '';
-    return `
-      <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}"${done&&!document.body.classList.contains('reader-mode')?' draggable="true" title="Drag onto another timepoint (or the red zone) to move this data"':''}>
+    html+=`
+      <div class="tp ${done?'done':''} ${cd.active?'active':''}" data-tp="${tp.id}"${!skipped&&!document.body.classList.contains('reader-mode')?' draggable="true" title="Drag onto another timepoint to move DATA - drag into a gap to REPOSITION this timepoint (the graphs follow)"':''}${skipped?' style="opacity:.45"':''}>
         <div class="tdot"></div>
         <div class="tbody">
           <div class="ttime"><span onclick="renameTimepoint('${tp.id}')" style="cursor:pointer;text-decoration:underline dotted" title="Tap to rename">${tp.label}</span></div>
@@ -1863,35 +1886,102 @@ function renderTimeline(){
           ${evHtml}
           ${done
             ? `<div class="twhen">recorded ${tsShort(a.rows[tp.id]._ts)}</div>`
-            : cd.text?`<div class="countdown">${cd.text}</div>`:''}
+            : skipped
+              ? `<div class="twhen" style="color:var(--ink-faint)">not reached &mdash; animal died at +${deathMin} min</div>`
+              : cd.text?`<div class="countdown">${cd.text}</div>`:''}
           ${done
             ? `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
                  <button class="btn sm" onclick="openCapture('${tp.id}')">Edit</button>
                  <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteRow('${tp.id}')">Delete</button>
                </div>`
-            : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            : skipped
+              ? ''
+              : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
                  <button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>
                </div>`}
         </div>
       </div>`;
-  }).join('');
+  });
+  if(deathHtml && !deathInserted) html+=deathHtml;   // death after every scheduled point
+  tl.innerHTML=html;
 }
 
+/* Reposition a timepoint in the schedule: its offset becomes the midpoint of
+   its new neighbours, and every recorded row whose run-minute was DERIVED
+   from the old schedule follows it - so the trends move too. Run-minutes
+   that were actually measured (clock running / typed by hand) are kept. */
+function repositionTimepoint(id, beforeId){
+  const p=App.protocol; if(!p) return;
+  const tp=p.timepoints.find(t=>t.id===id); if(!tp) return;
+  if(beforeId===id) return;
+  const oldOff=tp.offsetMin;
+  const others=p.timepoints.filter(t=>t.id!==id);
+  let newOff;
+  if(beforeId==null){                       // dropped after the last row
+    newOff=(others.length?Math.max(...others.map(t=>t.offsetMin||0)):0)+10;
+  } else {
+    const idx=others.findIndex(t=>t.id===beforeId);
+    const next=others[idx];
+    const prev=idx>0?others[idx-1]:null;
+    const nOff=next.offsetMin!=null?next.offsetMin:0;
+    if(prev){
+      const pOff=prev.offsetMin!=null?prev.offsetMin:0;
+      newOff=Math.round(((pOff+nOff)/2)*10)/10;
+      if(newOff===pOff||newOff===nOff) newOff=pOff+(nOff-pOff)/2; // keep strict order
+    } else {
+      newOff=nOff-10;
+    }
+  }
+  tp.offsetMin=newOff;
+  p.timepoints.sort((a,b)=>(a.offsetMin??0)-(b.offsetMin??0));
+  // rows whose run-minute mirrored the old schedule follow the move
+  let followed=0;
+  App.animals.forEach(an=>{
+    const r=an.rows&&an.rows[id];
+    if(r && r._runMin!=null && oldOff!=null && r._runMin===oldOff){ r._runMin=newOff; followed++; }
+  });
+  if(window.logEvent) logEvent('reorder-tp',{tp:id, from:oldOff, to:newOff});
+  rebuildTable(); renderTimeline(); renderCurrent(); renderTrends(); autosave();
+  toast(tp.label.split(/[-–(]/)[0].trim()+' moved to +'+newOff+' min'+(followed?' - recorded data followed':''));
+}
+window.repositionTimepoint=repositionTimepoint;
+
 /* ── Drag & drop on the timeline ─────────────────────────────────────
-   Drag a recorded row onto another timepoint to move all its data there,
-   or onto the red zone (appears while dragging) to move it to the DEATH
-   point. Touch devices use the capture-modal "Move" dropdown instead. */
+   Drop ONTO a row  -> move the dragged row's DATA into it.
+   Drop into a GAP  -> reposition the dragged TIMEPOINT there (graphs follow).
+   Drop on the red zone -> move the data to the DEATH point.
+   Touch devices use the capture-modal "Move" dropdown instead. */
 (function(){
   const tl=document.getElementById('timeline'); if(!tl) return;
   let dragId=null;
-  function killZone(){ const z=document.getElementById('deathDropZone'); if(z) z.remove(); }
+  function killExtras(){
+    const z=document.getElementById('deathDropZone'); if(z) z.remove();
+    tl.querySelectorAll('.tp-gap').forEach(g=>g.remove());
+  }
+  function makeGaps(){
+    const rows=[...tl.querySelectorAll('.tp')].filter(r=>r.dataset.tp!=='__death');
+    rows.forEach(row=>{
+      if(row.dataset.tp===dragId) return;
+      const g=document.createElement('div');
+      g.className='tp-gap'; g.dataset.before=row.dataset.tp;
+      g.style.cssText='height:12px;margin:2px 0;border:1px dashed transparent;border-radius:6px;transition:.1s';
+      tl.insertBefore(g,row);
+    });
+    const end=document.createElement('div');
+    end.className='tp-gap'; end.dataset.before='';
+    end.style.cssText='height:12px;margin:2px 0;border:1px dashed transparent;border-radius:6px;transition:.1s';
+    tl.appendChild(end);
+  }
   tl.addEventListener('dragstart',e=>{
     const row=e.target.closest('.tp[draggable="true"]'); if(!row) return;
     dragId=row.dataset.tp;
+    window._tlDragging=true;
     e.dataTransfer.effectAllowed='move';
     try{e.dataTransfer.setData('text/plain',dragId);}catch(_){}
     row.style.opacity='.45';
-    if(!document.getElementById('deathDropZone')){
+    makeGaps();
+    const a=getActiveAnimal();
+    if(a && a.rows[dragId] && !document.getElementById('deathDropZone')){
       const z=document.createElement('div');
       z.id='deathDropZone';
       z.innerHTML='&#10013; Drop here to move this data to the DEATH point';
@@ -1901,33 +1991,42 @@ function renderTimeline(){
   });
   tl.addEventListener('dragover',e=>{
     if(!dragId) return;
-    const t=e.target.closest('.tp,[id="deathDropZone"]'); if(!t) return;
-    if(t.classList&&t.classList.contains('tp')&&t.dataset.tp===dragId) return;
+    const t=e.target.closest('.tp,.tp-gap,[id="deathDropZone"]'); if(!t) return;
+    if(t.classList.contains('tp')&&(t.dataset.tp===dragId||t.dataset.tp==='__death')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect='move';
-    t.style.outline='2px solid var(--accent)'; t.style.outlineOffset='2px';
+    if(t.classList.contains('tp-gap')){
+      t.style.borderColor='var(--accent)'; t.style.background='var(--accent-soft)'; t.style.height='26px';
+    } else {
+      t.style.outline='2px solid var(--accent)'; t.style.outlineOffset='2px';
+    }
   });
   tl.addEventListener('dragleave',e=>{
-    const t=e.target.closest('.tp,[id="deathDropZone"]');
-    if(t){ t.style.outline=''; t.style.outlineOffset=''; }
+    const t=e.target.closest('.tp,.tp-gap,[id="deathDropZone"]');
+    if(!t) return;
+    if(t.classList.contains('tp-gap')){ t.style.borderColor='transparent'; t.style.background=''; t.style.height='12px'; }
+    else { t.style.outline=''; t.style.outlineOffset=''; }
   });
   tl.addEventListener('drop',e=>{
     if(!dragId) return;
     e.preventDefault();
+    const gap=e.target.closest('.tp-gap');
     const zone=e.target.closest('[id="deathDropZone"]');
     const row=e.target.closest('.tp');
-    const src=dragId; dragId=null; killZone();
+    const src=dragId; dragId=null; window._tlDragging=false; killExtras();
     tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
+    if(gap){ repositionTimepoint(src, gap.dataset.before||null); return; }
     if(zone){ moveRowData(src,'DEATH'); return; }
-    if(row && row.dataset.tp && row.dataset.tp!==src) moveRowData(src, row.dataset.tp);
+    if(row && row.dataset.tp && row.dataset.tp!==src && row.dataset.tp!=='__death') moveRowData(src, row.dataset.tp);
   });
   tl.addEventListener('dragend',()=>{
-    dragId=null; killZone();
+    dragId=null; window._tlDragging=false; killExtras();
     tl.querySelectorAll('.tp').forEach(r=>{r.style.opacity='';r.style.outline='';r.style.outlineOffset='';});
   });
 })();
 
 function countdownFor(tp){
+  if(animalDeathMin()!=null) return {text:'', active:false};  // the animal died - nothing is "due" anymore
   if(!App.runStart) return {text:'', active:false};
   const elapsed=(Date.now()-App.runStart)/60000;
   const diff=tp.offsetMin-elapsed;
@@ -4891,7 +4990,7 @@ function handleLabFile(file){
 
 setInterval(()=>{
   $('#runtime').textContent = App.runStart?fmtClock(Date.now()-App.runStart):'-';
-  if(App.protocol && document.hidden===false){
+  if(App.protocol && document.hidden===false && !window._tlDragging){
     const tl=$('#timeline');
     if(tl && tl.querySelector('.tp')) renderTimeline();
   }
