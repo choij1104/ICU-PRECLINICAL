@@ -5746,6 +5746,12 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
     toast('API key cleared');
   });
   $('#ocrMethod') && $('#ocrMethod').addEventListener('change',function(e){ safeSet(METH,e.target.value); });
+  // Auto-save the API key as it is typed/pasted, so photo reading keeps working
+  // after a reload or the access-gate login (no need to press Save separately).
+  $('#apiKey') && $('#apiKey').addEventListener('input',function(){
+    var v=this.value.trim();
+    if(v){ var ok=safeSet(KEY,v); if(st){ st.textContent= ok?'saved automatically':'saved for this session'; st.style.color= ok?'var(--trace)':'var(--trace-amber)'; } }
+  });
   // Model field (from the merged patch): fill it and persist edits
   var mdl=$('#apiModel');
   if(mdl){
