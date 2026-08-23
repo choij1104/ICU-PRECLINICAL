@@ -704,16 +704,16 @@
 
 <div id="hcare" style="display:none;position:fixed;inset:0;z-index:40;background:var(--bezel);overflow:auto">
   <div style="max-width:1300px;margin:0 auto;padding:16px 20px 60px">
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;position:sticky;top:0;background:var(--bezel);padding:10px 0;z-index:5;border-bottom:1px solid var(--line)">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:14px;position:sticky;top:0;background:var(--bezel);padding:10px 0;z-index:5;border-bottom:1px solid var(--line)">
       <div class="brand"><span class="dot"></span> Data sheets <small>H-CARE &middot; IPROTO202500000107</small></div>
       <select id="hcAnimal" style="margin-left:auto;padding:7px 10px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-family:var(--mono);font-size:13px"></select>
       <button class="btn sm" id="hcAddAnimal" style="width:auto">+ Animal</button>
+      <input type="file" id="hcPhotoFile" class="hidden-file" accept="image/*">
+      <input type="file" id="hcSheetFile" class="hidden-file" accept="image/*" multiple>
+      <button class="btn sm cap" id="hcSheetPhoto" style="width:auto;font-weight:700;background:var(--trace,#0a7d5a);border-color:var(--trace,#0a7d5a);color:#fff">Read whole sheet from photo</button>
       <button class="btn sm" style="width:auto" onclick="hcRenameAnimal()">Rename</button>
       <button class="btn sm" style="width:auto" onclick="hcAddRow()">+ Row</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcDeleteRow()">- Row</button>
-      <input type="file" id="hcPhotoFile" class="hidden-file" accept="image/*">
-      <input type="file" id="hcSheetFile" class="hidden-file" accept="image/*" multiple>
-      <button class="btn sm cap" id="hcSheetPhoto" style="width:auto">Read whole sheet from photo</button>
       <button class="btn sm" id="hcExport" style="width:auto">Export CSV</button>
       <button class="btn sm" style="width:auto" onclick="hcRefresh()">Refresh from app</button>
       <button class="btn sm ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="hcClearSheet()">Clear sheet</button>
@@ -876,12 +876,16 @@ function hcRowTp(sheet, rid){
   return m ? 'T'+m[1] : null;
 }
 function hcSrcAnimal(){
-  const byName = App.animals.find(x=>x.id===HCARE.animal);
-  if(byName) return byName;
+  const byName = (App.animals||[]).find(x=>x.id===HCARE.animal);
+  // Never pull auto-fill (ghost) values from the built-in demo case - it makes a
+  // brand-new real animal look like it already has data. Only a real matching
+  // animal, or a real active/first animal, may seed suggestions.
+  if(byName) return byName._demo ? null : byName;
   let act=null;
   try{ act = (typeof getActiveAnimal==='function') ? getActiveAnimal() : null; }catch(e){}
-  // the sheet's animal name often differs from the record id - never end up with nothing
-  return act || App.animals[0] || null;
+  if(act && act._demo) act=null;
+  const firstReal=(App.animals||[]).find(x=>!x._demo)||null;
+  return act || firstReal || null;
 }
 function hcLabValues(a, tpId){
   const out={};
