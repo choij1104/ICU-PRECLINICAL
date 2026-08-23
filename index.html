@@ -1153,6 +1153,26 @@ function hcBind(){
 
 /* Mirror a row of the iSTAT data sheet into the main record so the values
    show up on Current and in Trends. Sheet row 0 = T0, row 1 = T1, etc. */
+/* Pick (or create) the REAL app animal that imported sheet data lands in, and
+   make it the one shown in Current/Timeline/Trends. Never the demo case. So when
+   an operator reads a sheet, the values appear immediately on the active animal -
+   just like the original demo record looks. */
+function hcMirrorTarget(){
+  const name=String(HCARE.animal||'').trim();
+  // 1) a real app animal already named like this data-sheet animal
+  let a = name ? (App.animals||[]).find(x=>x.id===name && !x._demo) : null;
+  // 2) the currently-active app animal, if it is a real (non-demo) animal
+  if(!a){ const act=(App.animals||[]).find(x=>x.id===App.activeAnimal); if(act && !act._demo) a=act; }
+  // 3) reuse an existing empty real animal, renaming it to match the sheet
+  if(!a){
+    const emptyReal=(App.animals||[]).find(x=>!x._demo && !Object.keys(x.rows||{}).length && !(x.labs||[]).length);
+    if(emptyReal){ if(name) emptyReal.id=name; a=emptyReal; }
+  }
+  // 4) otherwise create a fresh real animal carrying the sheet's name
+  if(!a){ a=addAnimal({silent:true}); if(a && name) a.id=name; }
+  if(a){ App.activeAnimal=a.id; if(typeof updateAnimalLabel==='function') updateAnimalLabel(); }
+  return a;
+}
 function hcMirrorIstatRow(rid){
   try{
     const label=HCARE.istatRows[rid]||'';
@@ -1172,9 +1192,8 @@ function hcMirrorIstatRow(rid){
       vals[name]=num;
     });
     if(!Object.keys(vals).length) return;
-    // find the animal in the main record with this name, else the active one
-    let a=hcSrcAnimal();
-    if(!a) a=addAnimal({silent:true});
+    // land the data on the real animal shown in Current (never the demo)
+    const a=hcMirrorTarget(); if(!a) return;
     if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef&&tpDef.offsetMin!=null)?tpDef.offsetMin:null};
     Object.assign(a.rows[tpId], prefixKeys(vals));
     // keep one lab entry per sheet row so Trends/Current can read it
@@ -1504,7 +1523,7 @@ function hcMirrorVitalsRow(rid){
     const fa=bp(src.femBP); if(fa){ put('FAs',fa.s); put('FAd',fa.d); put('FAmap',fa.m); }
     // a row carrying only a written clock time still means that timepoint happened
     if(!Object.keys(vals).length && !src.time) return;
-    let a=hcSrcAnimal(); if(!a) a=addAnimal({silent:true});
+    const a=hcMirrorTarget(); if(!a) return;
     if(!a.rows[tpId]) a.rows[tpId]={_ts:nowTs(), _runMin:(tpDef.offsetMin!=null?tpDef.offsetMin:null)};
     Object.assign(a.rows[tpId], vals);
     if(src.time) a.rows[tpId]._sheetTime=String(src.time);
