@@ -1229,7 +1229,7 @@ Return JSON only.`;
 
 async function hcReadWholeSheet(file){
   if(getOcrMethod()!=='claude'){ toast('Whole-sheet reading needs the AI reader - switch it on under Photo / Settings'); return; }
-  if(!getApiKey()){ toast('No API key - add it under Photo / Settings'); return; }
+  if(!getApiKey() && !PROXY_ON){ toast('No API key - add it under Photo / Settings'); return; }
   const reader=new FileReader();
   reader.onload=async ev=>{
     toast('Reading the whole sheet - this takes a few seconds...');
@@ -2441,6 +2441,12 @@ function openCapture(tpId, prefill, photo){
 
 function getOcrMethod(){ return ($('#ocrMethod')&&$('#ocrMethod').value)||'claude'; }
 function getApiKey(){ return ($('#apiKey')&&$('#apiKey').value.trim())||''; }
+// Server-side key proxy (Cloudflare Pages Function at /anthropic). When on, photo
+// reading works with NO API key on the device - the key lives only on the server.
+// A device key, if the user still enters one, overrides the proxy (direct mode).
+const PROXY_ENDPOINT='/anthropic';
+let PROXY_ON=true;
+window.PROXY_ON=PROXY_ON;
 
 const DEVICE_SCHEMAS = {
   istat: {
@@ -2515,16 +2521,20 @@ window.getModel=getModel;
 
 async function callAnthropic(body, timeoutMs){
   const key=getApiKey();
-  if(!key) throw new Error('No API key saved on this device.');
+  const useProxy = PROXY_ON && !key;   // device key (if any) overrides the proxy
+  if(!key && !PROXY_ON) throw new Error('No API key saved on this device.');
+  const url = useProxy ? PROXY_ENDPOINT : 'https://api.anthropic.com/v1/messages';
+  const headers = useProxy
+    ? {'content-type':'application/json'}
+    : {'content-type':'application/json','x-api-key':key,
+        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
   const ms=timeoutMs||60000;
   const ctl=new AbortController();
   const timer=setTimeout(()=>ctl.abort(), ms);
   let res;
   try{
-    res=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST', signal:ctl.signal,
-      headers:{'content-type':'application/json','x-api-key':key,
-        'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    res=await fetch(url,{
+      method:'POST', signal:ctl.signal, headers,
       body:JSON.stringify(Object.assign({model:getModel()}, body))
     });
   }catch(e){
@@ -2532,7 +2542,7 @@ async function callAnthropic(body, timeoutMs){
     if(e&&e.name==='AbortError') throw new Error('NETWORK: no answer within '+Math.round(ms/1000)+' s.');
     // Safari "Type error" / Chrome "Failed to fetch" / Firefox "NetworkError"
     // all mean the request never reached the server.
-    throw new Error('NETWORK: the request never reached api.anthropic.com ('+((e&&(e.message||e.name))||'unknown')+')');
+    throw new Error('NETWORK: the request never reached '+(useProxy?'the server proxy':'api.anthropic.com')+' ('+((e&&(e.message||e.name))||'unknown')+')');
   }
   clearTimeout(timer);
   if(!res.ok){
@@ -2555,7 +2565,7 @@ function parseJSONReply(data){
 
 async function detectAndExtract(imageDataURL){
   const key=getApiKey();
-  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  if(!key && !PROXY_ON) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
   imageDataURL=await downscaleImage(imageDataURL);   // keep under the API size limit
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('Bad image');
@@ -2621,7 +2631,7 @@ Rules:
 
 async function claudeExtract(imageDataURL, fields){
   const key=getApiKey();
-  if(!key) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
+  if(!key && !PROXY_ON) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
   imageDataURL=await downscaleImage(imageDataURL);
   const m=imageDataURL.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('That file is not a readable image.');
@@ -2934,7 +2944,7 @@ function collectFormLabs(){
 async function rereadFromPhoto(kind){
   const img = kind==='death' ? _deathPhotoData : _eventPhotoData;
   if(!img){ toast('No photo attached yet'); return; }
-  if(getOcrMethod()==='claude' && !getApiKey()){
+  if(getOcrMethod()==='claude' && !getApiKey() && !PROXY_ON){
     toast('No API key on this device - add it under Photo / Settings');
     return;
   }
@@ -3131,7 +3141,7 @@ window.saveDeath = saveDeath;
 async function deathPhotoToVitals(fileOrData){
   const isData = typeof fileOrData==='string' && fileOrData.startsWith('data:');
   const file = fileOrData;
-  if(getOcrMethod()==='claude' && !getApiKey()){
+  if(getOcrMethod()==='claude' && !getApiKey() && !PROXY_ON){
     if(isData){ recordDeath(null, file);
       toast('No API key on this device - photo attached, enter values by hand'); return; }
     const reader0=new FileReader();
@@ -3240,7 +3250,7 @@ window.saveEvent = saveEvent;
 async function eventPhotoToVitals(fileOrData){
   const isData = typeof fileOrData==='string' && fileOrData.startsWith('data:');
   const file = fileOrData;
-  if(getOcrMethod()==='claude' && !getApiKey()){
+  if(getOcrMethod()==='claude' && !getApiKey() && !PROXY_ON){
     if(isData){ recordEvent(null, file);
       toast('No API key on this device - photo attached, enter values by hand'); return; }
     const reader0=new FileReader();
@@ -4351,7 +4361,7 @@ async function mainPhotoUpload(fileOrData){
   if(!fileOrData){ toast('No photo received - try again'); return; }
   const tpId=$('#mainPhotoTp')?$('#mainPhotoTp').value:'';
   if(!tpId){ toast('Choose a timepoint first (the dropdown above the buttons)'); return; }
-  if(getOcrMethod()==='claude' && !getApiKey()){
+  if(getOcrMethod()==='claude' && !getApiKey() && !PROXY_ON){
     toast('No API key on this device. Photo / Settings tab -> paste key -> Save. Then try again.');
     showTab('settings');
     return;
