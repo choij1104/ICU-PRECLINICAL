@@ -522,6 +522,7 @@
       </div>
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">Jae H. Choi, PhD, DVSc &middot; HAKOYA LLC</b>. All rights reserved.<br>
+        <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
         Auravyx Preclinical &mdash; Data Capture &middot; v5.2
       </div>
     </main>
@@ -534,12 +535,18 @@
           <div id="trendPicker" style="display:flex;flex-wrap:wrap;gap:6px"></div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn sm primary" onclick="trendPreset('all')">Show all</button>
           <button class="btn sm" onclick="trendPreset('hemo')">Hemodynamics</button>
           <button class="btn sm" onclick="trendPreset('bloodgas')">Blood gas</button>
           <button class="btn sm" onclick="trendPreset('perfusion')">Perfusion (Lac/BE)</button>
           <button class="btn sm" onclick="trendPreset('chem')">Chemistry</button>
           <button class="btn sm" onclick="trendPreset('gas')">Vent / SpO2</button>
           <button class="btn sm ghost" onclick="trendPreset('none')">Clear</button>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;border-top:1px solid var(--line);padding-top:8px;align-items:center">
+          <span class="hint" style="margin:0">View:</span>
+          <button class="btn sm primary" id="trendModeAnimal" style="width:auto" onclick="setTrendMode('animal')">Per-animal</button>
+          <button class="btn sm ghost" id="trendModeGroup" style="width:auto" onclick="setTrendMode('group')">By group (mean&plusmn;SEM)</button>
         </div>
       </div>
       <div id="trendCharts"></div>
@@ -722,7 +729,8 @@
 
     <div id="hcSheet"></div>
     <div style="text-align:center;padding:22px 0 8px;color:var(--ink-faint);font-size:11px">
-      &copy; 2026 <b style="color:var(--ink-dim)">Jae H. Choi, PhD, DVSc &middot; HAKOYA LLC</b>. All rights reserved.
+      &copy; 2026 <b style="color:var(--ink-dim)">Jae H. Choi, PhD, DVSc &middot; HAKOYA LLC</b>. All rights reserved.<br>
+      <span>Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span>
     </div>
   </div>
 </div>
@@ -1286,15 +1294,20 @@ function hcShowImport(sheet, rows, img){
     return (d&&d[k]!=null&&d[k]!=='')?String(d[k]):'';
   };
 
+  const escA=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   const body=items.map((it,idx)=>{
-    const cells=Object.entries(it.vals).map(([k,v])=>{
+    // every expected field is shown as an editable cell - amber = read from the
+    // photo, plain = blank so the operator can fill it in right here.
+    const cells=keys.map(k=>{
+      const has = (k in it.vals);
+      const v = has ? it.vals[k] : '';
       const old=existing(it.rid,k);
-      const warn = old && String(old)!==String(v);
-      return `<span style="display:inline-block;margin:2px 10px 2px 0;font-size:12px">
-        <b style="color:var(--ink-faint);font-weight:600">${labelOf(k)}</b>
-        <span style="font-family:var(--mono);color:${warn?'var(--amber,#c98a00)':'var(--ink)'}">${v}</span>
-        ${warn?`<s style="color:var(--ink-faint);font-family:var(--mono)">${old}</s>`:''}
-      </span>`;
+      const wide = k==='notes';
+      return `<label style="display:inline-flex;flex-direction:column;gap:2px;margin:3px 8px 3px 0;font-size:10.5px;vertical-align:top">
+        <span style="color:var(--ink-faint);font-weight:600;text-transform:uppercase;letter-spacing:.3px">${labelOf(k)}${old?` <s style="color:var(--ink-faint);font-weight:400">${escA(old)}</s>`:''}</span>
+        <input data-impval="${idx}" data-impkey="${k}" value="${escA(v)}" spellcheck="false"
+          style="width:${wide?'170px':'66px'};padding:4px 6px;font-family:var(--mono);font-size:12.5px;background:${has?'var(--amber-soft)':'var(--panel-2)'};border:1px solid ${has?'var(--trace-amber)':'var(--line)'};border-radius:4px;color:var(--ink)">
+      </label>`;
     }).join('');
     // coverage: which expected fields did the photo NOT yield for this row?
     const expect = keys.filter(k=>k!=='notes');
@@ -1339,8 +1352,12 @@ function hcShowImport(sheet, rows, img){
   const thumbLine =
     `<div style="margin-bottom:10px"><img src="${img}" alt="the photo being reviewed"
        style="max-height:140px;max-width:100%;border:1px solid var(--line);border-radius:6px;display:block"></div>`;
+  const editHint =
+    `<div style="border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:12px;color:var(--ink-faint)">
+       <b style="color:var(--ink)">Check every value against the photo.</b> Amber cells were read from the photo; plain cells are blank &mdash; type into any cell to fix a misread or fill a value. Clear a cell to drop it. Then press <b>Apply</b>.</div>`;
   document.getElementById('hcImportBody').innerHTML =
     thumbLine
+    + editHint
     + notFoundLine
     + (nUnmatched?`<div style="color:var(--alarm);font-size:12px;margin-bottom:10px">${nUnmatched} row${nUnmatched>1?'s':''} could not be matched to a timepoint - choose one, or leave unticked to skip.</div>`:'')
     + body;
@@ -1359,10 +1376,20 @@ function hcApplyImport(){
   document.querySelectorAll('[data-impdeath]').forEach(cb=>{
     items[+cb.dataset.impdeath].death = cb.checked;
   });
+  // pull the operator's edits (and any cells they filled in) back off the review
+  // inputs. Numeric strings become numbers; BP / notes stay as text; cleared
+  // cells are dropped.
+  document.querySelectorAll('[data-impval]').forEach(inp=>{
+    const it=items[+inp.dataset.impval]; if(!it) return;
+    const k=inp.dataset.impkey, raw=String(inp.value).trim();
+    if(raw===''){ delete it.vals[k]; return; }
+    it.vals[k] = /^-?\d*\.?\d+$/.test(raw) ? Number(raw) : raw;
+  });
   let nRows=0, nCells=0;
   const touched=[];
   items.forEach(it=>{
     if(!it.use || it.rid<0 || it.rid>=(sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows).length) return;
+    if(!Object.keys(it.vals).length) return;
     const d=hcA()[sheet];
     if(!d[it.rid]) d[it.rid]={};
     Object.entries(it.vals).forEach(([k,v])=>{ d[it.rid][k]=v; nCells++; });
@@ -3252,6 +3279,7 @@ const TREND_PRESETS = {
   none:[]
 };
 let TREND_SEL = ['HR','MAP','SpO2','lab_Lactate'];
+let TREND_MODE = 'animal';   // 'animal' | 'group'
 
 const LAB_UNITS={pH:'',pCO2:'mmHg',pO2:'mmHg',HCO3:'mmol/L',TCO2:'mmol/L',BE:'mmol/L',
   sO2:'%',Lactate:'mmol/L',Hb:'g/dL',Hct:'%',Na:'mmol/L',K:'mmol/L',Cl:'mmol/L',
@@ -3292,7 +3320,8 @@ function toggleTrend(key){
 }
 window.toggleTrend = toggleTrend;
 function trendPreset(name){
-  TREND_SEL = (TREND_PRESETS[name]||[]).slice();
+  if(name==='all'){ TREND_SEL = trendSeriesOptions().map(o=>o.key); }
+  else TREND_SEL = (TREND_PRESETS[name]||[]).slice();
   renderTrendPicker(); renderTrends();
 }
 window.trendPreset = trendPreset;
@@ -3354,6 +3383,7 @@ function trendPoints(key){
 function renderTrends(){
   const host=$('#trendCharts'); if(!host) return;
   const lbl=$('#trendAnimalLabel'); if(lbl) lbl.textContent=App.activeAnimal||'no animal';
+  if(TREND_MODE==='group'){ return renderGroupTrends(host); }
   if(!TREND_SEL.length){
     host.innerHTML='<div class="card"><div class="empty">Pick one or more parameters above to plot.</div></div>';
     return;
@@ -3374,6 +3404,142 @@ function renderTrends(){
   host.innerHTML=html;
 }
 window.renderTrends = renderTrends;
+
+/* ============================================================
+   GROUP TRENDS + BASIC STATISTICS
+   Aggregate every animal by treatment group and show, per
+   timepoint, group mean +/- SEM, with a between-group Welch
+   two-sample t-test (two groups). No external stats package.
+   ============================================================ */
+const GCOLORS=['#4a86e8','#e0662f','#16a766','#a479e2','#d5a021','#00a3a3','#b65775'];
+function groupOf(a){ return (a && (a.group || (a.info&&a.info.arm))) || 'Ungrouped'; }
+function _mean(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
+function _sd(a){ if(a.length<2) return NaN; const m=_mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1)); }
+function _sem(a){ const s=_sd(a); return isNaN(s)?NaN:s/Math.sqrt(a.length); }
+function _gammaln(x){ const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5]; let y=x,tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp); let ser=1.000000000190015; for(let j=0;j<6;j++){ y++; ser+=c[j]/y; } return -tmp+Math.log(2.5066282746310005*ser/x); }
+function _betacf(a,b,x){ const MAXIT=200,EPS=3e-12,FPMIN=1e-30; let qab=a+b,qap=a+1,qam=a-1,cc=1,d=1-qab*x/qap; if(Math.abs(d)<FPMIN)d=FPMIN; d=1/d; let h=d; for(let m=1;m<=MAXIT;m++){ let m2=2*m; let aa=m*(b-m)*x/((qam+m2)*(a+m2)); d=1+aa*d; if(Math.abs(d)<FPMIN)d=FPMIN; cc=1+aa/cc; if(Math.abs(cc)<FPMIN)cc=FPMIN; d=1/d; h*=d*cc; aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2)); d=1+aa*d; if(Math.abs(d)<FPMIN)d=FPMIN; cc=1+aa/cc; if(Math.abs(cc)<FPMIN)cc=FPMIN; d=1/d; let del=d*cc; h*=del; if(Math.abs(del-1)<EPS)break; } return h; }
+function _betai(a,b,x){ if(x<=0)return 0; if(x>=1)return 1; const bt=Math.exp(_gammaln(a+b)-_gammaln(a)-_gammaln(b)+a*Math.log(x)+b*Math.log(1-x)); return x<(a+1)/(a+b+2) ? bt*_betacf(a,b,x)/a : 1-bt*_betacf(b,a,1-x)/b; }
+function _tp(t,df){ if(!isFinite(t)||!isFinite(df)||df<=0) return NaN; return _betai(df/2,0.5,df/(df+t*t)); } // two-tailed p
+function _welch(a,b){ if(a.length<2||b.length<2) return null; const ma=_mean(a),mb=_mean(b),va=Math.pow(_sd(a),2),vb=Math.pow(_sd(b),2),na=a.length,nb=b.length; const denom=Math.sqrt(va/na+vb/nb); if(!isFinite(denom)||denom===0) return null; const t=(ma-mb)/denom; const df=Math.pow(va/na+vb/nb,2)/((va*va)/(na*na*(na-1))+(vb*vb)/(nb*nb*(nb-1))); return {t,df,p:_tp(Math.abs(t),df)}; }
+/* One-way ANOVA (F-test) from per-group summary stats {n,mean,sd}.
+   Uses SSW = Σ(n_i-1)·sd_i², SSB = Σ n_i·(mean_i-grand)². */
+function _anova(groups){
+  const k=groups.length; if(k<2) return null;
+  if(groups.some(g=>!g||g.n<2||isNaN(g.sd))) return null;
+  const N=groups.reduce((s,g)=>s+g.n,0);
+  const grand=groups.reduce((s,g)=>s+g.n*g.mean,0)/N;
+  const ssb=groups.reduce((s,g)=>s+g.n*Math.pow(g.mean-grand,2),0);
+  const ssw=groups.reduce((s,g)=>s+(g.n-1)*g.sd*g.sd,0);
+  const df1=k-1, df2=N-k; if(df2<=0) return null;
+  const msb=ssb/df1, msw=ssw/df2;
+  if(msw===0) return {F:Infinity,df1,df2,p:0};
+  const F=msb/msw;
+  const p=_betai(df2/2, df1/2, df2/(df2+df1*F));   // P(F > observed)
+  return {F,df1,df2,p};
+}
+function _stars(p){ return p==null||isNaN(p)?'':(p<0.001?'***':p<0.01?'**':p<0.05?'*':''); }
+function _fmt(x,d){ if(x==null||isNaN(x)) return '-'; d=(d==null?1:d); return (Math.round(x*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
+
+function groupTrendData(key){
+  const isLab=key.startsWith('lab_'), labName=isLab?key.slice(4):null;
+  const tps=(App.protocol&&App.protocol.timepoints)||[];
+  function valFor(a,tpId){
+    const r=a.rows&&a.rows[tpId];
+    let v=r?r[key]:null;
+    if((v==null||v==='') && isLab && a.labs){ const l=a.labs.find(x=>x.tp===tpId && x.values && x.values[labName]!=null && x.values[labName]!==''); if(l) v=l.values[labName]; }
+    if(v==null||v==='') return null;
+    const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
+    return isNaN(num)?null:num;
+  }
+  const groupSet={}, rows=[];
+  tps.forEach((tp,i)=>{
+    const byG={};
+    (App.animals||[]).forEach(a=>{ const num=valFor(a,tp.id); if(num==null) return; const g=groupOf(a); (byG[g]=byG[g]||[]).push(num); });
+    const names=Object.keys(byG);
+    if(!names.length) return;
+    const stats={}; names.forEach(g=>{ groupSet[g]=true; stats[g]={n:byG[g].length, mean:_mean(byG[g]), sem:_sem(byG[g]), sd:_sd(byG[g])}; });
+    let p=null,test=null,F=null;
+    if(names.length===2){ const w=_welch(byG[names[0]],byG[names[1]]); if(w){ p=w.p; test='t'; } }
+    else if(names.length>=3){ const av=_anova(names.map(g=>stats[g])); if(av){ p=av.p; test='anova'; F=av.F; } }
+    const tag=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    rows.push({x: tp.offsetMin!=null?tp.offsetMin:i*10, tag, label:tp.label, stats, p, test, F});
+  });
+  return {rows, groups:Object.keys(groupSet)};
+}
+
+function groupTrendSVG(data, meta, colorMap){
+  const rows=data.rows, groups=data.groups;
+  const W=680,PL=48,PR=14,PT=14,PB=48,H=230;
+  const xs=rows.map(r=>r.x);
+  let xMin=Math.min(...xs), xMax=Math.max(...xs); if(xMax===xMin)xMax=xMin+1;
+  let yv=[]; rows.forEach(r=>groups.forEach(g=>{ const s=r.stats[g]; if(s){ const e=isNaN(s.sem)?0:s.sem; yv.push(s.mean+e); yv.push(s.mean-e); } }));
+  if(!yv.length) return '<div class="empty" style="padding:14px">No group data.</div>';
+  let yMin=Math.min(...yv), yMax=Math.max(...yv); const pad=(yMax-yMin)*0.15||(Math.abs(yMax)*0.1||1); yMin-=pad; yMax+=pad;
+  const sx=v=>PL+((v-xMin)/(xMax-xMin))*(W-PL-PR);
+  const sy=v=>PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB);
+  let grid='';
+  for(let i=0;i<=4;i++){ const v=yMin+(yMax-yMin)*i/4, y=sy(v); grid+=`<line x1="${PL}" y1="${y.toFixed(1)}" x2="${W-PR}" y2="${y.toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${PL-6}" y="${(y+3.5).toFixed(1)}" text-anchor="end" font-size="9" fill="var(--ink-faint)" font-family="monospace">${_fmt(v,1)}</text>`; }
+  // x tick labels
+  let xlab=''; rows.forEach(r=>{ xlab+=`<text x="${sx(r.x).toFixed(1)}" y="${H-PB+16}" text-anchor="middle" font-size="9" fill="var(--ink-faint)" font-family="monospace">${r.tag}</text>`; });
+  // significance stars (2 groups)
+  let sig=''; rows.forEach(r=>{ const st=_stars(r.p); if(st) sig+=`<text x="${sx(r.x).toFixed(1)}" y="${PT+8}" text-anchor="middle" font-size="11" fill="var(--alarm)" font-weight="700">${st}</text>`; });
+  let series='';
+  groups.forEach((g,gi)=>{
+    const col=colorMap[g]||GCOLORS[gi%GCOLORS.length];
+    const gp=rows.filter(r=>r.stats[g]).map(r=>({x:r.x, m:r.stats[g].mean, e:isNaN(r.stats[g].sem)?0:r.stats[g].sem}));
+    if(!gp.length) return;
+    const path=gp.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.m).toFixed(1)}`).join(' ');
+    series+=`<path d="${path}" fill="none" stroke="${col}" stroke-width="2"/>`;
+    gp.forEach(p=>{
+      if(p.e>0){ series+=`<line x1="${sx(p.x).toFixed(1)}" y1="${sy(p.m-p.e).toFixed(1)}" x2="${sx(p.x).toFixed(1)}" y2="${sy(p.m+p.e).toFixed(1)}" stroke="${col}" stroke-width="1.4"/><line x1="${(sx(p.x)-3).toFixed(1)}" y1="${sy(p.m+p.e).toFixed(1)}" x2="${(sx(p.x)+3).toFixed(1)}" y2="${sy(p.m+p.e).toFixed(1)}" stroke="${col}" stroke-width="1.4"/><line x1="${(sx(p.x)-3).toFixed(1)}" y1="${sy(p.m-p.e).toFixed(1)}" x2="${(sx(p.x)+3).toFixed(1)}" y2="${sy(p.m-p.e).toFixed(1)}" stroke="${col}" stroke-width="1.4"/>`; }
+      series+=`<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.m).toFixed(1)}" r="3.2" fill="${col}"/>`;
+    });
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto">${grid}${xlab}${series}${sig}</svg>`;
+}
+
+function renderGroupTrends(host){
+  const lbl=$('#trendAnimalLabel'); if(lbl) lbl.textContent='All groups';
+  if(!TREND_SEL.length){ host.innerHTML='<div class="card"><div class="empty">Pick one or more parameters above to plot.</div></div>'; return; }
+  const nA=(App.animals||[]).length;
+  if(nA===0){ host.innerHTML='<div class="card"><div class="empty">No animals yet. Add animals (with a treatment arm) to see group trends.</div></div>'; return; }
+  // build a stable color map from all groups present
+  const allGroups=[...new Set((App.animals||[]).map(groupOf))];
+  const colorMap={}; allGroups.forEach((g,i)=>colorMap[g]=GCOLORS[i%GCOLORS.length]);
+  const opts=trendSeriesOptions();
+  let html='';
+  TREND_SEL.forEach(key=>{
+    const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
+    const data=groupTrendData(key);
+    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b style="font-size:13px">${meta.label}</b><span class="hint" style="margin:0">mean &plusmn; SEM${meta.unit?' &middot; '+meta.unit:''}</span></div>`;
+    if(!data.rows.length){ html+=`<div class="empty" style="padding:14px">No group data yet for ${meta.label}.</div></div>`; return; }
+    // legend
+    html+=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:11px">`+
+      data.groups.map(g=>`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${colorMap[g]||'#888'};display:inline-block"></span>${g}</span>`).join('')+`</div>`;
+    html+=groupTrendSVG(data, meta, colorMap);
+    // stats table
+    const showP=data.groups.length>=2;
+    html+=`<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">`;
+    html+=`<thead><tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)">Timepoint</th>`+
+      data.groups.map(g=>`<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);color:${colorMap[g]||'inherit'}">${g}<br><span style="font-weight:400;font-size:9px;color:var(--ink-faint)">mean&plusmn;SEM (n)</span></th>`).join('')+
+      (showP?`<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)">p</th>`:``)+`</tr></thead><tbody>`;
+    data.rows.forEach(r=>{
+      html+=`<tr><td style="padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee)" title="${r.label}">${r.tag}</td>`+
+        data.groups.map(g=>{ const s=r.stats[g]; return `<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${s?`${_fmt(s.mean,1)}±${_fmt(s.sem,1)} (${s.n})`:'—'}</td>`; }).join('')+
+        (showP?`<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${r.p==null?'—':(r.p<0.001?'<0.001':_fmt(r.p,3))} <b style="color:var(--alarm)">${_stars(r.p)}</b></td>`:``)+`</tr>`;
+    });
+    html+=`</tbody></table>`;
+    const gc=data.groups.length;
+    if(gc===2) html+=`<div class="hint" style="margin-top:4px;font-size:10px">Welch two-sample t-test per timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div>`;
+    else if(gc>=3) html+=`<div class="hint" style="margin-top:4px;font-size:10px">One-way ANOVA (F-test) per timepoint across ${gc} groups. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001. (For pairwise differences, run a post-hoc test.)</div>`;
+    else html+=`<div class="hint" style="margin-top:4px;font-size:10px">Only one group present - add a second treatment arm to compare.</div>`;
+    html+=`</div></div>`;
+  });
+  host.innerHTML=html;
+}
+window.renderGroupTrends = renderGroupTrends;
+function setTrendMode(m){ TREND_MODE=m; const A=$('#trendModeAnimal'),G=$('#trendModeGroup'); if(A)A.className='btn sm '+(m==='animal'?'primary':'ghost'); if(G)G.className='btn sm '+(m==='group'?'primary':'ghost'); if(A)A.style.width='auto'; if(G)G.style.width='auto'; renderTrends(); }
+window.setTrendMode = setTrendMode;
 
 /* The run-minute of the animal's death row, if one exists - same x logic as
    trendPoints so the chart and the marker always agree. */
