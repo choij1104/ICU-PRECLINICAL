@@ -902,7 +902,11 @@ const HC_ISTAT_MAP={lactate:'Lactate',ph:'pH',pco2:'pCO2',po2:'pO2',be:'BE',hco3
 function hcAutoVals(sheet, rid){
   const out={};
   try{
-    const a=hcSrcAnimal(); if(!a) return out;
+    // Only seed suggestions from a REAL app animal whose id exactly matches this
+    // sheet's animal - never from the demo case or an unrelated fallback animal,
+    // so a brand-new animal starts genuinely empty.
+    const a=(App.animals||[]).find(x=>x.id===HCARE.animal);
+    if(!a || a._demo) return out;
     const tpId=hcRowTp(sheet, rid); if(!tpId) return out;
     if(sheet==='vitals'){
       const r=(a.rows||{})[tpId]; if(!r) return out;
