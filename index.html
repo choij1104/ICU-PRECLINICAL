@@ -1159,16 +1159,18 @@ function hcBind(){
    just like the original demo record looks. */
 function hcMirrorTarget(){
   const name=String(HCARE.animal||'').trim();
-  // 1) a real app animal already named like this data-sheet animal
-  let a = name ? (App.animals||[]).find(x=>x.id===name && !x._demo) : null;
-  // 2) the currently-active app animal, if it is a real (non-demo) animal
-  if(!a){ const act=(App.animals||[]).find(x=>x.id===App.activeAnimal); if(act && !act._demo) a=act; }
-  // 3) reuse an existing empty real animal, renaming it to match the sheet
-  if(!a){
-    const emptyReal=(App.animals||[]).find(x=>!x._demo && !Object.keys(x.rows||{}).length && !(x.labs||[]).length);
-    if(emptyReal){ if(name) emptyReal.id=name; a=emptyReal; }
-  }
-  // 4) otherwise create a fresh real animal carrying the sheet's name
+  // names differ in punctuation/spacing between the two lists ("Animal-1" vs
+  // "Animal 1"), so match on a normalized key. This is what lets an import ADD
+  // to an EXISTING animal instead of always making a new one.
+  const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+  const key=norm(name);
+  const reals=(App.animals||[]).filter(x=>!x._demo);
+  // 1) the existing real animal whose name matches this data-sheet animal
+  let a = key ? reals.find(x=>norm(x.id)===key) : null;
+  // 2) only if the sheet animal has no usable name, fall back to the active real animal
+  if(!a && !key){ const act=reals.find(x=>x.id===App.activeAnimal); if(act) a=act; }
+  // 3) otherwise create a fresh real animal carrying the sheet's exact name -
+  //    never dump into an unrelated existing animal
   if(!a){ a=addAnimal({silent:true}); if(a && name) a.id=name; }
   if(a){ App.activeAnimal=a.id; if(typeof updateAnimalLabel==='function') updateAnimalLabel(); }
   return a;
