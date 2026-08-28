@@ -823,7 +823,10 @@ function hcAddAnimal(silent){
   const id = silent ? ('Animal-'+n) : (prompt('Animal #','Animal-'+n)||('Animal-'+n));
   HCARE.data[id]={case:{}, vitals:{}, istat:{}};
   HCARE.animal=id;
-  if(!silent){hcRenderAnimals();hcRenderSheet();}
+  if(!silent){
+    hcRenderAnimals();hcRenderSheet();
+    hcReflectToApp(true);   // show the new animal in Current immediately
+  }
   if(window.autosave) autosave();
 }
 function hcRenderAnimals(){
@@ -1095,7 +1098,17 @@ function hcRenameAnimal(){
   HCARE.animal=id;
   // keep the case-sheet Animal # field in sync
   if(HCARE.data[id] && HCARE.data[id].case) HCARE.data[id].case.animalNo=id;
+  // rename the matching Current animal too, so the two rosters stay in sync
+  try{
+    const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    const oldKey=norm(old);
+    const ra=(App.animals||[]).find(x=>!x._demo && norm(x.id)===oldKey);
+    if(ra){ if(App.activeAnimal===ra.id) App.activeAnimal=id; ra.id=id; }
+  }catch(e){}
   hcRenderAnimals(); hcRenderSheet();
+  if(typeof renderAnimalTabs==='function') renderAnimalTabs();
+  if(typeof renderCurrent==='function') renderCurrent();
+  if(typeof updateAnimalLabel==='function') updateAnimalLabel();
   if(window.autosave) autosave();
   toast('Renamed to '+id);
 }
@@ -1139,7 +1152,20 @@ function hcDeleteAnimal(){
   if(!confirm('Delete animal "'+id+'" and ALL its data?\n\nThis cannot be undone.')) return;
   delete HCARE.data[id];
   HCARE.animal=Object.keys(HCARE.data)[0];
+  // remove the matching Current animal too (same animal, so its record goes as well)
+  try{
+    const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    const key=norm(id);
+    const ra=(App.animals||[]).find(x=>!x._demo && norm(x.id)===key);
+    if(ra){
+      App.animals=App.animals.filter(x=>x!==ra);
+      if(App.activeAnimal===ra.id){ const first=(App.animals.find(x=>!x._demo)||App.animals[0]); App.activeAnimal=first?first.id:null; }
+    }
+  }catch(e){}
   hcRenderAnimals(); hcRenderSheet();
+  if(typeof renderAnimalTabs==='function') renderAnimalTabs();
+  if(typeof renderCurrent==='function') renderCurrent();
+  if(typeof updateAnimalLabel==='function') updateAnimalLabel();
   if(window.autosave) autosave();
   toast('Deleted '+id);
 }
@@ -1147,7 +1173,13 @@ window.hcDeleteAnimal = hcDeleteAnimal;
 
 function hcBind(){
   document.querySelectorAll('[data-c]').forEach(el=>{
-    el.addEventListener('input',()=>{hcA().case[el.dataset.c]=el.value; if(window.autosave) autosave();});
+    const ev = el.tagName==='SELECT' ? 'change' : 'input';
+    el.addEventListener(ev,()=>{
+      hcA().case[el.dataset.c]=el.value;
+      // reflect case-setup (weight/sex/arm...) onto Current instantly, debounced
+      clearTimeout(HCARE._ct); HCARE._ct=setTimeout(()=>hcReflectToApp(true), 120);
+      if(window.autosave) autosave();
+    });
   });
   document.querySelectorAll('[data-chk]').forEach(el=>{
     el.addEventListener('change',()=>{hcA().case[el.dataset.chk]=el.checked; if(window.autosave) autosave();});
@@ -1161,7 +1193,7 @@ function hcBind(){
       if(g==='istat' && typeof hcMirrorIstatRow==='function') hcMirrorIstatRow(parseInt(r));
       if(g==='vitals' && typeof hcMirrorVitalsRow==='function'){
         clearTimeout(HCARE._vt);
-        HCARE._vt=setTimeout(()=>hcMirrorVitalsRow(parseInt(r)), 500);
+        HCARE._vt=setTimeout(()=>hcMirrorVitalsRow(parseInt(r)), 250);
       }
       if(window.autosave) autosave();
     };
@@ -1194,6 +1226,28 @@ function hcMirrorTarget(){
   if(a){ App.activeAnimal=a.id; if(typeof updateAnimalLabel==='function') updateAnimalLabel(); }
   return a;
 }
+/* Make the Data-sheet animal show up in Current IMMEDIATELY - even before any
+   vitals/iSTAT value is entered. Carries the case-setup info (weight, sex,
+   treatment arm ...) onto the main record and repaints Current right away. */
+function hcReflectToApp(makeActive){
+  try{
+    const a=hcMirrorTarget();          // find or create the matching real animal
+    if(!a) return null;
+    const c=(hcA()&&hcA().case)||{};
+    a.info=a.info||{};
+    ['weight','sex','date','expNo','arm','plan'].forEach(k=>{
+      if(c[k]!=null && c[k]!=='') a.info[k]=c[k];
+    });
+    // reflect the treatment arm as the animal's group when the app has no group set
+    if((a.group==null||a.group==='') && c.arm) a.group=c.arm;
+    if(makeActive) App.activeAnimal=a.id;
+    if(typeof renderAnimalTabs==='function') renderAnimalTabs();
+    if(typeof renderCurrent==='function') renderCurrent();
+    if(typeof updateAnimalLabel==='function') updateAnimalLabel();
+    return a;
+  }catch(e){ /* reflection must never break sheet entry */ return null; }
+}
+window.hcReflectToApp=hcReflectToApp;
 function hcMirrorIstatRow(rid){
   try{
     const label=HCARE.istatRows[rid]||'';
@@ -2258,6 +2312,11 @@ function addAnimal(opts){
   }
   const a={id:id||('Animal '+n), group:group||null, rows:{}, labs:[]};
   App.animals.push(a); App.activeAnimal=a.id;
+  // mirror into the Data-sheets roster so both lists show the same animals
+  if(!opts.silent && typeof HCARE!=='undefined' && HCARE.data && !HCARE.data[a.id]){
+    HCARE.data[a.id]={case:{animalNo:a.id}, vitals:{}, istat:{}};
+    if(document.getElementById('hcare') && document.getElementById('hcare').style.display==='block' && typeof hcRenderAnimals==='function'){ hcRenderAnimals(); }
+  }
   renderAnimalTabs(); rebuildTable(); renderTimeline(); updateAnimalLabel(); renderCurrent(); autosave();
   return a;
 }
@@ -5336,9 +5395,23 @@ function deleteAnimal(){
   if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all instead'); return; }
   if(!confirm('Delete animal "'+a.id+'" and ALL its data?\n\nThis cannot be undone.')) return;
   if(window.logEvent) logEvent('delete-animal',{animal:a.id, rows:Object.keys(a.rows||{}).length});
+  const delId=a.id;
   App.animals=App.animals.filter(x=>x.id!==a.id);
   App.activeAnimal=App.animals[0].id;
-  renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel();
+  // remove the matching Data-sheets animal too (keep the two rosters in sync)
+  try{
+    const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    const key=norm(delId);
+    if(typeof HCARE!=='undefined' && HCARE.data){
+      const hk=Object.keys(HCARE.data).find(k=>norm(k)===key);
+      if(hk && Object.keys(HCARE.data).length>1){
+        delete HCARE.data[hk];
+        if(HCARE.animal===hk) HCARE.animal=Object.keys(HCARE.data)[0];
+        if(document.getElementById('hcare') && document.getElementById('hcare').style.display==='block'){ hcRenderAnimals&&hcRenderAnimals(); hcRenderSheet&&hcRenderSheet(); }
+      }
+    }
+  }catch(e){}
+  renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel(); renderCurrent(); autosave();
   toast('Animal deleted');
 }
 window.deleteAnimal = deleteAnimal;
