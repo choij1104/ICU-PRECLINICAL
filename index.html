@@ -447,6 +447,12 @@
         <div id="syncPanel"></div>
       </div>
 
+      <h2 class="sec">Access</h2>
+      <div class="card">
+        <button class="btn ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="accessLogout()">Log out of this device</button>
+        <div class="hint" style="margin-top:8px">Ends the login on THIS device. Reopening the site will require your email and a new code. Use this on shared or borrowed devices — just closing the tab leaves the login active.</div>
+      </div>
+
       <h2 class="sec">Camera</h2>
       <div class="card">
         <div class="hint" style="margin:0">Photos are taken from <b>Timeline &amp; Labs &rarr; Open camera</b>. On a laptop you can pick an external/USB camera from the list inside the camera window. The first time you use it the browser will ask for camera permission.</div>
@@ -5249,6 +5255,14 @@ window.syncSetRoomThen=syncSetRoomThen; window.renderSyncStatus=renderSyncStatus
 window.applyRoleUI=applyRoleUI;
 window.presenceStart=presenceStart; window.presenceStop=presenceStop; window.renderPresence=renderPresence;
 window.presColor=presColor; window.presInitials=presInitials;
+
+/* Log out of this device by ending the Cloudflare Access session. */
+function accessLogout(){
+  if(!confirm('Log out of this device?\n\nYou will need your email and a new access code to open the app again here.')) return;
+  try{ if(typeof syncLeave==='function' && Sync && Sync.on) syncLeave(); }catch(e){}
+  location.href='/cdn-cgi/access/logout';
+}
+window.accessLogout=accessLogout;
 
 
 function autosave(){
