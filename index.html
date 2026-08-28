@@ -4677,6 +4677,36 @@ function rotateBackup(payload){
   }catch(e){ /* storage full - the main save still matters more */ }
 }
 
+/* ---- Durability helpers: entered data must survive until the USER deletes it ----
+   __DURABLE_PURE_START__ */
+function sessionCounts(o){
+  try{
+    var a=(o&&o.animals)||[];
+    var nA=a.filter(function(x){return x&&!x._demo;}).length;
+    var nR=a.reduce(function(t,x){ return t+((x&&!x._demo)?Object.keys(x.rows||{}).length:0); },0);
+    var nH=0; var hd=(o&&o.hcare&&o.hcare.data)||{};
+    Object.keys(hd).forEach(function(k){ var d=hd[k]||{};
+      nH += Object.keys(d.case||{}).length + Object.keys(d.vitals||{}).length + Object.keys(d.istat||{}).length; });
+    return {animals:nA, rows:nR, hcare:nH, total:nA+nR+nH};
+  }catch(e){ return {animals:0,rows:0,hcare:0,total:0}; }
+}
+function sessionIsEmpty(o){ return sessionCounts(o).total===0; }
+/* __DURABLE_PURE_END__ */
+
+/* pick the richest parseable copy among the primary save and all backups */
+function bestSavedSession(getItem){
+  var g = getItem || function(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } };
+  var keys=[SAVE_KEY].concat(BACKUP_KEYS), best=null;
+  keys.forEach(function(k){
+    var raw=g(k); if(!raw) return;
+    try{ var o=JSON.parse(raw); var c=sessionCounts(o);
+      if(!best || c.total>best.counts.total) best={o:o, source:k, counts:c};
+    }catch(e){}
+  });
+  return best;
+}
+window.sessionCounts=sessionCounts; window.sessionIsEmpty=sessionIsEmpty; window.bestSavedSession=bestSavedSession;
+
 function listBackups(){
   const out=[];
   BACKUP_KEYS.forEach((k,i)=>{
@@ -5167,12 +5197,26 @@ function autosave(){
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     try{
-      const payload=JSON.stringify(collectSession());
+      const cur=collectSession();
+      const payload=JSON.stringify(cur);
+      const emptyNow=sessionIsEmpty(cur);
+      // DATA-LOSS GUARD: never let a transient blank state overwrite real saved
+      // data. Only an explicit user erase (which sets _allowEmptySave) may do that.
+      let existingHadData=false;
+      try{ const ex=localStorage.getItem(SAVE_KEY); if(ex) existingHadData=!sessionIsEmpty(JSON.parse(ex)); }catch(e){}
+      if(emptyNow && existingHadData && !window._allowEmptySave){
+        const el0=$('#saveStatus');
+        if(el0){ el0.textContent='saved data protected'; el0.style.color='var(--trace-amber)'; }
+        if(typeof syncPush==='function') syncPush();  // sharing merge still runs (additive, never wipes)
+        return;                                       // refuse to clobber the good copy
+      }
       localStorage.setItem(SAVE_KEY, payload);
-      if(typeof syncPush==='function') syncPush();   // live sharing (writer only)
-      // keep a rolling copy every few minutes, not on every keystroke
+      // once real data is saved again, clear any "intentionally erased" marker
+      if(!emptyNow){ try{ localStorage.removeItem('swineicu_erased'); }catch(e){} }
+      if(typeof syncPush==='function') syncPush();   // live sharing (cell merge)
+      // keep a rolling copy every few minutes - but never back up a blank state
       const nowMs=Date.now();
-      if(!autosave._lastBackup || nowMs-autosave._lastBackup > 180000){
+      if(!emptyNow && (!autosave._lastBackup || nowMs-autosave._lastBackup > 180000)){
         rotateBackup(payload); autosave._lastBackup=nowMs;
       }
       const el=$('#saveStatus');
@@ -5233,11 +5277,18 @@ function loadSessionFile(file){
 function clearSavedData(){
   if(!confirm('Erase ALL data in the app and the autosave?\n\nA copy is kept under "Earlier copies" so this can be undone, but export or save a file as well if the data matters.')) return;
   try{ rotateBackup(localStorage.getItem(SAVE_KEY)||JSON.stringify(collectSession())); }catch(e){}
-  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
   App.animals=[]; App.activeAnimal=null; App.runStart=null; App.runEnd=null;
   HCARE.data={}; HCARE.animal=null;
   addAnimal({silent:true});
   hcAddAnimal(true);
+  // Record an INTENTIONAL empty state so the boot recovery respects it and does
+  // NOT silently restore a backup (the erase must stick until real data returns).
+  window._allowEmptySave=true;
+  try{
+    localStorage.setItem(SAVE_KEY, JSON.stringify(collectSession()));
+    localStorage.setItem('swineicu_erased','1');
+  }catch(e){}
+  window._allowEmptySave=false;
   renderTimeline(); rebuildTable(); renderLabList(); renderTrendPicker(); renderTrends(); renderCurrent();
   showBackups();
   toast('All data cleared - an earlier copy is kept below');
@@ -6019,24 +6070,34 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
 })();
 
 // Read the saved session BEFORE anything can overwrite it, then boot.
-var _savedRaw=null;
-try{ _savedRaw=localStorage.getItem(SAVE_KEY); }catch(e){}
 _bootLoading=true;                      // suppress autosave during startup
 loadProtocol(demoProtocol());
 _bootLoading=false;
 try{
-  if(_savedRaw){
-    const o=JSON.parse(_savedRaw);
-    const nA=(o.animals||[]).length;
-    const nR=(o.animals||[]).reduce((t,a)=>t+Object.keys(a.rows||{}).length,0);
-    if(nA||nR){
-      applySession(o);
-      const when=o.savedAt?new Date(o.savedAt).toLocaleString():'earlier';
-      toast(o._migrated
-        ? 'Restored your data from '+when+' ('+o._migrated+' row(s) updated to the new fields)'
-        : 'Restored your data from '+when);
-      const _st=$('#saveStatus');
-      if(_st){ _st.textContent='restored'; _st.style.color='var(--trace)'; }
+  var _erased=false; try{ _erased=localStorage.getItem('swineicu_erased')==='1'; }catch(e){}
+  var _primaryRaw=null; try{ _primaryRaw=localStorage.getItem(SAVE_KEY); }catch(e){}
+  var _primaryOk=false, _primaryEmpty=false, _pObj=null;
+  if(_primaryRaw){ try{ _pObj=JSON.parse(_primaryRaw); _primaryOk=true; _primaryEmpty=sessionIsEmpty(_pObj); }catch(e){ _primaryOk=false; } }
+
+  if(_primaryOk && !_primaryEmpty){
+    applySession(_pObj);
+    const when=_pObj.savedAt?new Date(_pObj.savedAt).toLocaleString():'earlier';
+    toast(_pObj._migrated
+      ? 'Restored your data from '+when+' ('+_pObj._migrated+' row(s) updated to the new fields)'
+      : 'Restored your data from '+when);
+    const _st=$('#saveStatus'); if(_st){ _st.textContent='restored'; _st.style.color='var(--trace)'; }
+  } else if(_primaryOk && _primaryEmpty && _erased){
+    /* the user intentionally erased everything - respect the blank state,
+       do NOT silently resurrect a backup */
+  } else {
+    /* primary is missing or corrupt (and this was not an intentional erase) -
+       recover the richest local backup so entered data is never lost */
+    var _best=bestSavedSession();
+    if(_best && _best.counts.total>0){
+      applySession(_best.o);
+      try{ localStorage.setItem(SAVE_KEY, JSON.stringify(collectSession())); }catch(e){}
+      toast('Recovered your data from a local backup ('+_best.counts.animals+' animal(s), '+_best.counts.rows+' timepoint(s))');
+      const _st2=$('#saveStatus'); if(_st2){ _st2.textContent='recovered'; _st2.style.color='var(--trace)'; }
     }
   }
 }catch(e){ console.error('restore failed',e); }
