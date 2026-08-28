@@ -213,6 +213,20 @@
   .reader-badge{ display:none; align-items:center; gap:5px; padding:3px 9px; border-radius:11px;
     background:var(--bezel-deep); color:#fff; font-size:11px; font-weight:600;
     border:1px solid var(--bezel-deep); }
+  /* live presence roster - who is in the shared room right now */
+  #presenceBar{ display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+    padding:6px 12px; background:var(--panel,#0d1117); border-bottom:1px solid var(--line,#222);
+    font-size:12px; }
+  #presenceBar .pTitle{ color:var(--ink-faint,#8a94a6); font-weight:600; letter-spacing:.02em; }
+  .pBadge{ display:inline-flex; align-items:center; gap:6px; padding:3px 10px 3px 3px;
+    border-radius:14px; background:rgba(255,255,255,.06); border:1px solid var(--line,#2a2f3a); }
+  .pBadge .pAv{ width:22px; height:22px; border-radius:50%; display:inline-flex; align-items:center;
+    justify-content:center; color:#fff; font-size:11px; font-weight:700; }
+  .pBadge .pNm{ font-weight:600; }
+  .pBadge.pMe{ outline:2px solid var(--trace,#0a7d5a); outline-offset:0; }
+  .pBadge .pDot{ width:7px; height:7px; border-radius:50%; background:var(--trace,#22c55e); margin-left:1px; }
+  .pBadge.stale .pDot{ background:var(--trace-amber,#d0902a); }
+  .pBadge.stale{ opacity:.6; }
 
   /* file inputs must not use display:none or iOS Safari blocks the picker */
   .hidden-file{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;
@@ -382,6 +396,8 @@
     <button class="tabbtn" data-tab="settings">Photo / Settings</button>
     <button class="tabbtn" data-tab="log">Study Log</button>
   </nav>
+
+  <div id="presenceBar" style="display:none"></div>
 
   <div class="body">
     <aside class="col left" data-panel="setup">
@@ -4980,18 +4996,91 @@ function syncJoinTeam(room, name){
   if(!Sync.db && !syncInit()){ toast('Live sharing unavailable - check connection'); return; }
   room=(room||Sync.room||'live').trim()||'live';
   if(name!=null){ Sync.name=String(name).trim(); }
+  // A name is required so everyone on the team can see who is in the room.
+  if(!Sync.name){
+    toast('Enter your name or initials first - so the team can see who is here');
+    var nf=$('#syncName'); if(nf){ nf.focus(); }
+    return;
+  }
   Sync.room=room; Sync.on=true;
   try{
     localStorage.setItem('swineicu_syncroom', room);
     localStorage.setItem('swineicu_syncon','1');
-    if(Sync.name) localStorage.setItem('swineicu_username', Sync.name);
+    localStorage.setItem('swineicu_username', Sync.name);
   }catch(e){}
   Sync.shadow={}; Sync.appliedT={}; Sync.localT={};
   Sync.cellsRef=Sync.db.ref('sessions/'+room+'/cells');
   attachCellListener();          // child_added seeds every existing cell into local
   syncReconcile();               // then push whatever the room is missing from this device
+  presenceStart();               // announce myself + watch who else is here
   applyRoleUI(); renderSyncStatus();
   toast('Joined team room "'+room+'" - everyone here writes and sees live');
+}
+
+/* ---------- LIVE PRESENCE: who is in the room right now ---------- */
+function presColor(s){
+  var h=0, t=String(s||''); for(var i=0;i<t.length;i++){ h=(h*31 + t.charCodeAt(i))>>>0; }
+  var hue=h%360; return 'hsl('+hue+',62%,42%)';
+}
+function presInitials(name){
+  var t=String(name||'?').trim(); if(!t) return '?';
+  var parts=t.split(/[\s._-]+/).filter(Boolean);
+  var s = parts.length>=2 ? (parts[0][0]+parts[1][0]) : t.slice(0,2);
+  return s.toUpperCase();
+}
+function presenceStart(){
+  if(!Sync.db || !Sync.on) return;
+  try{
+    if(Sync._presTimer){ clearInterval(Sync._presTimer); Sync._presTimer=null; }
+    if(Sync._presListRef){ try{ Sync._presListRef.off(); }catch(e){} }
+    var id=Sync.deviceId();
+    Sync.presMeRef=Sync.db.ref('sessions/'+Sync.room+'/presence/'+id);
+    Sync._presListRef=Sync.db.ref('sessions/'+Sync.room+'/presence');
+    var write=function(){
+      Sync.presMeRef.set({ name:Sync.name||id, at:firebase.database.ServerValue.TIMESTAMP, dev:id });
+    };
+    // remove my marker automatically if I disconnect / close the tab
+    try{ Sync.presMeRef.onDisconnect().remove(); }catch(e){}
+    write();
+    Sync._presTimer=setInterval(write, 20000);   // heartbeat so "last seen" stays fresh
+    Sync._presListRef.on('value', function(snap){
+      Sync.presence=snap.val()||{};
+      renderPresence();
+    }, function(e){ console.error('presence read', e); });
+  }catch(e){ console.error('presenceStart', e); }
+}
+function presenceStop(){
+  try{ if(Sync._presTimer){ clearInterval(Sync._presTimer); Sync._presTimer=null; } }catch(e){}
+  try{ if(Sync._presListRef){ Sync._presListRef.off(); Sync._presListRef=null; } }catch(e){}
+  try{ if(Sync.presMeRef){ Sync.presMeRef.onDisconnect().cancel(); Sync.presMeRef.remove(); Sync.presMeRef=null; } }catch(e){}
+  Sync.presence={};
+  renderPresence();
+}
+/* render the roster; separated so it can be unit-tested with a fake map */
+function renderPresence(){
+  var bar=$('#presenceBar'); if(!bar) return;
+  if(!Sync.on){ bar.style.display='none'; bar.innerHTML=''; return; }
+  var map=Sync.presence||{};
+  var me=Sync.deviceId(), now=Date.now();
+  var people=Object.keys(map).map(function(k){ return map[k]; }).filter(Boolean);
+  // sort: me first, then by name
+  people.sort(function(a,b){
+    if(a.dev===me) return -1; if(b.dev===me) return 1;
+    return String(a.name||'').localeCompare(String(b.name||''));
+  });
+  var badges=people.map(function(p){
+    var nm=String(p.name||'?').replace(/[<>&]/g,'');
+    var stale = p.at && (now - p.at > 65000);   // no heartbeat for >65s
+    var isMe = p.dev===me;
+    return '<span class="pBadge'+(isMe?' pMe':'')+(stale?' stale':'')+'" title="'+nm+(isMe?' (you)':'')+(stale?' - idle':' - active now')+'">'
+      + '<span class="pAv" style="background:'+presColor(p.name)+'">'+presInitials(p.name)+'</span>'
+      + '<span class="pNm">'+nm+(isMe?' (you)':'')+'</span>'
+      + '<span class="pDot"></span></span>';
+  }).join('');
+  var n=people.length;
+  bar.style.display='flex';
+  bar.innerHTML='<span class="pTitle">&#128101; In this room ('+n+')</span>'+ (badges||'<span class="pTitle">just you so far</span>');
+  renderSyncStatus();
 }
 /* back-compat shims for older call sites */
 function syncJoin(role, opts){ syncJoinTeam(Sync.room, Sync.name); }
@@ -5002,6 +5091,7 @@ function syncSetRoomThen(role){ syncClaimWriter(); }
 function syncLeave(){
   if(Sync.cellsRef){ try{ Sync.cellsRef.off(); }catch(e){} Sync.cellsRef=null; }
   Sync.on=false;
+  presenceStop();
   try{ localStorage.setItem('swineicu_syncon','0'); }catch(e){}
   applyRoleUI(); renderSyncStatus();
   toast('Left the team room - this device only (your data stays here)');
@@ -5068,6 +5158,8 @@ window.syncBecomeReader=syncBecomeReader; window.renderSyncPanel=renderSyncPanel
 window.syncJoinTeam=syncJoinTeam; window.syncSaveName=syncSaveName;
 window.syncSetRoomThen=syncSetRoomThen; window.renderSyncStatus=renderSyncStatus;
 window.applyRoleUI=applyRoleUI;
+window.presenceStart=presenceStart; window.presenceStop=presenceStop; window.renderPresence=renderPresence;
+window.presColor=presColor; window.presInitials=presInitials;
 
 
 function autosave(){
