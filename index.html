@@ -449,8 +449,9 @@
 
       <h2 class="sec">Access</h2>
       <div class="card">
+        <div id="whoami" style="font-size:13px;margin-bottom:10px;color:var(--ink-dim)">Signed in via secure email link</div>
         <button class="btn ghost" style="width:auto;color:var(--alarm);border-color:var(--alarm)" onclick="accessLogout()">Log out of this device</button>
-        <div class="hint" style="margin-top:8px">Ends the login on THIS device. Reopening the site will require your email and a new code. Use this on shared or borrowed devices — just closing the tab leaves the login active.</div>
+        <div class="hint" style="margin-top:8px">Log in is by email: you open the site, enter your email, and type the one-time code sent to it (no password). Log out ends the login on THIS device — reopening the site will ask for your email and a new code. Use it on shared or borrowed devices; just closing the tab leaves the login active.</div>
       </div>
 
       <h2 class="sec">Camera</h2>
@@ -5264,6 +5265,21 @@ function accessLogout(){
 }
 window.accessLogout=accessLogout;
 
+/* Show who is signed in (the email Cloudflare Access authenticated). */
+function accessWhoami(){
+  var el=document.getElementById('whoami'); if(!el) return;
+  try{
+    fetch('/cdn-cgi/access/get-identity', {credentials:'same-origin'})
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(j){
+        var email = j && (j.email || j.user_email || (j.identity && j.identity.email));
+        if(email){ el.innerHTML='Signed in as <b>'+String(email).replace(/[<>&]/g,'')+'</b>'; }
+      })
+      .catch(function(){ /* not on Cloudflare (e.g. local file) - leave the default text */ });
+  }catch(e){}
+}
+window.accessWhoami=accessWhoami;
+
 
 function autosave(){
   if(_bootLoading) return;      // never save the blank startup state over real data
@@ -6195,6 +6211,7 @@ try{
     if(Sync._autoJoin){ syncJoinTeam(Sync.room, Sync.name); renderSyncPanel(); }
   }
 }catch(e){ console.error('sync boot', e); }
+try{ accessWhoami(); }catch(e){}
 // make sure every panel reflects the restored data
 try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
      renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
