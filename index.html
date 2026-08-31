@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Auravyx Preclinical</title>
-<meta name="description" content="A preclinical research data-capture platform for swine ICU and REBOA hemorrhage studies. Authorized access only.">
+<meta name="description" content="Auravyx — real-time patient tracking for the preclinical and clinical ICU. Authorized access only.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
@@ -172,10 +172,24 @@
     display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap;
     font-family:var(--font-mono); font-size:11.5px; letter-spacing:.05em; color:var(--on-dark-faint)}
 
+  /* vision / roadmap */
+  .rmgrid{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:38px}
+  .rm{background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px 22px 24px; position:relative}
+  .rm .st{display:inline-flex; align-items:center; gap:7px; font-family:var(--font-mono); font-size:10px; letter-spacing:.13em; text-transform:uppercase; font-weight:600}
+  .rm .st .dot{width:7px; height:7px; border-radius:50%}
+  .rm.now .st{color:var(--teal)} .rm.now .st .dot{background:var(--teal)}
+  .rm.next{border-style:dashed; border-color:var(--cyan); background:linear-gradient(180deg,rgba(79,209,197,.07),transparent)}
+  .rm.next .st{color:var(--teal)} .rm.next .st .dot{background:var(--cyan); box-shadow:0 0 0 3px rgba(79,209,197,.18)}
+  .rm .step{position:absolute; top:20px; right:22px; font-family:var(--font-mono); font-size:12px; font-weight:600; color:var(--ink-faint)}
+  .rm h4{margin:12px 0 6px; font-family:var(--font-display); font-weight:700; font-size:16.5px; color:var(--ink)}
+  .rm p{margin:0; font-size:13.5px; color:var(--ink-dim); line-height:1.56}
+  .rmnote{margin-top:24px; font-family:var(--font-mono); font-size:11px; letter-spacing:.05em; color:var(--ink-faint)}
+
   @media (max-width:900px){
     .intro-grid{grid-template-columns:1fr; gap:32px}
     .cards{grid-template-columns:repeat(2,1fr)}
     .sec-grid{grid-template-columns:1fr; gap:32px}
+    .rmgrid{grid-template-columns:1fr}
     section.band{padding:66px 0}
   }
   @media (max-width:600px){
@@ -208,7 +222,6 @@
       </svg>
       <span>
         <span class="name">Auravyx <b>Preclinical</b></span>
-        <span class="tag">Research Data Capture</span>
       </span>
     </a>
     <div class="nav-right">
@@ -222,9 +235,9 @@
 <span id="top"></span>
 <section class="hero">
   <div class="wrap">
-    <span class="eyebrow">Preclinical ICU &middot; Hemorrhage &amp; REBOA studies</span>
-    <h1>Every reading, captured at the <span class="hl">timepoint</span>.</h1>
-    <p class="lede">Auravyx Preclinical turns the monitor, the ventilator, the i-STAT and the paper flowsheet into one clean, shared record — read straight from a photo, aligned to T0 through EOS, live across the whole team.</p>
+    <span class="eyebrow">Preclinical &amp; clinical ICU research</span>
+    <h1>Every reading, in <span class="hl">real time</span>.</h1>
+    <p class="lede">Every reading on one shared record — live across the whole team, in real time.</p>
     <div class="cta">
       <a class="btn primary" href="/app/">Enter the platform <span class="arw">&rarr;</span></a>
       <span class="note">
@@ -239,16 +252,16 @@
     <div class="rail"></div>
   </div>
 
-  <div class="tp-strip" aria-label="Study timepoints">
-    <div class="tp"><div class="k">T0</div><div class="l">Pre-baseline</div></div>
-    <div class="tp"><div class="k">T1</div><div class="l">Baseline</div></div>
-    <div class="tp"><div class="k">T2</div><div class="l">Post shock</div></div>
-    <div class="tp"><div class="k">T3</div><div class="l">REBOA inflate</div></div>
-    <div class="tp"><div class="k">T4</div><div class="l">10m deflation</div></div>
-    <div class="tp"><div class="k">T5</div><div class="l">1h deflation</div></div>
-    <div class="tp"><div class="k">T6</div><div class="l">2h deflation</div></div>
-    <div class="tp"><div class="k">T7</div><div class="l">3h deflation</div></div>
-    <div class="tp"><div class="k">T8</div><div class="l">4h · EOS</div></div>
+  <div class="tp-strip" aria-label="The course of a run — baseline to end of study">
+    <div class="tp"><div class="k">T0</div><div class="l">Baseline</div></div>
+    <div class="tp"><div class="k">T1</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T2</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T3</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T4</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T5</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T6</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">T7</div><div class="l">Reading</div></div>
+    <div class="tp"><div class="k">EOS</div><div class="l">End of study</div></div>
   </div>
 </section>
 
@@ -257,11 +270,11 @@
   <div class="wrap intro-grid">
     <div>
       <div class="kicker"><span class="rule"></span><span class="eyebrow">Built for the bench</span></div>
-      <p class="statement">A data-capture instrument for the large-animal hemorrhage lab — <em>not another spreadsheet</em>. Purpose-built around the swine REBOA protocol your team already runs.</p>
+      <p class="statement">An instrument for the intensive-care unit — <em>not another spreadsheet</em>. It tracks the patient in real time, so the whole team sees the same picture.</p>
     </div>
     <div class="metricrow">
-      <div class="metric"><div class="n">9</div><div class="u">Protocol timepoints</div></div>
-      <div class="metric"><div class="n">1</div><div class="u">Photo → every field</div></div>
+      <div class="metric"><div class="n">1</div><div class="u">Shared record</div></div>
+      <div class="metric"><div class="n">0</div><div class="u">Readings lost</div></div>
       <div class="metric"><div class="n">0</div><div class="u">Keys on device</div></div>
     </div>
   </div>
@@ -277,43 +290,43 @@
       <div class="card">
         <div class="idx">01</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="12" cy="12" r="3.4"/><path d="M8 5l1.2-2h5.6L16 5"/></svg></div>
-        <h3>Read straight from a photo</h3>
-        <p>One picture of the i-STAT, the Mindray monitor or the handwritten flowsheet — vitals land on the timepoint, blood gas files to that timepoint's labs. Several devices in one shot are read together.</p>
+        <h3>Read live from the camera</h3>
+        <p>Point it at the monitor; the numbers post themselves, in real time.</p>
       </div>
 
       <div class="card">
         <div class="idx">02</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 12h4l2-6 4 12 2-6h6"/></svg></div>
-        <h3>Aligned to the protocol</h3>
-        <p>T0 pre-baseline through T8 / EOS, with the death point and event markers where they belong. Carotid and femoral pressures, ventilator, i-STAT CG4 &amp; Chem8 — the columns your form already uses.</p>
+        <h3>Track the whole run</h3>
+        <p>Baseline to end of study — every reading in its place, nothing out of order.</p>
       </div>
 
       <div class="card">
         <div class="idx">03</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><circle cx="7" cy="8" r="2.6"/><circle cx="17" cy="8" r="2.6"/><path d="M2.5 19c0-2.8 2-4.5 4.5-4.5S11.5 16.2 11.5 19M12.5 19c0-2.8 2-4.5 4.5-4.5s4.5 1.7 4.5 4.5"/></svg></div>
         <h3>Live across the team</h3>
-        <p>Everyone in the room enters on their own device and sees each other's readings the moment they land. Cell-by-cell merge means two people never overwrite each other — and every value is stamped with who entered it.</p>
+        <p>Everyone enters on their own device and sees the same record, instantly.</p>
       </div>
 
       <div class="card">
         <div class="idx">04</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 16a5 5 0 0 1 1-9.5A6 6 0 0 1 17 7a4 4 0 0 1 .5 8"/><path d="M12 12v7m0-7l-2.5 2.5M12 12l2.5 2.5"/></svg></div>
         <h3>Offline-first, never lost</h3>
-        <p>Wi-Fi drops in the vivarium — you keep entering. Readings are held on the device and sync automatically the moment signal returns. Saved data is never silently overwritten; only you delete it.</p>
+        <p>Keep working when the signal drops. Nothing is ever lost.</p>
       </div>
 
       <div class="card">
         <div class="idx">05</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 4-6"/></svg></div>
-        <h3>Trends &amp; group analysis</h3>
-        <p>Every parameter over the run at a glance, and treatment arms compared as mean &plusmn; SEM. Export the whole session when the study is done.</p>
+        <h3>Trends at a glance</h3>
+        <p>The whole run at a glance — spot the trend, make the call faster.</p>
       </div>
 
       <div class="card">
         <div class="idx">06</div>
         <div class="ci"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9.5 12l2 2 3.5-4"/></svg></div>
         <h3>Locked to your team</h3>
-        <p>Only the emails you approve can open it — a one-time code, no passwords, no shared keys. The AI key lives server-side and never touches a device.</p>
+        <p>Only the people you approve can ever open it.</p>
       </div>
 
     </div>
@@ -345,6 +358,38 @@
   </div>
 </section>
 
+<!-- ================= VISION ================= -->
+<section class="band" style="border-top:1px solid var(--line)">
+  <div class="wrap">
+    <div class="kicker"><span class="rule"></span><span class="eyebrow" style="color:var(--teal)">Where Auravyx is headed</span></div>
+    <h2 class="sec">Today, the record. Tomorrow, the monitor.</h2>
+    <p class="lead">Auravyx begins as the shared record of every run — every reading, in one place. It is built to grow from there: from clean capture, to live trends, toward real-time monitoring at the bedside of the intensive-care unit — preclinical today, clinical ahead. One instrument, learning the run as it happens.</p>
+
+    <div class="rmgrid">
+      <div class="rm now">
+        <div class="step">01</div>
+        <div class="st"><span class="dot"></span>Here today</div>
+        <h4>Capture</h4>
+        <p>Every reading in one shared record — live across the team, never lost.</p>
+      </div>
+      <div class="rm now">
+        <div class="step">02</div>
+        <div class="st"><span class="dot"></span>Here today</div>
+        <h4>Trends &amp; groups</h4>
+        <p>Every parameter over the run at a glance, treatment arms compared — the run made visible while it happens.</p>
+      </div>
+      <div class="rm next">
+        <div class="step">03</div>
+        <div class="st"><span class="dot"></span>Where it's going</div>
+        <h4>The live monitor</h4>
+        <p>Real-time, at-the-bedside monitoring for the ICU — preclinical now, clinical in view.</p>
+      </div>
+    </div>
+
+    <p class="rmnote">Research use only &middot; not a medical device. The direction, not a claim of present capability.</p>
+  </div>
+</section>
+
 <!-- ================= ENTER ================= -->
 <section class="enter">
   <div class="wrap">
@@ -369,7 +414,7 @@
         </svg>
         <span class="name">Auravyx Preclinical</span>
       </div>
-      <p class="disclaimer">Auravyx Preclinical is a research data-capture and organization tool. It is <b>not a medical device</b> and must not be used for human clinical diagnosis or treatment. Proprietary &amp; confidential — licensed use only. No copying, redistribution, or reverse engineering.</p>
+      <p class="disclaimer">Auravyx Preclinical is a records and organization tool for research use. It is <b>not a medical device</b> and must not be used for human clinical diagnosis or treatment. Proprietary &amp; confidential — licensed use only. No copying, redistribution, or reverse engineering.</p>
     </div>
     <div class="foot-bottom">
       <span>&copy; 2026 HAKOYA LLC &middot; All rights reserved</span>
