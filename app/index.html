@@ -3519,10 +3519,10 @@ function renderTrends(){
     const pts=trendPoints(key);
     html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
       <b style="font-size:13px">${meta.label}</b>
-      <span class="hint" style="margin:0">${pts.length} point${pts.length===1?'':'s'}${meta.unit?' &middot; '+meta.unit:''}</span></div>`;
+      <span style="display:flex;align-items:center;gap:8px"><span class="hint" style="margin:0">${pts.length} point${pts.length===1?'':'s'}${meta.unit?' &middot; '+meta.unit:''}</span>${pts.length>0?`<button class="btn sm" style="width:auto" onclick="downloadTrendPNG('animal','${key}')" title="Download this graph as a 300 dpi PNG for figures">&#8623;&nbsp;PNG</button>`:''}</span></div>`;
     html+= pts.length<1
       ? `<div class="empty" style="padding:14px">No data yet for ${meta.label}.</div>`
-      : trendSVG(pts, meta);
+      : (window.pubAnimalPlotSVG?`<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px">`+window.pubAnimalPlotSVG(pts, meta)+`</div>`:trendSVG(pts, meta));
     html+=`</div>`;
   });
   host.innerHTML=html;
@@ -3635,12 +3635,12 @@ function renderGroupTrends(host){
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
     const data=groupTrendData(key);
-    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b style="font-size:13px">${meta.label}</b><span class="hint" style="margin:0">mean &plusmn; SEM${meta.unit?' &middot; '+meta.unit:''}</span></div>`;
+    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b style="font-size:13px">${meta.label}</b><span style="display:flex;align-items:center;gap:8px"><span class="hint" style="margin:0">mean &plusmn; SEM${meta.unit?' &middot; '+meta.unit:''}</span><button class="btn sm" style="width:auto" onclick="downloadTrendPNG('group','${key}')" title="Download this graph as a 300 dpi PNG for figures">&#8623;&nbsp;PNG</button></span></div>`;
     if(!data.rows.length){ html+=`<div class="empty" style="padding:14px">No group data yet for ${meta.label}.</div></div>`; return; }
     // legend
     html+=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:11px">`+
       data.groups.map(g=>`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${colorMap[g]||'#888'};display:inline-block"></span>${g}</span>`).join('')+`</div>`;
-    html+=groupTrendSVG(data, meta, colorMap);
+    html+= (window.pubGroupPlotSVG?`<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px">`+window.pubGroupPlotSVG(data, meta, colorMap)+`</div>`:groupTrendSVG(data, meta, colorMap));
     // stats table
     const showP=data.groups.length>=2;
     html+=`<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">`;
@@ -3655,8 +3655,9 @@ function renderGroupTrends(host){
     html+=`</tbody></table>`;
     const gc=data.groups.length;
     if(gc===2) html+=`<div class="hint" style="margin-top:4px;font-size:10px">Welch two-sample t-test per timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div>`;
-    else if(gc>=3) html+=`<div class="hint" style="margin-top:4px;font-size:10px">One-way ANOVA (F-test) per timepoint across ${gc} groups. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001. (For pairwise differences, run a post-hoc test.)</div>`;
+    else if(gc>=3) html+=`<div class="hint" style="margin-top:4px;font-size:10px">One-way ANOVA (F-test) per timepoint across ${gc} groups. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001. Pairwise Tukey HSD post-hoc shown below.</div>`;
     else html+=`<div class="hint" style="margin-top:4px;font-size:10px">Only one group present - add a second treatment arm to compare.</div>`;
+    if(gc>=3) html+= (window.tukeyTableHTML?window.tukeyTableHTML(data, colorMap):'');
     html+=`</div></div>`;
   });
   host.innerHTML=html;
@@ -6253,6 +6254,237 @@ try{ accessWhoami(); }catch(e){}
 // make sure every panel reflects the restored data
 try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
      renderTrendPicker(); renderTrends(); renderCurrent(); updateAnimalLabel(); }catch(e){}
+</script>
+<script>
+/* ============================================================
+   PUBLICATION FIGURES + TUKEY POST-HOC  (Auravyx v5.2 add-on)
+   ADDITIVE ONLY - no data model / storage / sync change.
+   - SigmaPlot-style plots: black L-axes (left+bottom only, no
+     top/right spine), ticks pointing OUTWARD, no inner gridlines
+   - error bars = SEM (group mode)
+   - Tukey HSD post-hoc (studentized range) after one-way ANOVA
+   - per-graph PNG export at 300 dpi (raster, ready for figures)
+   Reuses globals from the main script: App, GCOLORS, groupOf,
+   groupTrendData, trendPoints, trendSeriesOptions, _stars.
+   ============================================================ */
+(function(){
+  'use strict';
+  var PUB_DPI=300;
+
+  /* --- studentized range distribution (validated vs Tukey tables) --- */
+  function erf(x){ var t=1/(1+0.3275911*Math.abs(x));
+    var y=1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x);
+    return x>=0?y:-y; }
+  function pnorm(z){ return 0.5*(1+erf(z/Math.SQRT2)); }
+  function dnorm(z){ return Math.exp(-0.5*z*z)/2.5066282746310002; }
+  function wprob(w,k){ if(w<=0) return 0;
+    var lo=-8,hi=8,N=400,h=(hi-lo)/N,sum=0;
+    for(var i=0;i<=N;i++){ var x=lo+i*h;
+      var f=dnorm(x)*Math.pow(pnorm(x)-pnorm(x-w),k-1);
+      var wgt=(i===0||i===N)?1:(i%2?4:2); sum+=wgt*f; }
+    var v=k*sum*h/3; return v<0?0:(v>1?1:v); }
+  function lngamma(x){ var c=[76.18009172947146,-86.50532032941677,24.01409824083091,
+    -1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
+    var y=x,tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp); var ser=1.000000000190015;
+    for(var j=0;j<6;j++){ y++; ser+=c[j]/y; } return -tmp+Math.log(2.5066282746310005*ser/x); }
+  function ptukey(q,k,df){ if(q<=0) return 0;
+    if(!isFinite(df)||df>25000) return wprob(q,k);
+    var lc=Math.log(2)+(df/2)*Math.log(df/2)-lngamma(df/2);
+    var lo=1e-5,hi=1+12/Math.sqrt(df),N=600,h=(hi-lo)/N,acc=0;
+    for(var i=0;i<=N;i++){ var u=lo+i*h;
+      var g=Math.exp(lc+(df-1)*Math.log(u)-df*u*u/2);
+      var val=wprob(q*u,k)*g;
+      var wgt=(i===0||i===N)?1:(i%2?4:2); acc+=wgt*val; }
+    acc*=h/3; return acc<0?0:(acc>1?1:acc); }
+  window.ptukey=ptukey;
+
+  // Tukey-Kramer pairwise from per-group summary stats {n,mean,sd}
+  function tukeyPairs(stats,names){
+    var k=names.length; if(k<3) return null;
+    var dfW=0,ssw=0,ok=true;
+    names.forEach(function(g){ var s=stats[g]; if(!s||s.n<2||isNaN(s.sd)){ok=false;return;} dfW+=(s.n-1); ssw+=(s.n-1)*s.sd*s.sd; });
+    if(!ok||dfW<=0) return null;
+    var msw=ssw/dfW; if(!(msw>0)) return null;
+    var pairs=[];
+    for(var i=0;i<k;i++) for(var j=i+1;j<k;j++){
+      var a=stats[names[i]], b=stats[names[j]];
+      var se=Math.sqrt(msw/2*(1/a.n+1/b.n)); if(!(se>0)) continue;
+      var q=Math.abs(a.mean-b.mean)/se;
+      var p=1-ptukey(q,k,dfW); if(p<0)p=0; if(p>1)p=1;
+      pairs.push({a:names[i],b:names[j],q:q,p:p});
+    }
+    return {msw:msw,dfW:dfW,pairs:pairs};
+  }
+  window.tukeyPairs=tukeyPairs;
+
+  /* --- small helpers --- */
+  function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function stars(p){ return (window._stars?window._stars(p):''); }
+  function fmtP(p){ return (Math.round(p*1000)/1000).toFixed(3); }
+  function pcell(p){ if(p==null||isNaN(p)) return '—'; var t=(p<0.001?'&lt;0.001':fmtP(p)); var st=stars(p); return t+(st?' <b style="color:var(--alarm)">'+st+'</b>':''); }
+  function niceNum(x,round){ if(x<=0) return 1; var e=Math.floor(Math.log10(x)); var f=x/Math.pow(10,e); var nf;
+    if(round){ nf=f<1.5?1:(f<3?2:(f<7?5:10)); } else { nf=f<=1?1:(f<=2?2:(f<=5?5:10)); }
+    return nf*Math.pow(10,e); }
+  function niceTicks(min,max,n){ if(!(max>min)){ max=min+1; }
+    var range=niceNum(max-min,false); var d=niceNum(range/(n-1),true);
+    var gmin=Math.floor(min/d)*d, gmax=Math.ceil(max/d)*d; var ticks=[];
+    for(var v=gmin; v<=gmax+d*0.5; v+=d){ ticks.push(Math.abs(v)<d*1e-6?0:v); }
+    return {ticks:ticks,min:gmin,max:gmax,step:d}; }
+  function fmtTick(v,step){ var d=step>=1?0:(step>=0.1?1:2); return (Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
+  function animTag(p){ var L=String(p.label||''); if(p.death) return 'DEATH';
+    var mT=L.match(/\bT(\d+)\b/i); if(mT) return 'T'+mT[1];
+    var mM=L.match(/(\d+)\s*min/i); if(mM) return mM[1]+'m';
+    var w=L.split(/[-–(]/)[0].trim(); return w.length>8?w.slice(0,8):(w||((p.x>=0?'+':'')+p.x+'m')); }
+
+  /* --- SigmaPlot-style group plot (white bg, black L-axes) --- */
+  function pubGroupPlotSVG(data,meta,colorMap){
+    var rows=data.rows, groups=data.groups;
+    if(!rows||!rows.length) return '<div class="empty" style="padding:14px">No group data.</div>';
+    var W=620,H=440,PL=82,PR=22,PT=58,PB=72;
+    // X is CATEGORICAL: timepoints are evenly spaced by index, so every
+    // parameter's graph shares the same x layout and the axes line up.
+    var n=rows.length;
+    var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
+    var yv=[]; rows.forEach(function(r){ groups.forEach(function(g){ var s=r.stats[g]; if(s){ var e=isNaN(s.sem)?0:s.sem; yv.push(s.mean+e); yv.push(s.mean-e); } }); });
+    if(!yv.length) return '<div class="empty" style="padding:14px">No group data.</div>';
+    var nt=niceTicks(Math.min.apply(null,yv),Math.max.apply(null,yv),6), yMin=nt.min, yMax=nt.max;
+    var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
+    var s='';
+    nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
+      s+='<line x1="'+(PL-6)+'" y1="'+y.toFixed(1)+'" x2="'+PL+'" y2="'+y.toFixed(1)+'" stroke="#000" stroke-width="1.2"/>';
+      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
+    var rotate=n>6;
+    rows.forEach(function(r,i){ var x=xAt(i);
+      s+='<line x1="'+x.toFixed(1)+'" y1="'+(H-PB)+'" x2="'+x.toFixed(1)+'" y2="'+(H-PB+6)+'" stroke="#000" stroke-width="1.2"/>';
+      var ty=H-PB+(rotate?15:18);
+      s+= rotate
+        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(r.tag)+'</text>'
+        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(r.tag)+'</text>'; });
+    s+='<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
+    s+='<line x1="'+PL+'" y1="'+(H-PB)+'" x2="'+(W-PR)+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
+    groups.forEach(function(g,gi){ var col=colorMap[g]||'#333';
+      var gp=[]; rows.forEach(function(r,i){ if(r.stats[g]) gp.push({i:i,m:r.stats[g].mean,e:isNaN(r.stats[g].sem)?0:r.stats[g].sem}); });
+      if(!gp.length) return;
+      var path=gp.map(function(p,k){ return (k?'L':'M')+xAt(p.i).toFixed(1)+','+sy(p.m).toFixed(1); }).join(' ');
+      s+='<path d="'+path+'" fill="none" stroke="'+col+'" stroke-width="1.8"/>';
+      gp.forEach(function(p){ var x=xAt(p.i);
+        if(p.e>0){ var yt=sy(p.m+p.e), yb=sy(p.m-p.e);
+          s+='<line x1="'+x.toFixed(1)+'" y1="'+yt.toFixed(1)+'" x2="'+x.toFixed(1)+'" y2="'+yb.toFixed(1)+'" stroke="'+col+'" stroke-width="1.3"/>';
+          s+='<line x1="'+(x-3.5).toFixed(1)+'" y1="'+yt.toFixed(1)+'" x2="'+(x+3.5).toFixed(1)+'" y2="'+yt.toFixed(1)+'" stroke="'+col+'" stroke-width="1.3"/>';
+          s+='<line x1="'+(x-3.5).toFixed(1)+'" y1="'+yb.toFixed(1)+'" x2="'+(x+3.5).toFixed(1)+'" y2="'+yb.toFixed(1)+'" stroke="'+col+'" stroke-width="1.3"/>'; }
+        s+='<circle cx="'+x.toFixed(1)+'" cy="'+sy(p.m).toFixed(1)+'" r="3.4" fill="'+col+'" stroke="#fff" stroke-width="0.6"/>'; });
+    });
+    rows.forEach(function(r,i){ var st=stars(r.p); if(st){ s+='<text x="'+xAt(i).toFixed(1)+'" y="'+(PT-4)+'" text-anchor="middle" font-size="13" fill="#000" font-weight="700">'+st+'</text>'; } });
+    var yc=((PT+(H-PB))/2).toFixed(1);
+    var yTitle=esc(meta.label)+(meta.unit?' ('+esc(meta.unit)+')':'');
+    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
+    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
+    var lx=PL, ly=30;
+    groups.forEach(function(g){ var col=colorMap[g]||'#333';
+      s+='<line x1="'+lx+'" y1="'+ly+'" x2="'+(lx+18)+'" y2="'+ly+'" stroke="'+col+'" stroke-width="2"/><circle cx="'+(lx+9)+'" cy="'+ly+'" r="3.2" fill="'+col+'"/>';
+      s+='<text x="'+(lx+24)+'" y="'+(ly+4)+'" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(g)+'</text>';
+      lx += 30 + (String(g).length*6.4) + 16; });
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:block;background:#fff">'+s+'</svg>';
+  }
+  window.pubGroupPlotSVG=pubGroupPlotSVG;
+
+  /* --- SigmaPlot-style single-animal plot --- */
+  function pubAnimalPlotSVG(pts,meta){
+    pts=(pts||[]).filter(function(p){ return p&&p.y!=null&&!isNaN(p.y); });
+    if(!pts.length) return '<div class="empty" style="padding:14px">No data.</div>';
+    var W=620,H=400,PL=80,PR=22,PT=34,PB=70;
+    // X is CATEGORICAL: evenly-spaced timepoints by index.
+    var n=pts.length;
+    var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
+    var ys=pts.map(function(p){return p.y;});
+    var nt=niceTicks(Math.min.apply(null,ys),Math.max.apply(null,ys),6), yMin=nt.min, yMax=nt.max;
+    var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
+    var s='';
+    nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
+      s+='<line x1="'+(PL-6)+'" y1="'+y.toFixed(1)+'" x2="'+PL+'" y2="'+y.toFixed(1)+'" stroke="#000" stroke-width="1.2"/>';
+      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
+    var rotate=n>6;
+    pts.forEach(function(p,i){ var x=xAt(i);
+      s+='<line x1="'+x.toFixed(1)+'" y1="'+(H-PB)+'" x2="'+x.toFixed(1)+'" y2="'+(H-PB+6)+'" stroke="#000" stroke-width="1.2"/>';
+      var ty=H-PB+(rotate?15:18);
+      s+= rotate
+        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(animTag(p))+'</text>'
+        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(animTag(p))+'</text>'; });
+    s+='<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
+    s+='<line x1="'+PL+'" y1="'+(H-PB)+'" x2="'+(W-PR)+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
+    var path=pts.map(function(p,i){ return (i?'L':'M')+xAt(i).toFixed(1)+','+sy(p.y).toFixed(1); }).join(' ');
+    s+='<path d="'+path+'" fill="none" stroke="#2b6cb0" stroke-width="1.8"/>';
+    pts.forEach(function(p,i){ var c=p.death?'#c0392b':(p.event?'#d5a021':'#2b6cb0');
+      s+='<circle cx="'+xAt(i).toFixed(1)+'" cy="'+sy(p.y).toFixed(1)+'" r="'+((p.death||p.event)?4.2:3.4)+'" fill="'+c+'" stroke="#fff" stroke-width="0.6"/>'; });
+    var yc=((PT+(H-PB))/2).toFixed(1);
+    var yTitle=esc(meta.label)+(meta.unit?' ('+esc(meta.unit)+')':'');
+    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
+    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:block;background:#fff">'+s+'</svg>';
+  }
+  window.pubAnimalPlotSVG=pubAnimalPlotSVG;
+
+  /* --- Tukey HSD pairwise table (3+ groups) --- */
+  window.tukeyTableHTML=function(data,colorMap){
+    var groups=data.groups; if(!groups||groups.length<3) return '';
+    var pairs=[]; for(var i=0;i<groups.length;i++) for(var j=i+1;j<groups.length;j++) pairs.push([groups[i],groups[j]]);
+    var head='<tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)">Timepoint</th>'+
+      pairs.map(function(pr){ return '<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);font-weight:600">'+esc(pr[0])+' vs '+esc(pr[1])+'</th>'; }).join('')+'</tr>';
+    var body='';
+    data.rows.forEach(function(r){
+      var present=groups.filter(function(g){ return r.stats[g]&&r.stats[g].n>=2; });
+      var tk=present.length>=3 ? tukeyPairs(r.stats,present) : null;
+      var cells=pairs.map(function(pr){ var val='—';
+        if(tk){ var f=tk.pairs.find(function(p){ return (p.a===pr[0]&&p.b===pr[1])||(p.a===pr[1]&&p.b===pr[0]); }); if(f) val=pcell(f.p); }
+        return '<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">'+val+'</td>'; }).join('');
+      body+='<tr><td style="padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee)" title="'+esc(r.label)+'">'+esc(r.tag)+'</td>'+cells+'</tr>';
+    });
+    return '<div style="overflow-x:auto;margin-top:10px"><div style="font-size:11px;font-weight:600;margin-bottom:3px">Post-hoc: Tukey HSD (pairwise, adjusted p)</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'+
+      '<div class="hint" style="margin-top:4px;font-size:10px">Tukey HSD controls family-wise error across all pairs at each timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div></div>';
+  };
+
+  /* --- rasterize an SVG string to a PNG at 300 dpi and download it --- */
+  function svgToPng(svg,W,H,name){
+    var scale=PUB_DPI/96, wpx=Math.round(W*scale), hpx=Math.round(H*scale);
+    var blob=new Blob([svg],{type:'image/svg+xml;charset=utf-8'});
+    var url=URL.createObjectURL(blob), img=new Image();
+    img.onload=function(){
+      var c=document.createElement('canvas'); c.width=wpx; c.height=hpx;
+      var ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,wpx,hpx); ctx.drawImage(img,0,0,wpx,hpx);
+      URL.revokeObjectURL(url);
+      c.toBlob(function(b){ if(!b){ if(window.toast)toast('PNG export failed'); return; }
+        var u2=URL.createObjectURL(b), a=document.createElement('a'); a.href=u2; a.download=name;
+        document.body.appendChild(a); a.click();
+        setTimeout(function(){ URL.revokeObjectURL(u2); a.remove(); },800);
+        if(window.toast)toast('Saved '+name+' ('+wpx+'×'+hpx+' px)'); },'image/png'); };
+    img.onerror=function(){ URL.revokeObjectURL(url); if(window.toast)toast('PNG export failed'); };
+    img.src=url;
+  }
+
+  window.downloadTrendPNG=function(mode,key){
+    try{
+      var opts=(window.trendSeriesOptions?window.trendSeriesOptions():[]);
+      var meta=opts.find(function(o){return o.key===key;})||{label:key,unit:''};
+      var safe=String(meta.label).replace(/[^A-Za-z0-9._-]+/g,'_').replace(/^_+|_+$/g,'')||'graph';
+      var svg,W,H;
+      if(mode==='group'){
+        var data=window.groupTrendData(key);
+        if(!data.rows.length){ if(window.toast)toast('No group data to export'); return; }
+        var allGroups=Array.from(new Set((App.animals||[]).map(window.groupOf)));
+        var cmap={}; allGroups.forEach(function(g,i){ cmap[g]=GCOLORS[i%GCOLORS.length]; });
+        svg=pubGroupPlotSVG(data,meta,cmap); W=620; H=440; safe+='_group';
+      } else {
+        var pts=window.trendPoints(key);
+        if(!pts||!pts.length){ if(window.toast)toast('No data to export'); return; }
+        svg=pubAnimalPlotSVG(pts,meta); W=620; H=400;
+        safe+='_'+String(App.activeAnimal||'animal').replace(/[^A-Za-z0-9._-]+/g,'_');
+      }
+      if(/^<div/.test(svg)){ if(window.toast)toast('Nothing to export'); return; }
+      svgToPng(svg,W,H,safe+'_300dpi.png');
+    }catch(e){ console.error('PNG export',e); if(window.toast)toast('PNG export failed'); }
+  };
+})();
 </script>
 </body>
 </html>
