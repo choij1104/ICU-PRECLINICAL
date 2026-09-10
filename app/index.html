@@ -380,7 +380,7 @@
       <span class="dot"></span>
       Auravyx Preclinical <small>Current &middot; v5.2</small>
     </div>
-    <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:9px;line-height:1;cursor:pointer">&#9632;</button></div>
+    <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:9px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
     <div class="conn" id="conn">
       <span class="led"></span>
@@ -5809,6 +5809,11 @@ setInterval(()=>{
   const stopBtn=document.getElementById('runStopBtn');
   if(stopBtn) stopBtn.style.display =
     (App.runStart && !App.runEnd && _dm==null && !document.body.classList.contains('reader-mode')) ? 'inline-block' : 'none';
+  // reset button shows whenever the clock has been started (running or stopped),
+  // so a new animal can clear it in one tap. Hidden in reader-mode and at death.
+  const resetBtn=document.getElementById('runResetBtn');
+  if(resetBtn) resetBtn.style.display =
+    (App.runStart && _dm==null && !document.body.classList.contains('reader-mode')) ? 'inline-block' : 'none';
   // Update ONLY the countdown text in place. Rebuilding the whole timeline
   // every second destroyed the buttons mid-tap, so taps were sometimes lost.
   if(App.protocol && document.hidden===false && !window._tlDragging){
@@ -5896,6 +5901,19 @@ setInterval(()=>{
     if(window.logEvent) logEvent('run-stop',{at:el});
     if(window.autosave) autosave();
     toast('Run clock stopped at '+el);
+  });
+  // one-tap reset for a new animal: clears the clock back to not-started.
+  // Already-saved rows keep the elapsed value they were stamped with.
+  const rb=document.getElementById('runResetBtn');
+  if(rb) rb.addEventListener('click',e=>{
+    e.stopPropagation();   // must not open the start-time prompt underneath
+    if(document.body.classList.contains('reader-mode')) return;
+    if(!App.runStart) return;
+    if(!confirm('Reset the run clock for a NEW ANIMAL?\n\nThe clock goes back to —. Saved data is not changed.')) return;
+    App.runStart=null; App.runEnd=null;
+    if(window.logEvent) logEvent('run-reset',{});
+    if(window.autosave) autosave();
+    toast('Run clock reset - tap RUN TIME to start it for the new animal');
   });
 })();
 
