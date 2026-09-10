@@ -5833,23 +5833,42 @@ setInterval(()=>{
   rc.title='Elapsed since the animal went on the table. Tap to set the start time (when prep/cannulation began). Starts by itself at the first capture if never set.';
   rc.addEventListener('click',()=>{
     if(document.body.classList.contains('reader-mode')) return;
-    // stopped clock: tapping offers to resume
+    // reset the run clock back to not-started (for a new animal). Already-saved
+    // rows keep the elapsed value they were stamped with, so this only clears
+    // the live clock - it never changes the record.
+    const doReset=()=>{
+      App.runStart=null; App.runEnd=null;
+      if(window.logEvent) logEvent('run-reset',{});
+      if(window.autosave) autosave();
+      toast('Run clock reset - tap RUN TIME to start it for the new animal');
+    };
+    // stopped clock: tapping offers to resume, or reset for a new animal
     if(App.runStart && App.runEnd){
-      if(confirm('Run clock is stopped at '+fmtClock(App.runEnd-App.runStart)+'.\n\nResume it? (elapsed continues in real time)')){
+      const ans=prompt('Run clock is STOPPED at '+fmtClock(App.runEnd-App.runStart)+'.\n\n'
+        +'Type  R  = resume (elapsed keeps counting)\n'
+        +'Type  X  = reset for a NEW ANIMAL (clears the clock)\n\n'
+        +'Cancel to leave it stopped.');
+      if(ans===null) return;
+      const a=String(ans).trim().toLowerCase();
+      if(a==='r'){
         App.runEnd=null;
         if(window.logEvent) logEvent('run-resume',{});
         if(window.autosave) autosave();
         toast('Run clock resumed');
+      } else if(a==='x'){
+        doReset();
       }
       return;
     }
     const cur=App.runStart?new Date(App.runStart):null;
     const def=cur?String(cur.getHours()).padStart(2,'0')+String(cur.getMinutes()).padStart(2,'0'):'';
     const v=prompt('Animal on table - start time, 24h HHMM (e.g., 0930).\nLeave blank to start NOW.'
+      +(App.runStart?'\nType  X  to RESET for a new animal (clears the clock).':'')
       +(cur?'\nCurrent start: '+def:''), def);
     if(v===null) return;
     let t=Date.now();
     const s=String(v).trim();
+    if(s.toLowerCase()==='x'){ doReset(); return; }
     if(s!==''){
       const m=s.match(/^(\d{1,2}):?(\d{2})$/);
       if(!m){ toast('Time not understood - use HHMM like 0930'); return; }
@@ -5919,7 +5938,8 @@ function renderStudyLog(){
   const label={capture:'Capture saved','sheet-import':'Sheet photo imported','delete-row':'Row deleted',
     'clear-all-rows':'All rows cleared','delete-animal':'Animal deleted','on-table':'On-table time set',
     'rename-tp':'Timepoint renamed','move-row':'Row data moved','reorder-tp':'Timepoint repositioned',
-    'death-from-sheet':'DEATH point from sheet photo','run-stop':'Run clock stopped','run-resume':'Run clock resumed'};
+    'death-from-sheet':'DEATH point from sheet photo','run-stop':'Run clock stopped','run-resume':'Run clock resumed',
+    'run-reset':'Run clock reset (new animal)'};
   listEl.innerHTML = audit.slice().reverse().map(e=>{
     const parts=[];
     if(e.animal) parts.push(e.animal);
