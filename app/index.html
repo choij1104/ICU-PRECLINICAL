@@ -6558,5 +6558,444 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
   };
 })();
 </script>
+
+<!-- ============================================================
+     BATCH SHEET IMPORT (many animals at once)  -  additive add-on
+     Upload every photo from a binder in one go. Each photo is read
+     by the AI reader (Animal #, form type, printed headers, every
+     handwritten row). Photos are grouped by Animal #, matched to the
+     canonical timepoints, shown on ONE review screen, and nothing is
+     written until the operator presses Apply.
+     ============================================================ -->
+<div class="modal-bg" id="biModal" style="z-index:70">
+  <div class="modal" style="max-width:1240px">
+    <div class="modal-head">
+      <h3 id="biTitle">Batch import - review</h3>
+      <button class="x" id="biClose">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="biBody"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;align-items:center">
+        <button class="btn primary" id="biApply" style="flex:1;min-width:200px">Apply all ticked rows</button>
+        <button class="btn ghost" id="biCancel" style="flex:1;min-width:120px">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+<input type="file" id="biFiles" class="hidden-file" accept="image/*" multiple>
+
+<script>
+(function(){
+'use strict';
+
+/* ---------- constants ---------- */
+const BI_V_KEYS=['time','hr','carBP','femBP','rr','spo2','etco2','temp','iso','o2','air','urine'];
+const BI_I_KEYS=['lactate','ph','pco2','po2','be','hco3','so2','na','k','ca','glu','bun','crea','hgb','notes'];
+const BI_CONCURRENCY=2;
+const BI_STORE_LIMIT=4200000;   // chars of JSON we allow in localStorage before we stop keeping photos
+
+let BI={photos:[], groups:[], running:false, overwrite:false, keepPhotos:true};
+
+/* ---------- helpers ---------- */
+const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+const digits=s=>String(s||'').replace(/\D+/g,'');
+function readFileAsDataURL(f){ return new Promise((res,rej)=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.onerror=()=>rej(new Error('Could not read '+f.name)); r.readAsDataURL(f); }); }
+function isPreBaselineLabel(s){ return /\bT0\b|pre[\s-]?baseline|pre[\s-]?op\b|\bpre\s*bl\b/i.test(String(s||'')); }
+
+/* Which existing animal does a sheet's Animal # belong to?
+   Compare on normalized text, then on digits only ("Animal-1388" == "1388"). */
+function biFindExisting(name){
+  const key=norm(name), dg=digits(name);
+  if(!key) return null;
+  const cands=[];
+  Object.keys(HCARE.data||{}).forEach(id=>cands.push({id, extra:norm((HCARE.data[id].case||{}).animalNo)}));
+  (App.animals||[]).forEach(a=>{ if(!a._demo && !cands.find(c=>c.id===a.id)) cands.push({id:a.id, extra:''}); });
+  let hit=cands.find(c=>norm(c.id)===key || (c.extra && c.extra===key));
+  if(!hit && dg.length>=2) hit=cands.find(c=>digits(c.id)===dg || (c.extra && digits(c.extra)===dg));
+  return hit?hit.id:null;
+}
+
+/* ---------- prompt ---------- */
+function biPrompt(){
+  return `This photo shows ONE printed data form from a preclinical swine ICU experiment (H-CARE REBOA study). The entries are HANDWRITTEN. The page may be rotated 90 or 180 degrees or upside down - read it in whatever orientation makes sense.
+
+The forms exist in several printed versions (e.g. Ver.6.16.26, Ver.7.2.26) and the COLUMN ORDER DIFFERS between versions. Always read the printed column headers and map every column by its header - never by position.
+
+Two form types:
+- "vitals": one row per timepoint (Baseline / Post stabilization, 10 mins post shock pre REBOA, 30 mins post REBOA, Immediately post REBOA deflation, 10 / 30 / 60 / 90 / 120 / 150 / 180 / 210 / 240 min post deflation). Columns include Time, HR, Carotid BP & MAP, Fem Art BP & MAP, RR, SpO2, etCO2, Temp, Iso%, Oxygen, Air, Urine mL.
+- "istat" (blood / i-STAT sheet): one row per timepoint T0..T8 (T0 - Pre-Baseline, T1 - BL / Post stabilization, T2 - 10 mins post shock pre REBOA, T3 - 30 mins post REBOA inflation, T4 - 10 mins post REBOA deflation, T5 - 1 hr post deflation, T6 - 2 hr, T7 - 3 hr, T8 - 4 hr post deflation). Columns include Lactate, pH, pCO2, pO2, Base Excess, HCO3, sO2, Na, K, Ca, Glu, BUN, Crea, Hgb, Notes (grouped under CG4 / CG8 / Chem8 headers).
+
+Header fields to read: "Animal #" (a handwritten number near the top, e.g. 1388 - read every digit carefully), Date, Weight, Experiment #, and the printed form version ("Ver.x.x.xx").
+
+Return ONLY a JSON object - no prose, no markdown fences:
+{"kind":"vitals"|"istat","animal":"<Animal # exactly as written>","animalUnsure":false,"date":"","weight":"","expNo":"","version":"","comments":"<handwritten comments outside the table, briefly>","rows":[{"timepoint":"<printed row label>","hr":129,"unsure":["carBP"],"eos":false}]}
+
+Field keys for vitals rows: ${BI_V_KEYS.join(', ')}
+Field keys for istat rows: ${BI_I_KEYS.join(', ')}
+
+Rules:
+- Include one object for every row that has ANY handwritten entry. Skip rows that are completely blank.
+- "timepoint" is the printed row label from the left-hand column, copied as closely as you can read it.
+- A handwritten extra row written OUTSIDE or BELOW the printed table and labelled "Pre BL", "Pre-baseline", "T0" or similar is the T0 row: include it with "timepoint":"T0 - Pre-Baseline".
+- Blood pressure as the string "sys/dia(MAP)", e.g. "96/64(75)". Use the printed COLUMN HEADERS to decide which is Carotid (carBP) and which is Femoral (femBP).
+- "time" as digits only, e.g. 1048. All other values are numbers with no units. "notes" is free text.
+- If a value was crossed out and rewritten, use the final value. If it was crossed out and NOT rewritten, omit it.
+- Put into "unsure" every key of that row whose handwriting you transcribed but could not read with high confidence. Set "animalUnsure": true if the Animal # is hard to read.
+- Set "eos": true ONLY when the row is clearly marked as the terminal sample (crossed-out label, or handwriting such as EOS, euthanasia, expired, death).
+- Omit any cell you cannot read at all. Never guess. An omitted cell is far better than a wrong one.
+Return JSON only.`;
+}
+
+/* ---------- read one photo ---------- */
+async function biReadPhoto(ph){
+  const full=await downscaleImage(ph.dataURL, 1800);
+  const m=full.match(/^data:(image\/\w+);base64,(.+)$/);
+  if(!m) throw new Error('not a readable image');
+  const data=await callAnthropic({max_tokens:4096, messages:[{role:'user',content:[
+    {type:'image',source:{type:'base64',media_type:m[1],data:m[2]}},
+    {type:'text',text:biPrompt()}
+  ]}]}, 120000);
+  const parsed=parseJSONReply(data)||{};
+  const kind=parsed.kind==='istat'?'istat':'vitals';
+  const keys=kind==='istat'?BI_I_KEYS:BI_V_KEYS;
+  const rows=(Array.isArray(parsed.rows)?parsed.rows:[]).map(r=>{
+    const vals={}; const unsure=new Set(Array.isArray(r.unsure)?r.unsure:[]);
+    keys.forEach(k=>{ if(r[k]!=null && r[k]!=='') vals[k]=r[k]; });
+    return {read:String(r.timepoint||''), rid:hcMatchRow(kind, r.timepoint), vals, unsure, use:Object.keys(vals).length>0, eos:!!r.eos};
+  }).filter(r=>Object.keys(r.vals).length);
+  ph.kind=kind; ph.animal=String(parsed.animal||'').trim(); ph.animalUnsure=!!parsed.animalUnsure;
+  ph.meta={date:parsed.date||'', weight:parsed.weight||'', expNo:parsed.expNo||'', version:parsed.version||'', comments:parsed.comments||''};
+  ph.rows=rows; ph.img=full; ph.status='ok';
+  ph.thumb=await downscaleImage(full, 900, 0.6);
+}
+
+/* ---------- orchestration ---------- */
+async function biStart(files){
+  if(getOcrMethod()!=='claude'){ toast('Batch import needs the AI reader - switch it on under Photo / Settings'); return; }
+  if(!getApiKey() && !PROXY_ON){ toast('No API key - add it under Photo / Settings'); return; }
+  if(BI.running){ toast('A batch is already being read'); return; }
+  BI={photos:[], groups:[], running:true, overwrite:false, keepPhotos:true};
+  for(const f of files){
+    try{ BI.photos.push({name:f.name, dataURL:await readFileAsDataURL(f), status:'queued'}); }
+    catch(e){ BI.photos.push({name:f.name, status:'error', error:e.message}); }
+  }
+  biOpen(); biRenderProgress();
+  let idx=0;
+  const worker=async()=>{
+    while(idx<BI.photos.length){
+      const ph=BI.photos[idx++];
+      if(ph.status==='error') continue;
+      ph.status='reading'; biRenderProgress();
+      try{ await biReadPhoto(ph); }
+      catch(e){ ph.status='error'; ph.error=e.message||String(e); }
+      biRenderProgress();
+    }
+  };
+  await Promise.all(Array.from({length:BI_CONCURRENCY}, worker));
+  BI.running=false;
+  biGroup(); biRenderReview();
+}
+
+function biRenderProgress(){
+  const done=BI.photos.filter(p=>p.status==='ok'||p.status==='error').length;
+  document.getElementById('biTitle').textContent=`Batch import - reading ${done}/${BI.photos.length} photos`;
+  document.getElementById('biApply').style.display='none';
+  document.getElementById('biBody').innerHTML=
+    `<div class="hint" style="margin-bottom:10px">Each photo is read once. Nothing is written until you review and press Apply.</div>`+
+    `<div style="display:flex;flex-direction:column;gap:5px">`+BI.photos.map(p=>{
+      const c=p.status==='ok'?'var(--trace)':p.status==='error'?'var(--alarm)':p.status==='reading'?'var(--trace-amber)':'var(--ink-faint)';
+      const what=p.status==='ok'?`${p.kind} - Animal ${esc(p.animal)||'?'} - ${p.rows.length} row${p.rows.length===1?'':'s'}`:p.status==='error'?('failed: '+esc(p.error)):p.status;
+      return `<div style="display:flex;gap:10px;font-size:12px;align-items:center"><span style="width:9px;height:9px;border-radius:50%;background:${c};display:inline-block;flex:none"></span><span style="font-family:var(--mono);color:var(--ink-dim);min-width:160px">${esc(p.name)}</span><span style="color:${c}">${what}</span></div>`;
+    }).join('')+`</div>`;
+}
+
+/* Group photos by Animal #. Photos with no readable number go to "unassigned". */
+function biGroup(){
+  const groups=[];
+  BI.photos.forEach((p,pi)=>{
+    if(p.status!=='ok') return;
+    p.pi=pi;                                   // index into BI.photos (failed photos keep their slot)
+    const key=norm(p.animal)||('__none'+pi);
+    let g=groups.find(x=>x.key===key || (digits(p.animal).length>=2 && digits(x.animal)===digits(p.animal)));
+    if(!g){ g={key, animal:p.animal, unsure:p.animalUnsure, photos:[], include:true}; groups.push(g); }
+    g.photos.push(p); if(p.animalUnsure) g.unsure=true;
+  });
+  groups.forEach((g,gi)=>{
+    g.gi=gi;
+    g.existing=biFindExisting(g.animal);
+    g.target=g.existing||(g.animal?g.animal:'');
+    g.vitals=g.photos.filter(p=>p.kind==='vitals'); g.istat=g.photos.filter(p=>p.kind==='istat');
+  });
+  BI.groups=groups;
+}
+
+/* ---------- review screen ---------- */
+function biSheetTable(g, sheet){
+  const phs=sheet==='vitals'?g.vitals:g.istat;
+  if(!phs.length) return `<div style="font-size:11.5px;color:var(--trace-amber);margin:4px 0 8px">No ${sheet==='vitals'?'vitals':'blood / iSTAT'} sheet photo for this animal.</div>`;
+  const keys=sheet==='vitals'?BI_V_KEYS:BI_I_KEYS;
+  const cols=sheet==='vitals'?HCARE.vitalsCols:HCARE.istatCols;
+  const labelOf=k=>{ const c=cols.find(x=>x.k===k); return c?c.label:k; };
+  const sheetRows=sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+  const existingData=(g.existing && HCARE.data[g.existing] && HCARE.data[g.existing][sheet])||{};
+  const opts=sel=>`<option value="-1" ${sel<0?'selected':''}>- not matched -</option>`+sheetRows.map((r,i)=>`<option value="${i}" ${i===sel?'selected':''}>${esc(r)}</option>`).join('');
+  let html='';
+  phs.forEach(p=>{
+    html+=`<div style="display:flex;gap:10px;align-items:center;margin:6px 0 4px;font-size:11.5px;color:var(--ink-faint)">
+      <img src="${p.thumb}" data-bizoom="${p.pi}" title="Click to enlarge" style="height:44px;border:1px solid var(--line);border-radius:4px;cursor:zoom-in">
+      <span><b style="color:var(--ink)">${sheet==='vitals'?'Vitals':'Blood / iSTAT'} sheet</b> &middot; ${esc(p.name)}${p.meta.version?' &middot; '+esc(p.meta.version):''} &middot; ${p.rows.length} row${p.rows.length===1?'':'s'} read${p.meta.comments?`<br><i>${esc(p.meta.comments)}</i>`:''}</span></div>`;
+    html+=`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;white-space:nowrap"><thead><tr>
+      <th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line)">use</th>
+      <th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line)">read as &rarr; timepoint</th>`+
+      keys.map(k=>`<th style="text-align:left;padding:3px 4px;border-bottom:1px solid var(--line);font-weight:600;color:var(--ink-faint)">${esc(labelOf(k))}</th>`).join('')+
+      `<th style="padding:3px 5px;border-bottom:1px solid var(--line);color:var(--alarm)">EOS</th></tr></thead><tbody>`;
+    p.rows.forEach((r,ri)=>{
+      const un=r.rid<0;
+      const isT0=r.rid>=0 && isPreBaselineLabel(sheetRows[r.rid]);
+      html+=`<tr style="${un?'background:var(--alarm-soft,rgba(220,60,60,.08))':''}">
+        <td style="padding:2px 5px"><input type="checkbox" data-biuse="${p.pi}|${ri}" ${r.use&&!un?'checked':''}></td>
+        <td style="padding:2px 5px"><span style="color:var(--ink-faint)">${esc(r.read)||'(no label)'}</span> &rarr;
+          <select data-birid="${p.pi}|${ri}" style="padding:2px 4px;background:var(--panel-2);border:1px solid ${un?'var(--alarm)':'var(--line)'};border-radius:4px;color:var(--ink);font-size:11px;max-width:210px">${opts(r.rid)}</select>${isT0?' <span title="T0 is stored but left out of graphs and statistics" style="color:var(--ink-faint)">(stored, not analysed)</span>':''}</td>`+
+        keys.map(k=>{
+          const has=k in r.vals, v=has?r.vals[k]:'';
+          const unsure=r.unsure.has(k);
+          const old=(r.rid>=0 && existingData[r.rid] && existingData[r.rid][k]!=null && existingData[r.rid][k]!=='')?String(existingData[r.rid][k]):'';
+          const conflict=old && has && String(v)!==old;
+          const bg=unsure?'var(--alarm-soft,rgba(220,60,60,.10))':has?'var(--amber-soft)':'var(--panel-2)';
+          const bd=unsure?'var(--alarm)':conflict?'var(--trace-amber)':has?'var(--trace-amber)':'var(--line)';
+          const title=(unsure?'Uncertain handwriting - check the photo. ':'')+(old?('On the sheet now: '+old+(conflict?' (differs)':'')):'');
+          const w=k==='notes'?150:k==='carBP'||k==='femBP'?74:44;
+          return `<td style="padding:1px 2px"><input data-bival="${p.pi}|${ri}|${k}" value="${esc(v)}" title="${esc(title)}" spellcheck="false" style="width:${w}px;padding:3px 4px;font-family:var(--mono);font-size:11.5px;background:${bg};border:1px solid ${bd};border-radius:3px;color:var(--ink)">${old?`<div style="font-size:9px;color:var(--ink-faint);text-decoration:line-through;line-height:1">${esc(old)}</div>`:''}</td>`;
+        }).join('')+
+        `<td style="padding:2px 5px;text-align:center"><input type="checkbox" data-bieos="${p.pi}|${ri}" ${r.eos?'checked':''} title="Terminal / euthanasia sample - a DEATH point will be recorded"></td></tr>`;
+    });
+    html+=`</tbody></table></div>`;
+    const found=new Set(p.rows.map(r=>r.rid).filter(x=>x>=0));
+    const notFound=sheetRows.filter((r,i)=>!found.has(i));
+    if(notFound.length) html+=`<div style="font-size:10.5px;color:var(--ink-faint);margin:3px 0 8px">Not on this photo (stay empty): ${esc(notFound.join(', '))}</div>`;
+  });
+  return html;
+}
+
+function biRenderReview(){
+  const ok=BI.photos.filter(p=>p.status==='ok').length, bad=BI.photos.filter(p=>p.status==='error');
+  const nUnsure=BI.photos.reduce((s,p)=>s+(p.rows||[]).reduce((t,r)=>t+r.unsure.size,0),0);
+  document.getElementById('biTitle').textContent=`Batch import - ${ok} photo${ok===1?'':'s'} read, ${BI.groups.length} animal${BI.groups.length===1?'':'s'}`;
+  document.getElementById('biApply').style.display='';
+  const allNames=[...new Set([...Object.keys(HCARE.data||{}), ...(App.animals||[]).filter(a=>!a._demo).map(a=>a.id)])];
+  let html=`<div style="border:1px solid var(--line);background:var(--panel-2);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:12px;color:var(--ink-dim)">
+    <b style="color:var(--ink)">Check every value against the photo before applying.</b>
+    Amber = read from the photo &middot; <span style="color:var(--alarm);font-weight:600">red = uncertain handwriting</span> &middot; a struck-through number under a cell is what the sheet holds now.
+    Type into any cell to correct it; clear a cell to drop it. Rows land on the timepoint shown in the dropdown.
+    T0 (pre-op) rows are stored on the sheet but left out of graphs and statistics.
+    <div style="margin-top:6px;display:flex;gap:16px;flex-wrap:wrap">
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="biOverwrite"> Overwrite values already on the sheet (otherwise only blanks are filled)</label>
+      <label style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="biKeep" checked> Keep a small copy of each photo on the sheet</label>
+    </div>
+    ${nUnsure?`<div style="margin-top:6px;color:var(--alarm)"><b>${nUnsure} uncertain cell${nUnsure===1?'':'s'}</b> flagged in red - please verify each one.</div>`:''}
+  </div>`;
+  if(bad.length) html+=`<div style="border:1px solid var(--alarm);border-radius:6px;padding:8px 11px;margin-bottom:10px;font-size:12px;color:var(--alarm)"><b>${bad.length} photo${bad.length===1?'':'s'} could not be read</b> - ${bad.map(p=>esc(p.name)+': '+esc(p.error)).join('; ')}. Re-run the batch with those photos after fixing (lighting, rotation, a closer shot).</div>`;
+  if(!BI.groups.length){ html+=`<div class="empty">Nothing readable was found.</div>`; document.getElementById('biBody').innerHTML=html; return; }
+  BI.groups.forEach(g=>{
+    const nRows=g.photos.reduce((s,p)=>s+p.rows.length,0);
+    const nameOpts=allNames.map(n=>`<option value="${esc(n)}" ${n===g.target?'selected':''}>${esc(n)}${n===g.existing?' (matched)':''}</option>`).join('');
+    html+=`<div style="border:1px solid ${g.unsure?'var(--alarm)':'var(--line-strong,var(--line))'};border-radius:8px;padding:10px 12px;margin-bottom:12px">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:4px">
+        <label style="display:flex;gap:7px;align-items:center;font-size:13px;cursor:pointer;font-weight:700"><input type="checkbox" data-biinc="${g.gi}" ${g.include?'checked':''}> Animal # <span style="font-family:var(--mono)">${esc(g.animal)||'(not read)'}</span>${g.unsure?' <span style="color:var(--alarm);font-size:11px;font-weight:600">number uncertain - verify</span>':''}</label>
+        <span style="color:var(--ink-faint);font-size:12px">&rarr; save under</span>
+        <select data-bitarget="${g.gi}" style="padding:4px 7px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);font-size:12px;max-width:220px">
+          <option value="__new" ${!g.existing?'selected':''}>new animal: ${esc(g.animal||'(type a name)')}</option>${nameOpts}</select>
+        <input data-binew="${g.gi}" value="${esc(g.animal)}" placeholder="name for new animal" spellcheck="false" style="padding:4px 7px;font-family:var(--mono);font-size:12px;width:130px;background:var(--panel-2);border:1px solid var(--line);border-radius:4px;color:var(--ink);${g.existing?'display:none':''}">
+        <span style="font-size:11.5px;color:var(--ink-faint);margin-left:auto">${g.vitals.length} vitals + ${g.istat.length} blood photo${(g.vitals.length+g.istat.length)===1?'':'s'} &middot; ${nRows} rows${g.existing?' &middot; matched existing animal <b>'+esc(g.existing)+'</b>':' &middot; will be created'}</span>
+      </div>
+      ${(g.photos.find(p=>p.meta.date||p.meta.weight||p.meta.expNo))?`<div style="font-size:11px;color:var(--ink-faint);margin-bottom:4px">Case: ${g.photos.map(p=>[p.meta.date&&'date '+esc(p.meta.date), p.meta.weight&&'weight '+esc(p.meta.weight), p.meta.expNo&&'exp # '+esc(p.meta.expNo)].filter(Boolean).join(', ')).filter(Boolean).join(' / ')}</div>`:''}
+      ${biSheetTable(g,'vitals')}
+      ${biSheetTable(g,'istat')}
+    </div>`;
+  });
+  document.getElementById('biBody').innerHTML=html;
+  // wire the target dropdown: "new" shows the name box
+  document.querySelectorAll('[data-bitarget]').forEach(sel=>sel.addEventListener('change',()=>{
+    const box=document.querySelector(`[data-binew="${sel.dataset.bitarget}"]`);
+    if(box) box.style.display=sel.value==='__new'?'':'none';
+  }));
+  document.querySelectorAll('[data-bizoom]').forEach(im=>im.addEventListener('click',()=>{
+    const p=BI.photos[+im.dataset.bizoom]; if(!p) return;
+    const w=window.open('','_blank'); if(!w){ toast('Pop-up blocked - allow pop-ups to enlarge the photo'); return; }
+    w.document.write('<title>'+esc(p.name)+'</title><body style="margin:0;background:#111"><img src="'+p.img+'" style="max-width:100%;display:block;margin:auto"></body>');
+  }));
+}
+
+/* Planned run-minute of a sheet row: the protocol offset for T-rows; for the
+   vitals-only rows ("90 mins post deflation") the deflation time + minutes,
+   where deflation time = offset(T4) - 10 (T4 is "10 min post deflation"). */
+function biRowRunMin(sheet, rid){
+  try{
+    const rows=sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows, label=String(rows[rid]||'');
+    const tps=(App.protocol&&App.protocol.timepoints)||[];
+    const tpId=hcRowTp(sheet, rid);
+    if(tpId){ const t=tps.find(x=>x.id===tpId); if(t && t.offsetMin!=null) return t.offsetMin; }
+    const t4=tps.find(x=>x.id==='T4'); if(!t4 || t4.offsetMin==null) return null;
+    const defl=t4.offsetMin-10;
+    if(/immediately\s+post/i.test(label)) return defl;
+    const m=label.match(/(\d+)\s*min/i); if(m) return defl+(+m[1]);
+  }catch(e){}
+  return null;
+}
+
+/* ---------- apply ---------- */
+function biCollectEdits(){
+  document.querySelectorAll('[data-biinc]').forEach(cb=>{ BI.groups[+cb.dataset.biinc].include=cb.checked; });
+  document.querySelectorAll('[data-bitarget]').forEach(sel=>{
+    const g=BI.groups[+sel.dataset.bitarget];
+    if(sel.value==='__new'){ const box=document.querySelector(`[data-binew="${g.gi}"]`); g.target=String(box&&box.value||g.animal||'').trim(); g.isNew=true; }
+    else { g.target=sel.value; g.isNew=false; }
+  });
+  const ph=(id)=>BI.photos[+id.split('|')[0]], rw=(id)=>{ const [pi,ri]=id.split('|'); return BI.photos[+pi].rows[+ri]; };
+  document.querySelectorAll('[data-biuse]').forEach(cb=>{ rw(cb.dataset.biuse).use=cb.checked; });
+  document.querySelectorAll('[data-birid]').forEach(sel=>{ rw(sel.dataset.birid).rid=parseInt(sel.value); });
+  document.querySelectorAll('[data-bieos]').forEach(cb=>{ rw(cb.dataset.bieos).eos=cb.checked; });
+  document.querySelectorAll('[data-bival]').forEach(inp=>{
+    const [pi,ri,k]=inp.dataset.bival.split('|'); const r=BI.photos[+pi].rows[+ri];
+    const raw=String(inp.value).trim();
+    if(raw===''){ delete r.vals[k]; return; }
+    r.vals[k]=/^-?\d*\.?\d+$/.test(raw)?Number(raw):raw;
+  });
+  BI.overwrite=!!(document.getElementById('biOverwrite')||{}).checked;
+  BI.keepPhotos=!!(document.getElementById('biKeep')||{}).checked;
+}
+
+function biApply(){
+  if(BI.running){ toast('Still reading photos'); return; }
+  biCollectEdits();
+  const groups=BI.groups.filter(g=>g.include);
+  if(!groups.length){ toast('Nothing ticked'); return; }
+  for(const g of groups){ if(!g.target){ toast('Give a name to the animal read as "'+(g.animal||'?')+'"'); return; } }
+  // storage guard: photos are optional, data is not
+  let keep=BI.keepPhotos;
+  if(keep){
+    try{
+      let est=JSON.stringify(collectSession()).length;
+      groups.forEach(g=>g.photos.forEach(p=>{ est+=(p.thumb||'').length; }));
+      if(est>BI_STORE_LIMIT){ keep=false; toast('Photos not kept - browser storage would overflow. Data is still imported.'); }
+    }catch(e){ keep=false; }
+  }
+  const prevAnimal=HCARE.animal;
+  let nAnimals=0,nRows=0,nCells=0,nSkipped=0,nDeath=0, created=[];
+  groups.forEach(g=>{
+    const id=g.target;
+    if(!HCARE.data[id]){ HCARE.data[id]={case:{animalNo:id}, vitals:{}, istat:{}}; created.push(id); }
+    HCARE.animal=id;
+    const A=HCARE.data[id];
+    A.case=A.case||{}; A.vitals=A.vitals||{}; A.istat=A.istat||{};
+    // case-setup info from the sheet headers (blanks only)
+    g.photos.forEach(p=>{ ['date','weight','expNo'].forEach(k=>{ if(p.meta[k] && (A.case[k]==null||A.case[k]==='')) A.case[k]=p.meta[k]; }); });
+    const touched={vitals:new Set(), istat:new Set()};
+    let deathRow=null, deathSheet=null;
+    g.photos.forEach(p=>{
+      const sheet=p.kind, rows=sheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows;
+      p.rows.forEach(r=>{
+        if(!r.use || r.rid<0 || r.rid>=rows.length || !Object.keys(r.vals).length) return;
+        if(!A[sheet][r.rid]) A[sheet][r.rid]={};
+        let wrote=0;
+        Object.entries(r.vals).forEach(([k,v])=>{
+          const cur=A[sheet][r.rid][k];
+          if(!BI.overwrite && cur!=null && cur!==''){ nSkipped++; return; }
+          A[sheet][r.rid][k]=v; wrote++; nCells++;
+        });
+        if(wrote){ touched[sheet].add(r.rid); nRows++; }
+        if(r.eos && !deathRow){ deathRow=r; deathSheet=sheet; }
+      });
+      if(keep){ if(!A._sheetPhoto) A._sheetPhoto={}; A._sheetPhoto[sheet]=p.thumb; }
+    });
+    // mirror into the main record (Current / Timeline / Trends)
+    hcReflectToApp(true);
+    touched.istat.forEach(rid=>hcMirrorIstatRow(rid));
+    touched.vitals.forEach(rid=>hcMirrorVitalsRow(rid));
+    // DEATH marker from an EOS-flagged row
+    if(deathRow){
+      const a=hcMirrorTarget();
+      if(a && !Object.values(a.rows||{}).some(r=>r&&r._death)){
+        const label=(deathSheet==='vitals'?HCARE.vitalsRows:HCARE.istatRows)[deathRow.rid]||deathRow.read;
+        const runMin=biRowRunMin(deathSheet, deathRow.rid);
+        a.rows['DEATH']={_ts:nowTs(), _death:true, _runMin:runMin, _label:'DEATH - EOS sample (from sheet photo)',
+          _note:'Terminal / euthanasia sample imported by batch sheet import (row: '+label+').'+(runMin==null?' Run minute unknown - set it on the timeline if needed.':' Run minute taken from the scheduled timepoint.')};
+        if(deathSheet==='vitals'){
+          const map={hr:'HR', rr:'RR', spo2:'SpO2', etco2:'EtCO2', temp:'Temp', urine:'Urine'};
+          Object.entries(map).forEach(([hk,ak])=>{ const v=deathRow.vals[hk]; if(v!=null&&v!==''&&!isNaN(+v)) a.rows['DEATH'][ak]=+v; });
+        }
+        nDeath++;
+        if(window.logEvent) logEvent('death-from-sheet',{animal:a.id, row:label, runMin:null, batch:true});
+      }
+    }
+    nAnimals++;
+  });
+  if(!HCARE.data[prevAnimal] && groups.length) HCARE.animal=groups[groups.length-1].target;
+  if(window.logEvent) logEvent('batch-sheet-import',{animals:nAnimals, rows:nRows, values:nCells, skipped:nSkipped, created:created.length, photos:BI.photos.filter(p=>p.status==='ok').length});
+  try{ hcRenderAnimals(); hcRenderSheet(); }catch(e){}
+  try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderCurrent(); renderTrendPicker(); renderTrends(); renderLabList(); updateAnimalLabel(); }catch(e){}
+  if(window.autosave) autosave();
+  biCloseModal();
+  toast(`Imported ${nCells} value${nCells===1?'':'s'} across ${nRows} row${nRows===1?'':'s'} for ${nAnimals} animal${nAnimals===1?'':'s'}`
+    +(created.length?` (${created.length} new)`:'')+(nSkipped?` - ${nSkipped} existing value${nSkipped===1?'':'s'} kept`:'')+(nDeath?` - ${nDeath} DEATH point${nDeath===1?'':'s'} recorded`:'')+'. Check against the paper.');
+}
+
+/* ---------- modal plumbing ---------- */
+function biOpen(){ document.getElementById('biModal').classList.add('show'); }
+function biCloseModal(){ document.getElementById('biModal').classList.remove('show'); }
+document.getElementById('biApply').addEventListener('click',biApply);
+document.getElementById('biCancel').addEventListener('click',()=>{ if(BI.running && !confirm('Photos are still being read. Cancel anyway?')) return; BI.running=false; BI={photos:[],groups:[],running:false}; biCloseModal(); });
+document.getElementById('biClose').addEventListener('click',()=>document.getElementById('biCancel').click());
+document.getElementById('biFiles').addEventListener('change',e=>{ const fs=[...e.target.files]; e.target.value=''; if(fs.length) biStart(fs); });
+function biPick(){ document.getElementById('biFiles').click(); }
+window.biStart=biStart; window.biPick=biPick; window.biApply=biApply;
+
+/* ---------- buttons (injected, so no existing markup changes) ---------- */
+try{
+  const anchor=document.getElementById('hcSheetPhoto');
+  if(anchor){
+    const b=document.createElement('button'); b.className='btn sm cap'; b.style.cssText='width:auto;font-weight:700';
+    b.textContent='Batch import (many animals)'; b.title='Upload every sheet photo at once - vitals and blood sheets for several animals. They are sorted by Animal # and reviewed on one screen.';
+    b.addEventListener('click',biPick); anchor.insertAdjacentElement('afterend',b);
+  }
+  const side=document.getElementById('hcareBtn');
+  if(side){
+    const b2=document.createElement('button'); b2.className='btn sm'; b2.style.cssText='width:100%;margin-top:6px';
+    b2.textContent='Batch import sheet photos'; b2.title='Read many sheet photos (several animals) in one go';
+    b2.addEventListener('click',biPick); side.insertAdjacentElement('afterend',b2);
+  }
+}catch(e){}
+
+/* ============================================================
+   T0 (pre-op) OUT OF ANALYSIS
+   T0 stays on the sheet / record, but graphs and statistics skip
+   it unless the operator ticks "include T0" under Trends.
+   ============================================================ */
+const T0_KEY='auravyx_trend_t0';
+window.TREND_INCLUDE_T0=false;
+try{ window.TREND_INCLUDE_T0 = localStorage.getItem(T0_KEY)==='1'; }catch(e){}
+if(typeof trendPoints==='function'){
+  const _tp=trendPoints;
+  window.trendPoints=function(key){ const pts=_tp(key); if(window.TREND_INCLUDE_T0) return pts; return pts.filter(p=>!isPreBaselineLabel(p.label)); };
+}
+if(typeof groupTrendData==='function'){
+  const _gtd=groupTrendData;
+  window.groupTrendData=function(key){ const d=_gtd(key); if(window.TREND_INCLUDE_T0) return d; d.rows=d.rows.filter(r=>!(String(r.tag).toUpperCase()==='T0' || isPreBaselineLabel(r.label))); return d; };
+}
+try{
+  const gBtn=document.getElementById('trendModeGroup');
+  if(gBtn){
+    const lab=document.createElement('label');
+    lab.style.cssText='display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--ink-faint);margin-left:8px;cursor:pointer';
+    lab.title='T0 (pre-op screen) is recorded but excluded from graphs and statistics by default';
+    lab.innerHTML='<input type="checkbox" id="trendIncludeT0"'+(window.TREND_INCLUDE_T0?' checked':'')+'> include T0 (pre-op)';
+    gBtn.insertAdjacentElement('afterend',lab);
+    lab.querySelector('input').addEventListener('change',e=>{ window.TREND_INCLUDE_T0=e.target.checked; try{ localStorage.setItem(T0_KEY, e.target.checked?'1':'0'); }catch(_){} if(typeof renderTrends==='function') renderTrends(); });
+  }
+}catch(e){}
+})();
+</script>
+
 </body>
 </html>
