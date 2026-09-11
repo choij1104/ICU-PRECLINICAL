@@ -6647,16 +6647,68 @@ Rules:
 Return JSON only.`;
 }
 
+/* ============================================================
+   READER BUDGET GUARD - applies to EVERY photo reader in the app.
+   Current models think before answering; a dense handwritten sheet
+   can use the whole 1-4k token budget on thinking and return NO
+   text at all (stop_reason "max_tokens"), which used to look like
+   "nothing readable". Every image request now gets >= 16k output
+   tokens and a longer timeout; a request that still runs out is
+   retried once with 32k; an empty answer is an error, not a blank.
+   ============================================================ */
+const BI_MIN_IMG_TOKENS=16000, BI_RETRY_TOKENS=32000, BI_IMG_TIMEOUT=180000;
+if(typeof callAnthropic==='function'){
+  const _ca=callAnthropic;
+  const textOf=r=>((r&&r.content)||[]).filter(x=>x&&x.type==='text').map(x=>x.text).join('');
+  window.callAnthropic=async function(body, timeoutMs){
+    const hasImg=!!(body&&Array.isArray(body.messages)&&body.messages.some(m=>Array.isArray(m&&m.content)&&m.content.some(c=>c&&c.type==='image')));
+    if(!hasImg) return _ca(body, timeoutMs);
+    const b=Object.assign({}, body);
+    if(!(b.max_tokens>=BI_MIN_IMG_TOKENS)) b.max_tokens=BI_MIN_IMG_TOKENS;
+    const t=Math.max(timeoutMs||0, BI_IMG_TIMEOUT);
+    let res=await _ca(b, t);
+    if(res && res.stop_reason==='max_tokens'){
+      try{ const r2=await _ca(Object.assign({}, b, {max_tokens:BI_RETRY_TOKENS}), t);
+           if(r2 && (r2.stop_reason!=='max_tokens' || textOf(r2).length>textOf(res).length)) res=r2; }catch(e){}
+      if(res.stop_reason==='max_tokens' && !textOf(res).trim())
+        throw new Error('The reader ran out of output budget before writing an answer - try a closer or sharper photo.');
+    }
+    return res;
+  };
+}
+
+/* Rescue a cut-off JSON answer: keep the header fields and every COMPLETE row.
+   Returns null when nothing usable is there. */
+function biSalvage(text){
+  try{
+    const s=String(text||'').replace(/```json|```/g,'');
+    const kind=(s.match(/"kind"\s*:\s*"(\w+)"/)||[])[1];
+    const animal=(s.match(/"animal"\s*:\s*"([^"]*)"/)||[])[1]||'';
+    const version=(s.match(/"version"\s*:\s*"([^"]*)"/)||[])[1]||'';
+    const at=s.indexOf('"rows"'); if(at<0) return null;
+    const rows=[];
+    (s.slice(at).match(/\{[^{}]*\}/g)||[]).forEach(o=>{ try{ const r=JSON.parse(o); if(r && r.timepoint) rows.push(r); }catch(e){} });
+    if(!kind && !rows.length) return null;
+    return {kind, animal, version, rows, _partial:true};
+  }catch(e){ return null; }
+}
+
 /* ---------- read one photo ---------- */
 async function biReadPhoto(ph){
   const full=await downscaleImage(ph.dataURL, 1800);
   const m=full.match(/^data:(image\/\w+);base64,(.+)$/);
   if(!m) throw new Error('not a readable image');
-  const data=await callAnthropic({max_tokens:4096, messages:[{role:'user',content:[
+  const data=await callAnthropic({max_tokens:BI_MIN_IMG_TOKENS, messages:[{role:'user',content:[
     {type:'image',source:{type:'base64',media_type:m[1],data:m[2]}},
     {type:'text',text:biPrompt()}
-  ]}]}, 120000);
-  const parsed=parseJSONReply(data)||{};
+  ]}]}, BI_IMG_TIMEOUT);
+  let parsed;
+  try{ parsed=parseJSONReply(data)||{}; }
+  catch(e){
+    parsed=biSalvage(((data&&data.content)||[]).filter(x=>x&&x.type==='text').map(x=>x.text).join(''));
+    if(!parsed) throw new Error('the reader returned an unreadable answer - retry this photo');
+  }
+  ph.partial=!!(parsed._partial || (data&&data.stop_reason==='max_tokens'));
   const kind=parsed.kind==='istat'?'istat':'vitals';
   const keys=kind==='istat'?BI_I_KEYS:BI_V_KEYS;
   const rows=(Array.isArray(parsed.rows)?parsed.rows:[]).map(r=>{
@@ -6705,7 +6757,7 @@ function biRenderProgress(){
     `<div class="hint" style="margin-bottom:10px">Each photo is read once. Nothing is written until you review and press Apply.</div>`+
     `<div style="display:flex;flex-direction:column;gap:5px">`+BI.photos.map(p=>{
       const c=p.status==='ok'?'var(--trace)':p.status==='error'?'var(--alarm)':p.status==='reading'?'var(--trace-amber)':'var(--ink-faint)';
-      const what=p.status==='ok'?`${p.kind} - Animal ${esc(p.animal)||'?'} - ${p.rows.length} row${p.rows.length===1?'':'s'}`:p.status==='error'?('failed: '+esc(p.error)):p.status;
+      const what=p.status==='ok'?`${p.kind} - Animal ${esc(p.animal)||'?'} - ${p.rows.length} row${p.rows.length===1?'':'s'}${p.partial?' (cut off)':''}`:p.status==='error'?('failed: '+esc(p.error)):p.status;
       return `<div style="display:flex;gap:10px;font-size:12px;align-items:center"><span style="width:9px;height:9px;border-radius:50%;background:${c};display:inline-block;flex:none"></span><span style="font-family:var(--mono);color:var(--ink-dim);min-width:160px">${esc(p.name)}</span><span style="color:${c}">${what}</span></div>`;
     }).join('')+`</div>`;
 }
@@ -6744,7 +6796,7 @@ function biSheetTable(g, sheet){
   phs.forEach(p=>{
     html+=`<div style="display:flex;gap:10px;align-items:center;margin:6px 0 4px;font-size:11.5px;color:var(--ink-faint)">
       <img src="${p.thumb}" data-bizoom="${p.pi}" title="Click to enlarge" style="height:44px;border:1px solid var(--line);border-radius:4px;cursor:zoom-in">
-      <span><b style="color:var(--ink)">${sheet==='vitals'?'Vitals':'Blood / iSTAT'} sheet</b> &middot; ${esc(p.name)}${p.meta.version?' &middot; '+esc(p.meta.version):''} &middot; ${p.rows.length} row${p.rows.length===1?'':'s'} read${p.meta.comments?`<br><i>${esc(p.meta.comments)}</i>`:''}</span></div>`;
+      <span><b style="color:var(--ink)">${sheet==='vitals'?'Vitals':'Blood / iSTAT'} sheet</b> &middot; ${esc(p.name)}${p.meta.version?' &middot; '+esc(p.meta.version):''} &middot; ${p.rows.length} row${p.rows.length===1?'':'s'} read${p.partial?' &middot; <b style="color:var(--alarm)">answer was cut off - rows may be missing, re-read this photo to be sure</b>':''}${p.meta.comments?`<br><i>${esc(p.meta.comments)}</i>`:''}</span></div>`;
     html+=`<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:11px;white-space:nowrap"><thead><tr>
       <th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line)">use</th>
       <th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line)">read as &rarr; timepoint</th>`+
