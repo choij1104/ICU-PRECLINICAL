@@ -525,7 +525,9 @@
         <button class="btn sm" id="exportJson">Export JSON</button>
         <button class="btn sm ghost" id="exportAll">Export all animals</button>
         <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="clearAllRows()">Clear all rows</button>
-        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="deleteAnimal()">Delete animal</button>
+        <button class="btn sm ghost" onclick="archiveAnimal()" title="Hide this animal but keep its data - restorable any time">Archive animal</button>
+        <button class="btn sm ghost" onclick="restoreArchivedAnimal()" title="Bring back an archived animal">Restore archived</button>
+        <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="permanentlyDeleteAnimal()" title="Type the animal number to confirm; a backup file is saved first">Delete permanently</button>
       </div>
       <div class="card" style="margin-top:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -1756,6 +1758,7 @@ document.querySelectorAll('#hcTabs .atab').forEach(t=>{
 const App = {
   protocol: null,
   animals: [],
+  archivedAnimals: [],
   activeAnimal: null,
   source: null,
   live: {},
@@ -4637,6 +4640,7 @@ function collectSession(){
     }:null,
     activeAnimal:App.activeAnimal,
     animals:App.animals,
+    archivedAnimals:App.archivedAnimals||[],
     hcare:{
       animal:HCARE.animal,
       data:HCARE.data,
@@ -4714,6 +4718,7 @@ function applySession(o){
     }
   }
   App.animals=Array.isArray(o.animals)?o.animals:[];
+  App.archivedAnimals=Array.isArray(o.archivedAnimals)?o.archivedAnimals:[];
   App.activeAnimal=o.activeAnimal||(App.animals[0]&&App.animals[0].id)||null;
   App.runStart=o.runStart||null;
   App.audit=Array.isArray(o.audit)?o.audit:[];
@@ -5421,20 +5426,82 @@ function clearAllRows(){
 window.clearAllRows = clearAllRows;
 
 /* Delete the active animal entirely */
-function deleteAnimal(){
+/* ── Animal removal: ARCHIVE (safe, restorable) is the default; permanent
+   delete is a separate, deliberate action that requires typing the animal
+   number and auto-saves a backup first. No data is ever silently lost. */
+function _animalStats(a){
+  const nR=Object.keys(a.rows||{}).length;
+  let nV=0; Object.values(a.rows||{}).forEach(r=>{ nV+=Object.keys(r).filter(k=>!k.startsWith('_')).length; });
+  return {nR:nR, nV:nV, nL:(a.labs||[]).length};
+}
+function _reRenderAnimals(){
+  try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); if(window.renderLabList)renderLabList(); updateAnimalLabel(); renderCurrent(); if(window.renderTrendPicker)renderTrendPicker(); if(window.renderTrends)renderTrends(); autosave(); }catch(e){ console.error(e); }
+}
+function archiveAnimal(){
   const a=getActiveAnimal(); if(!a) return;
-  if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all instead'); return; }
-  if(!confirm('Delete animal "'+a.id+'" and ALL its data?\n\nThis cannot be undone.')) return;
-  if(window.logEvent) logEvent('delete-animal',{animal:a.id, rows:Object.keys(a.rows||{}).length});
-  const delId=a.id;
-  App.animals=App.animals.filter(x=>x.id!==a.id);
+  if(App.animals.length<=1){ toast('Cannot archive the only animal - add another first'); return; }
+  const s=_animalStats(a);
+  if(!confirm('Archive animal "'+a.id+'"?\n\nIt is HIDDEN from the list but NOT deleted - '+s.nR+' timepoint'+(s.nR===1?'':'s')+' kept safe. Restore any time with "Restore archived".')) return;
+  a._archivedAt=Date.now();
+  App.archivedAnimals=App.archivedAnimals||[];
+  App.archivedAnimals.push(a);
+  App.animals=App.animals.filter(x=>x!==a);
   App.activeAnimal=App.animals[0].id;
-  // remove the matching Data-sheets animal too (keep the two rosters in sync)
+  if(window.logEvent) logEvent('archive-animal',{animal:a.id, rows:s.nR});
+  _reRenderAnimals();
+  toast('Archived "'+a.id+'" - hidden, not deleted');
+}
+window.archiveAnimal=archiveAnimal;
+
+function restoreArchivedAnimal(){
+  const arr=App.archivedAnimals||[];
+  if(!arr.length){ toast('No archived animals'); return; }
+  const list=arr.map((a,i)=>(i+1)+') '+a.id+(a._archivedAt?'  ('+new Date(a._archivedAt).toLocaleDateString()+')':'')).join('\n');
+  const pick=prompt('Restore which archived animal? Type its number (1-'+arr.length+'):\n\n'+list);
+  if(pick===null) return;
+  const idx=parseInt(pick,10)-1;
+  if(isNaN(idx)||idx<0||idx>=arr.length){ toast('Not understood - type a number from the list'); return; }
+  const a=arr[idx];
+  delete a._archivedAt;
+  App.animals.push(a);
+  App.archivedAnimals=arr.filter((x,i)=>i!==idx);
+  App.activeAnimal=a.id;
+  if(window.logEvent) logEvent('restore-animal',{animal:a.id});
+  _reRenderAnimals();
+  toast('Restored "'+a.id+'"');
+}
+window.restoreArchivedAnimal=restoreArchivedAnimal;
+
+function backupAnimalToFile(a){
   try{
-    const norm=s=>String(s||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
-    const key=norm(delId);
+    const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(), copyright:'(c) 2026 Jae H. Choi, PhD, DVSc - HAKOYA LLC', animal:a}, null, 2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob), el=document.createElement('a');
+    el.href=url; el.download='auravyx_backup_'+String(a.id).replace(/[^A-Za-z0-9._-]+/g,'_')+'.json';
+    document.body.appendChild(el); el.click();
+    setTimeout(()=>{ URL.revokeObjectURL(url); el.remove(); },800);
+    return true;
+  }catch(e){ console.error('backup',e); return false; }
+}
+
+function permanentlyDeleteAnimal(){
+  const a=getActiveAnimal(); if(!a) return;
+  if(App.animals.length<=1){ toast('Cannot delete the only animal - use Clear all rows instead'); return; }
+  const s=_animalStats(a);
+  const typed=prompt('PERMANENTLY delete animal "'+a.id+'"?\n\nThis removes it and its '+s.nR+' timepoint'+(s.nR===1?'':'s')+' from the record. A backup file is downloaded first, but the animal leaves the app.\n\nType the animal number EXACTLY to confirm:');
+  if(typed===null) return;
+  const norm=x=>String(x==null?'':x).trim().toLowerCase().replace(/\s+/g,'');
+  if(norm(typed)!==norm(a.id)){ toast('Number did not match - nothing deleted'); return; }
+  backupAnimalToFile(a);
+  if(window.logEvent) logEvent('delete-animal',{animal:a.id, rows:s.nR, permanent:true});
+  const delId=a.id;
+  App.animals=App.animals.filter(x=>x!==a);
+  App.activeAnimal=App.animals[0].id;
+  // keep the Data-sheets roster in sync
+  try{
+    const nrm=str=>String(str||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+    const key=nrm(delId);
     if(typeof HCARE!=='undefined' && HCARE.data){
-      const hk=Object.keys(HCARE.data).find(k=>norm(k)===key);
+      const hk=Object.keys(HCARE.data).find(k=>nrm(k)===key);
       if(hk && Object.keys(HCARE.data).length>1){
         delete HCARE.data[hk];
         if(HCARE.animal===hk) HCARE.animal=Object.keys(HCARE.data)[0];
@@ -5442,9 +5509,14 @@ function deleteAnimal(){
       }
     }
   }catch(e){}
-  renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList(); updateAnimalLabel(); renderCurrent(); autosave();
-  toast('Animal deleted');
+  _reRenderAnimals();
+  toast('Deleted "'+delId+'" (backup saved)');
 }
+window.permanentlyDeleteAnimal=permanentlyDeleteAnimal;
+
+// Legacy name now maps to the SAFE default (archive), so any old caller cannot hard-delete.
+function deleteAnimal(){ return archiveAnimal(); }
+window.deleteAnimal=deleteAnimal;
 window.deleteAnimal = deleteAnimal;
 
 let TABLE_ALL_COLS=false;
