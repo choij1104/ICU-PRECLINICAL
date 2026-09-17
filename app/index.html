@@ -6590,7 +6590,9 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
 
 /* ---------- constants ---------- */
 const BI_V_KEYS=['time','hr','carBP','femBP','rr','spo2','etco2','temp','iso','o2','air','urine'];
-const BI_I_KEYS=['lactate','ph','pco2','po2','be','hco3','so2','na','k','ca','glu','bun','crea','hgb','notes'];
+const BI_I_KEYS=['lactate','ph','pco2','po2','be','hco3','so2','na','k','ca','glu','bun','crea','hgb','hct','notes'];
+/* Ver.9.9.26 adds a Chem8 Hct column - add it to the sheet (before Notes) and to the mirror map, additively */
+try{ if(HCARE.istatCols && !HCARE.istatCols.some(c=>c.k==='hct')){ const i=HCARE.istatCols.findIndex(c=>c.k==='notes'); HCARE.istatCols.splice(i<0?HCARE.istatCols.length:i,0,{k:'hct',label:'Hct',grp:'Chem8'}); } if(typeof HC_ISTAT_MAP!=='undefined' && !HC_ISTAT_MAP.hct) HC_ISTAT_MAP.hct='Hct'; }catch(e){}
 const BI_CONCURRENCY=2;
 const BI_STORE_LIMIT=4200000;   // chars of JSON we allow in localStorage before we stop keeping photos
 
@@ -6620,11 +6622,11 @@ function biFindExisting(name){
 function biPrompt(){
   return `This photo shows ONE printed data form from a preclinical swine ICU experiment (H-CARE REBOA study). The entries are HANDWRITTEN. The page may be rotated 90 or 180 degrees or upside down - read it in whatever orientation makes sense.
 
-The forms exist in several printed versions (e.g. Ver.6.16.26, Ver.7.2.26) and the COLUMN ORDER DIFFERS between versions. Always read the printed column headers and map every column by its header - never by position.
+The forms exist in several printed versions (e.g. Ver.6.16.26, Ver.7.2.26, Ver.9.9.26) and the COLUMN ORDER DIFFERS between versions. Always read the printed column headers and map every column by its header - never by position.
 
 Two form types:
 - "vitals": one row per timepoint (Baseline / Post stabilization, 10 mins post shock pre REBOA, 30 mins post REBOA, Immediately post REBOA deflation, 10 / 30 / 60 / 90 / 120 / 150 / 180 / 210 / 240 min post deflation). Columns include Time, HR, Carotid BP & MAP, Fem Art BP & MAP, RR, SpO2, etCO2, Temp, Iso%, Oxygen, Air, Urine mL.
-- "istat" (blood / i-STAT sheet): one row per timepoint T0..T8 (T0 - Pre-Baseline, T1 - BL / Post stabilization, T2 - 10 mins post shock pre REBOA, T3 - 30 mins post REBOA inflation, T4 - 10 mins post REBOA deflation, T5 - 1 hr post deflation, T6 - 2 hr, T7 - 3 hr, T8 - 4 hr post deflation). Columns include Lactate, pH, pCO2, pO2, Base Excess, HCO3, sO2, Na, K, Ca, Glu, BUN, Crea, Hgb, Notes (grouped under CG4 / CG8 / Chem8 headers).
+- "istat" (blood / i-STAT sheet): one row per timepoint T0..T8 (T0 - Pre-Baseline, T1 - BL / Post stabilization, T2 - 10 mins post shock pre REBOA, T3 - 30 mins post REBOA inflation, T4 - 10 mins post REBOA deflation, T5 - 1 hr post deflation, T6 - 2 hr, T7 - 3 hr, T8 - 4 hr post deflation). Columns include Lactate, pH, pCO2, pO2, Base Excess, HCO3, sO2, Na, K, Ca, Glu, BUN, Crea, Hgb, Hct (newer versions), Notes (grouped under CG4 / CG8 / Chem8 headers).
 
 Header fields to read: "Animal #" (a handwritten number near the top, e.g. 1388 - read every digit carefully), Date, Weight, Experiment #, and the printed form version ("Ver.x.x.xx").
 
@@ -6641,6 +6643,8 @@ Rules:
 - Blood pressure as the string "sys/dia(MAP)", e.g. "96/64(75)". Use the printed COLUMN HEADERS to decide which is Carotid (carBP) and which is Femoral (femBP).
 - "time" as digits only, e.g. 1048. All other values are numbers with no units. "notes" is free text.
 - If a value was crossed out and rewritten, use the final value. If it was crossed out and NOT rewritten, omit it.
+- ROW LABELS may be hand-corrected: a printed T-number crossed out with a new number written beside it (e.g. printed "T5" crossed out, "T4" written next to it, or a note such as "This is T4 values"). Then "timepoint" must carry the HANDWRITTEN, corrected T-number (e.g. "T4 - 10 mins post REBOA deflation"), not the printed one. Handwritten T-labels in the margin next to vitals rows (T1, T2 ...) also identify the row.
+- If the Animal # is not visible (cut off, blank or unreadable) return "animal": "" and "animalUnsure": true - never invent a number.
 - Put into "unsure" every key of that row whose handwriting you transcribed but could not read with high confidence. Set "animalUnsure": true if the Animal # is hard to read.
 - Set "eos": true ONLY when the row is clearly marked as the terminal sample (crossed-out label, or handwriting such as EOS, euthanasia, expired, death).
 - Omit any cell you cannot read at all. Never guess. An omitted cell is far better than a wrong one.
@@ -6666,7 +6670,18 @@ if(typeof callAnthropic==='function'){
     const b=Object.assign({}, body);
     if(!(b.max_tokens>=BI_MIN_IMG_TOKENS)) b.max_tokens=BI_MIN_IMG_TOKENS;
     const t=Math.max(timeoutMs||0, BI_IMG_TIMEOUT);
-    let res=await _ca(b, t);
+    let res;
+    try{ res=await _ca(b, t); }
+    catch(e){
+      // A request that never reached the proxy is usually an EXPIRED LOGIN (Cloudflare Access
+      // redirects to its sign-in page, which the browser cannot follow) - say so plainly.
+      if(/NETWORK|Unexpected token|not valid JSON/i.test(String(e&&e.message||e))){
+        let expired=false;
+        try{ const r=await fetch('/cdn-cgi/access/get-identity',{credentials:'same-origin',cache:'no-store',redirect:'manual'}); expired=!(r.ok&&r.status===200); }catch(_){ expired=true; }
+        if(expired) throw new Error('LOGIN EXPIRED - reload the page and sign in again, then retry the photo.');
+      }
+      throw e;
+    }
     if(res && res.stop_reason==='max_tokens'){
       try{ const r2=await _ca(Object.assign({}, b, {max_tokens:BI_RETRY_TOKENS}), t);
            if(r2 && (r2.stop_reason!=='max_tokens' || textOf(r2).length>textOf(res).length)) res=r2; }catch(e){}
