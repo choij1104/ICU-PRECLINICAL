@@ -3,6 +3,17 @@
   Auravyx Preclinical
   Copyright (c) 2026 Jae H. Choi, PhD, DVSc &middot; HAKOYA LLC. All rights reserved.
   H-CARE study support tool (IPROTO202500000107).
+
+  VERSION HISTORY
+  v5.3 (2026-09-23) - Live one-click capture. The camera stays aimed at the
+      monitor; one tap grabs the current frame, reads it through the existing
+      detectAndExtract() path, and files the vitals straight onto the selected
+      timepoint (auto-advancing to the next). No new dependency. Additive only.
+      New source-agnostic commitReading() is the single write path the planned
+      device bridge will reuse (source:'bridge'). Rows gain additive flags
+      _src/_auto; the source frame is held in memory for Review/Undo and is
+      deliberately NOT written to the row, to protect the localStorage quota.
+      Data schema stays 3.2 (new fields are additive; old records read as-is).
 -->
 <html lang="en">
 <head>
@@ -378,7 +389,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.2</small>
+      Auravyx Preclinical <small>Current &middot; v5.3</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:9px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:20px;height:20px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -548,7 +559,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">Jae H. Choi, PhD, DVSc &middot; HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.2
+        Auravyx Preclinical &middot; v5.3
       </div>
     </main>
 
@@ -603,6 +614,33 @@
         <input type="file" id="mainPhotoFile" class="hidden-file" accept="image/*">
         <div id="uploadErr" style="display:none;margin-top:8px"></div>
         <div class="hint" style="margin-top:6px">One place for every photo. Monitor, ventilator and i-STAT are all recognised automatically &mdash; vitals go to the timepoint, blood gas goes to the labs for that same timepoint. Several devices in one photo are read together.</div>
+
+        <!-- LIVE ONE-CLICK CAPTURE (added v5.3). Keeps the camera running on the
+             monitor; one tap grabs the current frame, reads it with the same
+             detectAndExtract path, and files the values to the timepoint below.
+             Source-agnostic commitReading() is the same entry point a future
+             device bridge will call. Additive: nothing existing is changed. -->
+        <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
+        <div id="liveCapWrap">
+          <div style="font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--trace,#0a7d5a);font-weight:700;margin-bottom:8px">Live capture &middot; one tap</div>
+          <div class="field" style="margin-bottom:8px" id="liveCamPickWrap">
+            <label>Camera</label>
+            <select id="liveCamSelect"></select>
+          </div>
+          <video id="liveVideo" autoplay muted playsinline style="width:100%;border-radius:var(--radius);background:#000;border:1px solid var(--line);display:none;max-height:240px;object-fit:contain"></video>
+          <canvas id="liveCanvas" style="display:none"></canvas>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <button class="btn cap" id="liveStartBtn" style="flex:1;min-width:150px">Start live camera</button>
+            <button class="btn ghost" id="liveStopBtn" style="flex:1;min-width:110px;display:none">Stop camera</button>
+          </div>
+          <div class="field" style="margin:8px 0">
+            <label>Save the next capture to</label>
+            <select id="liveTp"></select>
+          </div>
+          <button class="btn primary" id="liveCaptureBtn" style="display:none;font-weight:700">&#9673; Capture &amp; save this timepoint</button>
+          <div id="liveStatus" class="hint" style="margin-top:6px"></div>
+          <div class="hint" style="margin-top:4px">Keep the camera aimed at the monitor. One tap grabs the current screen, reads the vitals, and files them to the timepoint above, then moves to the next one. Every auto value is marked and keeps its photo &mdash; tap <b>Review</b> or <b>Undo</b> right after.</div>
+        </div>
 
         <div style="border-top:1px solid var(--line);margin:12px 0 10px"></div>
         <div style="display:flex;gap:6px;margin-bottom:8px">
@@ -4344,6 +4382,219 @@ function camUse(){
 }
 
 /* ============================================================
+   LIVE ONE-CLICK CAPTURE  (added v5.3)
+   The camera stays on the monitor. One tap grabs the current
+   frame, reads it through the existing detectAndExtract() path,
+   and files the values straight onto a timepoint via
+   commitReading(). No confirm modal - one tap saves - but every
+   auto row is flagged (_auto/_src), keeps its source frame
+   (_photo) for audit, and can be Undone or Reviewed immediately.
+
+   commitReading() is deliberately source-agnostic: the future
+   device bridge will call the SAME function with source:'bridge'
+   instead of grabbing a camera frame.
+   ============================================================ */
+let _liveStream=null;
+let _liveUndo=null;
+let _liveLastFrame=null;   // most recent captured frame, kept in memory for Review only
+
+/* Write one reading onto a timepoint row. Mirrors saveCapture()'s
+   row shape and side-effects, but takes values directly instead of
+   reading them out of a form. Returns an undo token. */
+function commitReading(opts){
+  opts=opts||{};
+  const vitals=opts.vitals||{}, labs=opts.labs||{}, source=opts.source||'live';
+  const a=getActiveAnimal()||addAnimal({silent:true});
+  let tpId=opts.tpId||'';
+  // start the run clock on the first reading, aligned to a scheduled
+  // offset if this timepoint has one (same rule as saveCapture)
+  if(!App.runStart){
+    const tpDef0=(App.protocol&&tpId)?App.protocol.timepoints.find(t=>t.id===tpId):null;
+    const off0=(tpDef0&&tpDef0.offsetMin!=null&&tpDef0.offsetMin>0)?tpDef0.offsetMin:0;
+    App.runStart=Date.now()-off0*60000;
+  }
+  const row={_ts:nowTs(), _runMin: App.runStart?Math.round((Date.now()-App.runStart)/60000):null};
+  row._clock=new Date().toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+  row._src=source; row._auto=true;   // additive flags: this row was auto-captured
+  // Deliberately NOT storing the frame on the row: the app keeps monitor
+  // photos out of the row to protect the localStorage quota (a base64 JPEG on
+  // every timepoint would blow it). The frame is held in memory only, for the
+  // immediate Review/Undo after a capture.
+  Object.entries(vitals).forEach(([k,v])=>{ if(v!==null&&v!=='') row[k]=v; });
+  Object.entries(labs).forEach(([k,v])=>{ if(v!==null&&v!=='') row['lab_'+k]=v; });
+  if(row._runMin==null && App.protocol && tpId){
+    const tpDef=App.protocol.timepoints.find(t=>t.id===tpId);
+    if(tpDef && tpDef.offsetMin!=null) row._runMin=tpDef.offsetMin;
+  }
+  let rid=tpId;
+  if(!rid){ rid='M'+Object.keys(a.rows).filter(k=>k.startsWith('M')).length; row._label=opts.label||'live'; }
+  const prevRow=a.rows[rid];
+  const prevSnapshot = prevRow?JSON.parse(JSON.stringify(prevRow)):null;
+  if(prevRow){
+    // keep labs, flags and any prior label; a fresh capture's _photo wins
+    const keep={};
+    Object.keys(prevRow).forEach(k=>{
+      if(k.startsWith('lab_') || ['_death','_event','_deathTime','_deathSample','_deathTp','_label'].includes(k)) keep[k]=prevRow[k];
+    });
+    a.rows[rid]=Object.assign({}, keep, row);
+    if(prevRow._label && !row._label) a.rows[rid]._label=prevRow._label;
+  } else {
+    a.rows[rid]=row;
+  }
+  try{ logEvent('live-capture',{animal:a.id, tp:tpId||rid, source, nVals:Object.keys(vitals).length, nLabs:Object.keys(labs).length}); }catch(e){}
+  rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
+  return {rid, prevSnapshot, animalId:a.id};
+}
+window.commitReading = commitReading;
+
+/* Undo the most recent live capture. */
+function liveUndo(){
+  if(!_liveUndo){ return; }
+  const info=_liveUndo; _liveUndo=null;
+  const a=(App.animals||[]).find(x=>x.id===info.animalId)||getActiveAnimal();
+  if(a){
+    if(info.prevSnapshot) a.rows[info.rid]=info.prevSnapshot; else delete a.rows[info.rid];
+    rebuildTable(); renderTimeline(); renderTrendPicker(); renderTrends(); renderCurrent(); renderAnimalTabs(); renderMainPhotoTp(); autosave();
+    toast('Reverted '+info.rid);
+  }
+  const s=$('#liveStatus'); if(s) s.innerHTML='';
+}
+window.liveUndo=liveUndo;
+
+/* Open the standard timepoint editor to check/correct an auto row. */
+function liveReview(tpId){
+  // show the just-captured frame (in memory) alongside the saved values
+  openCapture(tpId, null, _liveLastFrame||null);
+}
+window.liveReview=liveReview;
+
+/* Keep the live-capture timepoint dropdown in step with the animal /
+   protocol. Mirrors renderMainPhotoTp(); advance=true jumps to the
+   next still-empty timepoint after a save. */
+function renderLiveTp(advance){
+  const sel=$('#liveTp'); if(!sel) return;
+  const a=getActiveAnimal();
+  const prev=sel.value;
+  let opts='';
+  if(App.protocol) App.protocol.timepoints.forEach(t=>{
+    const row=a&&a.rows[t.id];
+    const lab=(row&&row._label)||t.label;
+    opts+='<option value="'+t.id+'">'+lab+(row?' ✓':'')+'</option>';
+  });
+  if(a) Object.keys(a.rows).forEach(rid=>{
+    if(App.protocol && App.protocol.timepoints.find(t=>t.id===rid)) return;
+    const row=a.rows[rid];
+    if(!row._event && !row._death) return;
+    opts+='<option value="'+rid+'">'+(row._death?'✝ ':'⚠ ')+(row._label||rid)+'</option>';
+  });
+  sel.innerHTML=opts;
+  const nextEmpty=(a&&App.protocol)?App.protocol.timepoints.find(t=>!a.rows[t.id]):null;
+  const prevStillEmpty = prev && a && !a.rows[prev] && [...sel.options].some(o=>o.value===prev);
+  if(advance && nextEmpty) sel.value=nextEmpty.id;
+  else if(prevStillEmpty) sel.value=prev;
+  else if(nextEmpty) sel.value=nextEmpty.id;
+  else if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
+}
+window.renderLiveTp=renderLiveTp;
+
+async function listLiveCameras(){
+  const sel=$('#liveCamSelect'); if(!sel) return;
+  try{
+    const devs=await navigator.mediaDevices.enumerateDevices();
+    const cams=devs.filter(x=>x.kind==='videoinput');
+    if(!cams.length) return;
+    const cur=sel.value;
+    sel.innerHTML=cams.map((c,i)=>'<option value="'+c.deviceId+'">'+(c.label||('Camera '+(i+1)))+'</option>').join('');
+    if(cur && cams.some(c=>c.deviceId===cur)) sel.value=cur;
+  }catch(e){}
+}
+
+async function startLive(deviceId){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){ toast('This browser cannot open the camera'); return false; }
+  if(!window.isSecureContext){ toast('Live camera needs the https:// address'); return false; }
+  stopLive();
+  const constraints = deviceId
+    ? {video:{deviceId:{exact:deviceId}, width:{ideal:1920}, height:{ideal:1080}}}
+    : {video:{facingMode:{ideal:'environment'}, width:{ideal:1920}, height:{ideal:1080}}};
+  try{ _liveStream=await navigator.mediaDevices.getUserMedia(constraints); }
+  catch(e){
+    try{ _liveStream=await navigator.mediaDevices.getUserMedia({video:true}); }
+    catch(e2){ const s=$('#liveStatus'); if(s) s.innerHTML='<span style="color:var(--alarm)">Camera unavailable:</span> '+e2.message; return false; }
+  }
+  const v=$('#liveVideo'); v.srcObject=_liveStream;
+  try{ const pr=v.play(); if(pr&&pr.catch) await pr.catch(()=>{}); }catch(e){}
+  await listLiveCameras();
+  v.style.display='block';
+  const cb=$('#liveCaptureBtn'); if(cb) cb.style.display='block';
+  const sb=$('#liveStartBtn'); if(sb) sb.style.display='none';
+  const stp=$('#liveStopBtn'); if(stp) stp.style.display='block';
+  const s=$('#liveStatus'); if(s) s.innerHTML='<span style="color:var(--trace)">Live.</span> Aim at the monitor; tap capture when the timepoint is due.';
+  renderLiveTp();
+  return true;
+}
+function stopLive(){
+  if(_liveStream){ _liveStream.getTracks().forEach(t=>t.stop()); _liveStream=null; }
+  const v=$('#liveVideo'); if(v){ try{v.srcObject=null;}catch(e){} v.style.display='none'; }
+  const cb=$('#liveCaptureBtn'); if(cb) cb.style.display='none';
+  const sb=$('#liveStartBtn'); if(sb) sb.style.display='block';
+  const stp=$('#liveStopBtn'); if(stp) stp.style.display='none';
+}
+window.startLive=startLive; window.stopLive=stopLive;
+
+/* THE one tap: grab current frame -> read -> save to the chosen timepoint. */
+async function liveCaptureNow(){
+  const v=$('#liveVideo');
+  if(!_liveStream || !v || !v.videoWidth){ toast('Start the live camera first'); return; }
+  const tpSel=$('#liveTp'); const tpId=tpSel?tpSel.value:'';
+  if(!tpId){ toast('Choose a timepoint first'); return; }
+  const tpLbl=(tpSel&&tpSel.selectedOptions[0])?tpSel.selectedOptions[0].textContent.replace(/✓/g,'').trim():tpId;
+  const c=$('#liveCanvas'); c.width=v.videoWidth; c.height=v.videoHeight;
+  c.getContext('2d').drawImage(v,0,0,c.width,c.height);
+  const img=c.toDataURL('image/jpeg',0.85);
+  _liveLastFrame=img;   // kept in memory for the Review button (not persisted)
+  const st=$('#liveStatus');
+  // No way to auto-read (Claude method with no key and no proxy): keep the
+  // frame and drop into manual entry so nothing is lost.
+  if(getOcrMethod()==='claude' && !getApiKey() && !PROXY_ON){
+    toast('No API key/proxy - opening manual entry with the captured frame');
+    openCapture(tpId, {}, img); return;
+  }
+  if(st) st.innerHTML='<span style="color:var(--trace-amber)">Reading '+tpLbl+'...</span>';
+  try{
+    let vitals={}, labs={}, seen='';
+    if(getOcrMethod()==='claude'){
+      const res=await detectAndExtract(img);
+      vitals=res.vitals||{}; labs=res.labs||{};
+      seen=(res.readouts||[]).map(r=>r.device==='istat'?(r.cartridge||'i-STAT'):r.device).join(' + ');
+    } else {
+      const fields=activeParams().map(p=>({key:p.key,label:p.label,unit:p.unit}));
+      const out=await extractFromPhoto(img, fields, mapMonitorText);
+      vitals=out.values||{};
+    }
+    const nV=Object.keys(vitals).length, nL=Object.keys(labs).length;
+    if(!nV && !nL){
+      if(st) st.innerHTML='<span style="color:var(--alarm)">No values read.</span> Get closer/steadier - opening manual entry.';
+      openCapture(tpId, {}, img);
+      return;
+    }
+    const info=commitReading({tpId, vitals, labs, img, source:'camera-ai'});
+    _liveUndo=info;
+    renderLiveTp(true);   // advance to the next empty timepoint
+    const parts=[]; if(nV) parts.push(nV+' vital'); if(nL) parts.push(nL+' lab');
+    const safeTp=String(tpId).replace(/[^A-Za-z0-9_-]/g,'');
+    if(st) st.innerHTML='<span style="color:var(--trace)">✓ Saved '+tpLbl+'</span> ('+parts.join(' + ')+(seen?', '+seen:'')+'). '
+      +'<button class="btn sm ghost" style="width:auto;padding:2px 8px;display:inline-block" onclick="liveReview(\''+safeTp+'\')">Review</button> '
+      +'<button class="btn sm ghost" style="width:auto;padding:2px 8px;display:inline-block" onclick="liveUndo()">Undo</button>';
+    toast('Saved '+tpLbl+' - '+parts.join(' + '));
+  }catch(err){
+    if(st) st.innerHTML='<span style="color:var(--alarm)">Read failed:</span> '+String(err&&err.message||err)+'. Opening manual entry.';
+    try{ if(window.showUploadError) showUploadError(err.message); }catch(e){}
+    openCapture(tpId, {}, img);
+  }
+}
+window.liveCaptureNow=liveCaptureNow;
+
+/* ============================================================
    SINGLE PHOTO UPLOADER (Timeline & Labs)
    One place for every photo. Detects monitor / ventilator / i-STAT
    (several at once), files vitals on the chosen timepoint and blood
@@ -4464,6 +4715,7 @@ function renderMainPhotoTp(){
   if(prevStillEmpty) sel.value=prev;
   else if(nextEmpty) sel.value=nextEmpty.id;
   else if(prev && [...sel.options].some(o=>o.value===prev)) sel.value=prev;
+  try{ renderLiveTp(); }catch(e){}   // keep the live-capture dropdown in step
 }
 window.renderMainPhotoTp = renderMainPhotoTp;
 
@@ -6105,6 +6357,12 @@ $('#selfTestFile') && $('#selfTestFile').addEventListener('change',e=>{
   e.target.value='';
 });
 $('#vitalPhoto') && $('#vitalPhoto').addEventListener('change',e=>{if(e.target.files[0])monitorPhotoToVitals(e.target.files[0]);});
+
+/* Live one-click capture wiring (added v5.3) */
+$('#liveStartBtn') && $('#liveStartBtn').addEventListener('click',()=>startLive($('#liveCamSelect')?$('#liveCamSelect').value:null));
+$('#liveStopBtn') && $('#liveStopBtn').addEventListener('click',stopLive);
+$('#liveCaptureBtn') && $('#liveCaptureBtn').addEventListener('click',liveCaptureNow);
+$('#liveCamSelect') && $('#liveCamSelect').addEventListener('change',e=>{ if(_liveStream) startLive(e.target.value); });
 
 let _pendingPhoto=null;
 let _pendingBothLabs=null;
