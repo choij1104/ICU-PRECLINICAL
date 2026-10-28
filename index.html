@@ -19,6 +19,14 @@
       during live capture, slightly larger .btn.sm buttons, a 44px modal
       close button, and larger run-clock stop/reset buttons. CSS only; no
       data, schema, clinical content, or sync code touched.
+  v5.5 (2026-10-28) - CBC (VetScan HM5) lab values. Core panel only: WBC,
+      NEU, LYM, Hgb_CBC, Hct_CBC, PLT. New "cbc" device in DEVICE_SCHEMAS so a
+      photo of the HM5 printout is read by detectAndExtract() and filed as lab
+      values on the selected timepoint (same a.labs path as i-STAT). CBC
+      hemoglobin/hematocrit use their own keys so they never overwrite the
+      i-STAT Hb/Hct. CBC keys are appended to the lab field list at runtime
+      (protocols saved with their own labFields gain them too). Additive only;
+      schema stays 3.2.
 -->
 <html lang="en">
 <head>
@@ -1838,6 +1846,12 @@ const DEFAULT_VITALS = [
 ];
 
 const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','BUN','Creatinine'];
+/* v5.5 CBC (VetScan HM5) core panel - appended, never replaces protocol fields */
+const CBC_LAB_FIELDS = ['WBC','NEU','LYM','Hgb_CBC','Hct_CBC','PLT'];
+function labFieldList(){
+  const base=(App&&App.protocol&&App.protocol.labFields&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
+  return base.concat(CBC_LAB_FIELDS.filter(f=>base.indexOf(f)<0));
+}
 
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
@@ -2617,6 +2631,12 @@ There may be TWO arterial pressure traces, each shown as sys/dia(MAP):
 If only ONE arterial pressure is displayed, treat it as the carotid line and return CAs/CAd/MAP only. Never invent the second one.`,
     extra:[]
   },
+  cbc: {
+    label:'VetScan HM5 CBC',
+    fields:['WBC','NEU','LYM','HGB','HCT','PLT'],
+    hint:`An Abaxis/Zoetis VetScan HM5 hematology printout (header "VetScan HM5", rows of analytes with value, unit and a reference bar). Read ONLY these rows and their value column: WBC (10^9/l), NEU (10^9/l, the absolute count - NOT NEU%), LYM (10^9/l, the absolute count - NOT LYM%), HGB (g/dl), HCT (%), PLT (10^9/l). Ignore the reference-range numbers next to the bars, the histograms, and the % rows. A trailing "-" or "+" after a value is an out-of-range flag, not part of the number. Also read animalId from the Patient ID field if present.`,
+    extra:['animalId']
+  },
   ventilator: {
     label:'Mindray ventilator (V60/A-series)',
     fields:['EtCO2','FiCO2','PEAK','PLAT','PEEP','Vt','RR','FiO2','MAC','MV'],
@@ -2715,6 +2735,20 @@ function parseJSONReply(data){
   catch(_){ const mm=str.match(/\{[\s\S]*\}/); return mm?JSON.parse(mm[0]):{}; }
 }
 
+/* v5.5 VetScan HM5 -> lab keys. Hgb/Hct get CBC-specific keys so the
+   i-STAT Hb/Hct at the same timepoint are never overwritten. */
+function mapCbcToLabFields(v){
+  const map={WBC:'WBC',NEU:'NEU',LYM:'LYM',HGB:'Hgb_CBC',HCT:'Hct_CBC',PLT:'PLT'};
+  const out={};
+  Object.entries(v||{}).forEach(([k,val])=>{
+    const kk=map[String(k).toUpperCase()];
+    if(!kk) return;
+    const n=(typeof val==='number')?val:parseFloat(String(val).replace(/[^0-9.\-]/g,''));
+    if(isFinite(n)) out[kk]=n;
+  });
+  return out;
+}
+
 async function detectAndExtract(imageDataURL){
   const key=getApiKey();
   if(!key && !PROXY_ON) throw new Error('No API key - enter it under Photo extraction (AI), or switch to Tesseract.');
@@ -2729,6 +2763,7 @@ It may show ONE device, or SEVERAL devices/readouts in the same frame. Common co
 - a patient monitor AND a ventilator screen photographed together
 - an i-STAT CG4+ result AND a CG8+ result side by side, or two printouts together
 - a monitor next to a printed lab result
+- a VetScan HM5 CBC printout on its own
 
 Possible devices:
 ${schemaText}
@@ -2736,12 +2771,12 @@ ${schemaText}
 Read EVERY device and EVERY cartridge visible. Do not stop after the first one.
 
 Return ONLY a JSON object (no prose, no markdown fences), shaped exactly:
-{"readouts":[{"device":"istat|monitor|ventilator","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}]}
+{"readouts":[{"device":"istat|monitor|ventilator|cbc","cartridge":"CG4+|CG8+ (istat only, else omit)","values":{<key>:<number|string>}}]}
 
 Rules:
 - One entry per distinct device, and one entry per distinct i-STAT cartridge.
 - If two i-STAT cartridges are visible, return TWO entries, each with its own cartridge name and values.
-- device MUST be one of: istat, monitor, ventilator.
+- device MUST be one of: istat, monitor, ventilator, cbc.
 - values keys use EXACTLY the field names listed for that device.
 - Numbers only (strip units). Blood pressure mean stays a plain number under MAP.
 - Omit any field you cannot read confidently. NEVER guess a value.
@@ -2770,6 +2805,7 @@ Rules:
   const vitals={}, labs={};
   readouts.forEach(rd=>{
     if(rd.device==='istat') Object.assign(labs, mapIstatToLabFields(rd.values));
+    else if(rd.device==='cbc') Object.assign(labs, mapCbcToLabFields(rd.values));
     else Object.assign(vitals, normalizeVitalKeys(rd.values));
   });
 
@@ -3453,7 +3489,8 @@ let TREND_MODE = 'animal';   // 'animal' | 'group'
 
 const LAB_UNITS={pH:'',pCO2:'mmHg',pO2:'mmHg',HCO3:'mmol/L',TCO2:'mmol/L',BE:'mmol/L',
   sO2:'%',Lactate:'mmol/L',Hb:'g/dL',Hct:'%',Na:'mmol/L',K:'mmol/L',Cl:'mmol/L',
-  Glucose:'mg/dL',iCa:'mmol/L',Creatinine:'mg/dL'};
+  Glucose:'mg/dL',iCa:'mmol/L',Creatinine:'mg/dL',
+  WBC:'10^9/L',NEU:'10^9/L',LYM:'10^9/L',Hgb_CBC:'g/dL',Hct_CBC:'%',PLT:'10^9/L'};
 
 function trendSeriesOptions(){
   const opts=[];
@@ -3461,8 +3498,7 @@ function trendSeriesOptions(){
   const a=getActiveAnimal();
   const labKeys=new Set();
   // every lab field the protocol defines, so the option exists before any data
-  const fields=(App.protocol&&App.protocol.labFields&&App.protocol.labFields.length)
-    ? App.protocol.labFields : DEFAULT_LAB_FIELDS;
+  const fields=labFieldList();
   fields.forEach(f=>labKeys.add('lab_'+f));
   if(a){
     Object.values(a.rows).forEach(r=>Object.keys(r).forEach(k=>{ if(k.startsWith('lab_')) labKeys.add(k); }));
@@ -5823,7 +5859,7 @@ let pendingLabImg=null;
 function populateLabFields(){}
 function openLabModal(imgData){
   pendingLabImg=imgData||null;
-  const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
+  const fields=labFieldList();
   $('#labPreview').innerHTML = imgData?`<img src="${imgData}" style="max-width:100%;border-radius:4px;border:1px solid var(--line)">`:'';
   $('#labFields').innerHTML = `<div class="grid3">`+fields.map(f=>{
     const u=(typeof LAB_UNITS!=='undefined'&&LAB_UNITS[f])?' <span style="text-transform:none;opacity:.7">('+LAB_UNITS[f]+')</span>':'';
@@ -5868,7 +5904,7 @@ async function runOCR(){
     ? `Reading photo with Claude...`
     : `Loading OCR engine... <div class="ocr-progress"><span id="ocrBar"></span></div>`;
   try{
-    const fields=((App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS).map(f=>({key:f}));
+    const fields=labFieldList().map(f=>({key:f}));
     const {values:matched}=await extractFromPhoto(pendingLabImg, fields, mapOcrText);
     fillOcrFields(matched);
     const n=Object.keys(matched).length;
@@ -5881,7 +5917,7 @@ async function runOCR(){
 }
 function mapOcrText(text){
   const out={};
-  const fields=(App.protocol&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
+  const fields=labFieldList();
   const lookup={};
   fields.forEach(f=>{
     lookup[f.toLowerCase()]=f;
