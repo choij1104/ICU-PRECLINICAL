@@ -27,6 +27,15 @@
       i-STAT Hb/Hct. CBC keys are appended to the lab field list at runtime
       (protocols saved with their own labFields gain them too). Additive only;
       schema stays 3.2.
+  v5.6 (2026-10-28) - H-CARE timepoint names follow the current paper form:
+      T3 -> "T2.5 - 30 min post REBOA inflation", T4 -> "T3 - 10 min post
+      REBOA deflation", T5..T8 -> "T4..T7". Internal ids (T0..T8) and every
+      stored row are unchanged, so earlier animals keep their data at the same
+      physiological point; only the display names move. Devices that saved the
+      old default names are relabelled once at load. Short tags now keep a
+      decimal (T2.5 no longer shows as T2). The per-animal trend x-axis lists
+      every protocol timepoint (T0 still follows the "include T0" switch), so
+      empty future timepoints keep their place. Additive; schema stays 3.2.
 -->
 <html lang="en">
 <head>
@@ -1967,14 +1976,29 @@ function demoProtocol(){
       {id:'T0', label:'T0 - Pre-Baseline (pre-op screen)', offsetMin:-30, tasks:['Pre-op CG4, CG8, CBC, CMP, ABG']},
       {id:'T1', label:'T1 - Baseline / Post stabilization', offsetMin:0, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
       {id:'T2', label:'T2 - 10 min post shock, pre REBOA', offsetMin:10, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
-      {id:'T3', label:'T3 - 30 min post REBOA inflation', offsetMin:40, tasks:['Record vitals + ventilator','CG4, CG8']},
-      {id:'T4', label:'T4 - 10 min post REBOA deflation', offsetMin:80, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
-      {id:'T5', label:'T5 - 1 hr post deflation', offsetMin:130, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
-      {id:'T6', label:'T6 - 2 hr post deflation', offsetMin:190, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
-      {id:'T7', label:'T7 - 3 hr post deflation', offsetMin:250, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
-      {id:'T8', label:'T8 - 4 hr post deflation (EOS)', offsetMin:310, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
+      {id:'T3', label:'T2.5 - 30 min post REBOA inflation', offsetMin:40, tasks:['Record vitals + ventilator','CG4, CG8']},
+      {id:'T4', label:'T3 - 10 min post REBOA deflation', offsetMin:80, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T5', label:'T4 - 1 hr post REBOA deflation', offsetMin:130, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T6', label:'T5 - 2 hr post deflation', offsetMin:190, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T7', label:'T6 - 3 hr post deflation', offsetMin:250, tasks:['Record vitals + ventilator','CG4, CG8','Coag, Plasma x5, Urine']},
+      {id:'T8', label:'T7 - 4 hr post deflation (EOS)', offsetMin:310, tasks:['Record vitals + ventilator','CG4, CG8','Chem, Coag, Plasma x5, Urine']},
     ]
   };
+}
+
+/* v5.6: relabel H-CARE default timepoint names saved by older versions
+   (ids and data unchanged). Only labels that still equal the old default
+   text are touched, so a name the user typed is never overwritten. */
+var HCARE_TP_RENAME={T3:['T3 - 30 min post REBOA inflation','T2.5 - 30 min post REBOA inflation'],
+  T4:['T4 - 10 min post REBOA deflation','T3 - 10 min post REBOA deflation'],
+  T5:['T5 - 1 hr post deflation','T4 - 1 hr post REBOA deflation'],
+  T6:['T6 - 2 hr post deflation','T5 - 2 hr post deflation'],
+  T7:['T7 - 3 hr post deflation','T6 - 3 hr post deflation'],
+  T8:['T8 - 4 hr post deflation (EOS)','T7 - 4 hr post deflation (EOS)']};
+function hcareRelabelTimepoints(p){
+  if(!p||!p.timepoints||!/H-CARE/i.test(p.name||'')) return 0;
+  var n=0; p.timepoints.forEach(function(t){ var r=HCARE_TP_RENAME[t.id]; if(r && t.label===r[0]){ t.label=r[1]; n++; } });
+  return n;
 }
 
 function loadProtocol(proto){
@@ -2208,7 +2232,7 @@ function renderTimeline(){
             : skipped
               ? ''
               : `<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${tp.id}</button>
+                 <button class="btn sm primary" onclick="openCapture('${tp.id}')">Record ${(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.id])[0]}</button>
                </div>`}
         </div>
       </div>`;
@@ -3667,7 +3691,7 @@ function groupTrendData(key){
     let p=null,test=null,F=null;
     if(names.length===2){ const w=_welch(byG[names[0]],byG[names[1]]); if(w){ p=w.p; test='t'; } }
     else if(names.length>=3){ const av=_anova(names.map(g=>stats[g])); if(av){ p=av.p; test='anova'; F=av.F; } }
-    const tag=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    const tag=(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
     rows.push({x: tp.offsetMin!=null?tp.offsetMin:i*10, tag, label:tp.label, stats, p, test, F});
   });
   return {rows, groups:Object.keys(groupSet)};
@@ -3774,7 +3798,7 @@ function trendSVG(pts, meta){
   const seenX=new Set();
   if(App.protocol) App.protocol.timepoints.forEach(tp=>{
     const off=tp.offsetMin!=null?tp.offsetMin:0;
-    const short=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    const short=(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
     axisPts.push({x:off, tag:short, full:tp.label, scheduled:true});
     seenX.add(off);
   });
@@ -4051,7 +4075,7 @@ function renderTpStrip(selectedId){
     const row=a.rows[tp.id];
     const done=!!row;
     usedIds.add(tp.id);
-    const short=(tp.label.match(/\bT\d+\b/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
+    const short=(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
     const cls=['tpchip'];
     if(done && row._death) cls.push('death');
     else if(done && row._event) cls.push('event');
@@ -5008,7 +5032,7 @@ function applySession(o){
     // if the saved protocol has no timepoints, fall back to the current one
     if(!App.protocol.timepoints || !App.protocol.timepoints.length){
       App.protocol.timepoints = cur?cur.timepoints:[];
-    }
+    }    try{ hcareRelabelTimepoints(App.protocol); }catch(e){}
   }
   App.animals=Array.isArray(o.animals)?o.animals:[];
   App.archivedAnimals=Array.isArray(o.archivedAnimals)?o.archivedAnimals:[];
@@ -6703,7 +6727,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     return {ticks:ticks,min:gmin,max:gmax,step:d}; }
   function fmtTick(v,step){ var d=step>=1?0:(step>=0.1?1:2); return (Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
   function animTag(p){ var L=String(p.label||''); if(p.death) return 'DEATH';
-    var mT=L.match(/\bT(\d+)\b/i); if(mT) return 'T'+mT[1];
+    var mT=L.match(/\bT(\d+(?:\.\d+)?)/i); if(mT) return 'T'+mT[1];
     var mM=L.match(/(\d+)\s*min/i); if(mM) return mM[1]+'m';
     var w=L.split(/[-–(]/)[0].trim(); return w.length>8?w.slice(0,8):(w||((p.x>=0?'+':'')+p.x+'m')); }
 
@@ -6765,7 +6789,21 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     if(!pts.length) return '<div class="empty" style="padding:14px">No data.</div>';
     var W=620,H=400,PL=80,PR=22,PT=34,PB=70;
     // X is CATEGORICAL: evenly-spaced timepoints by index.
-    var n=pts.length;
+    // v5.6: every protocol timepoint gets a slot (T0 follows the include-T0
+    // switch), so the axis is the same before and after data arrive. Points
+    // whose label is not a protocol timepoint (events, extra rows) are slotted
+    // in by run minute.
+    var cats=[];
+    try{
+      var P=(typeof App!=='undefined'&&App.protocol&&App.protocol.timepoints)||[];
+      P.forEach(function(t){ if(t.id==='T0' && !window.TREND_INCLUDE_T0) return; cats.push({label:t.label, x:(t.offsetMin!=null?t.offsetMin:0), tag:animTag({label:t.label})}); });
+    }catch(e){ cats=[]; }
+    pts.forEach(function(p){
+      var ci=-1; for(var k=0;k<cats.length;k++){ if(cats[k].label===p.label){ ci=k; break; } }
+      if(ci<0){ var ins=cats.length; for(var k2=0;k2<cats.length;k2++){ if(cats[k2].x>p.x){ ins=k2; break; } } cats.splice(ins,0,{label:p.label, x:p.x, tag:animTag(p), extra:true}); }
+    });
+    pts.forEach(function(p){ for(var k=0;k<cats.length;k++){ if(cats[k].label===p.label){ p._ci=k; return; } } p._ci=0; });
+    var n=cats.length;
     var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
     var ys=pts.map(function(p){return p.y;});
     var nt=niceTicks(Math.min.apply(null,ys),Math.max.apply(null,ys),6), yMin=nt.min, yMax=nt.max;
@@ -6774,19 +6812,19 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
       s+='<line x1="'+(PL-6)+'" y1="'+y.toFixed(1)+'" x2="'+PL+'" y2="'+y.toFixed(1)+'" stroke="#000" stroke-width="1.2"/>';
       s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
-    var rotate=n>6;
-    pts.forEach(function(p,i){ var x=xAt(i);
+    var rotate=n>10;
+    cats.forEach(function(c,i){ var x=xAt(i);
       s+='<line x1="'+x.toFixed(1)+'" y1="'+(H-PB)+'" x2="'+x.toFixed(1)+'" y2="'+(H-PB+6)+'" stroke="#000" stroke-width="1.2"/>';
       var ty=H-PB+(rotate?15:18);
       s+= rotate
-        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(animTag(p))+'</text>'
-        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(animTag(p))+'</text>'; });
+        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(c.tag)+'</text>'
+        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(c.tag)+'</text>'; });
     s+='<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
     s+='<line x1="'+PL+'" y1="'+(H-PB)+'" x2="'+(W-PR)+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
-    var path=pts.map(function(p,i){ return (i?'L':'M')+xAt(i).toFixed(1)+','+sy(p.y).toFixed(1); }).join(' ');
+    var path=pts.map(function(p,i){ return (i?'L':'M')+xAt(p._ci).toFixed(1)+','+sy(p.y).toFixed(1); }).join(' ');
     s+='<path d="'+path+'" fill="none" stroke="#2b6cb0" stroke-width="1.8"/>';
     pts.forEach(function(p,i){ var c=p.death?'#c0392b':(p.event?'#d5a021':'#2b6cb0');
-      s+='<circle cx="'+xAt(i).toFixed(1)+'" cy="'+sy(p.y).toFixed(1)+'" r="'+((p.death||p.event)?4.2:3.4)+'" fill="'+c+'" stroke="#fff" stroke-width="0.6"/>'; });
+      s+='<circle cx="'+xAt(p._ci).toFixed(1)+'" cy="'+sy(p.y).toFixed(1)+'" r="'+((p.death||p.event)?4.2:3.4)+'" fill="'+c+'" stroke="#fff" stroke-width="0.6"/>'; });
     var yc=((PT+(H-PB))/2).toFixed(1);
     var yTitle=esc(meta.label)+(meta.unit?' ('+esc(meta.unit)+')':'');
     s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
