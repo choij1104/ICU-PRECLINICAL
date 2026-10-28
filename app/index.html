@@ -36,6 +36,9 @@
       decimal (T2.5 no longer shows as T2). The per-animal trend x-axis lists
       every protocol timepoint (T0 still follows the "include T0" switch), so
       empty future timepoints keep their place. Additive; schema stays 3.2.
+  v5.6.1 (2026-10-28) - Every trend y-axis now includes 0 (starts at 0 for
+      positive data; negative values such as BE still show below 0). Interim
+      choice by JC; per-parameter ranges to follow. Display only.
 -->
 <html lang="en">
 <head>
@@ -3830,6 +3833,8 @@ function trendSVG(pts, meta){
   if(xMax===xMin){ xMax=xMin+1; }
   const pad=(yMax-yMin)*0.15 || (Math.abs(yMax)*0.1 || 1);
   yMin-=pad; yMax+=pad;
+  // v5.6.1: y-axis always includes 0
+  if(yMin>0) yMin=0; if(yMax<0) yMax=0;
   const sx=v=>PL+((v-xMin)/(xMax-xMin))*(W-PL-PR);
   const sy=v=>PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB);
   const line=pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
@@ -6742,7 +6747,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
     var yv=[]; rows.forEach(function(r){ groups.forEach(function(g){ var s=r.stats[g]; if(s){ var e=isNaN(s.sem)?0:s.sem; yv.push(s.mean+e); yv.push(s.mean-e); } }); });
     if(!yv.length) return '<div class="empty" style="padding:14px">No group data.</div>';
-    var nt=niceTicks(Math.min.apply(null,yv),Math.max.apply(null,yv),6), yMin=nt.min, yMax=nt.max;
+    var nt=niceTicks(Math.min(0,Math.min.apply(null,yv)),Math.max(0,Math.max.apply(null,yv)),6), yMin=nt.min, yMax=nt.max;
     var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
@@ -6806,7 +6811,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var n=cats.length;
     var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
     var ys=pts.map(function(p){return p.y;});
-    var nt=niceTicks(Math.min.apply(null,ys),Math.max.apply(null,ys),6), yMin=nt.min, yMax=nt.max;
+    var nt=niceTicks(Math.min(0,Math.min.apply(null,ys)),Math.max(0,Math.max.apply(null,ys)),6), yMin=nt.min, yMax=nt.max;
     var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
