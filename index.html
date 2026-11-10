@@ -67,6 +67,13 @@
       one-way ANOVA + Tukey HSD (3+ groups) recompute for the ticked groups
       only. Groups made only of demo animals start unticked. The choice is
       remembered on this device and also applies to the PNG export.
+  v5.10 (2026-11-10) - Legend keys on group trends are clickable (on the plot
+      and above it) and switch that group on/off, with statistics
+      recomputed. A manuscript-style statistical report (Methods + Results
+      prose, English) is written automatically at the bottom of the group
+      Trends page from the current groups and parameters, with a Copy button.
+      Larger text on the group Trends page: tables, legends, notes, the
+      report and the text inside the plots (about +3 px) for readability.
 -->
 <html lang="en">
 <head>
@@ -442,7 +449,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.9</small>
+      Auravyx Preclinical <small>Current &middot; v5.10</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -613,7 +620,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.9
+        Auravyx Preclinical &middot; v5.10
       </div>
     </main>
 
@@ -3707,6 +3714,13 @@ function setAllTrendGroups(on){
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
   renderTrends();
 }
+function toggleTrendGroupName(enc){
+  const g=decodeURIComponent(enc);
+  TREND_GROUP_STATE[g]=!trendGroupActive(g);
+  try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
+  renderTrends();
+}
+window.toggleTrendGroupName=toggleTrendGroupName;
 window.trendGroupActive=trendGroupActive; window.toggleTrendGroup=toggleTrendGroup; window.setAllTrendGroups=setAllTrendGroups;
 function _mean(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
 function _sd(a){ if(a.length<2) return NaN; const m=_mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1)); }
@@ -3755,11 +3769,11 @@ function groupTrendData(key){
     const names=Object.keys(byG);
     if(!names.length) return;
     const stats={}; names.forEach(g=>{ groupSet[g]=true; stats[g]={n:byG[g].length, mean:_mean(byG[g]), sem:_sem(byG[g]), sd:_sd(byG[g])}; });
-    let p=null,test=null,F=null;
-    if(names.length===2){ const w=_welch(byG[names[0]],byG[names[1]]); if(w){ p=w.p; test='t'; } }
-    else if(names.length>=3){ const av=_anova(names.map(g=>stats[g])); if(av){ p=av.p; test='anova'; F=av.F; } }
+    let p=null,test=null,F=null,T=null,df1=null,df2=null;
+    if(names.length===2){ const w=_welch(byG[names[0]],byG[names[1]]); if(w){ p=w.p; test='t'; T=w.t; df2=w.df; } }
+    else if(names.length>=3){ const av=_anova(names.map(g=>stats[g])); if(av){ p=av.p; test='anova'; F=av.F; df1=av.df1; df2=av.df2; } }
     const tag=(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
-    rows.push({x: tp.offsetMin!=null?tp.offsetMin:i*10, tag, label:tp.label, stats, p, test, F});
+    rows.push({x: tp.offsetMin!=null?tp.offsetMin:i*10, tag, label:tp.label, stats, p, test, F, T, df1, df2});
   });
   return {rows, groups:Object.keys(groupSet)};
 }
@@ -3809,7 +3823,7 @@ function renderGroupTrends(host){
   window._trendGroupList=allGroups;
   const escG=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   const nOn=allGroups.filter(trendGroupActive).length;
-  html+=`<div class="card" style="padding:10px 12px"><div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px">Groups to compare <span style="font-weight:400;text-transform:none">(${nOn} of ${allGroups.length} ticked - statistics use ticked groups only)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">`+
+  html+=`<div class="card" style="padding:10px 12px"><div style="font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px">Groups to compare <span style="font-weight:400;text-transform:none">(${nOn} of ${allGroups.length} ticked - statistics use ticked groups only)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">`+
     allGroups.map((g,i)=>{ const on=trendGroupActive(g); const n=(App.animals||[]).filter(a=>groupOf(a)===g).length;
       return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto;min-height:36px;${on?`background:${colorMap[g]};border-color:${colorMap[g]}`:''}" onclick="toggleTrendGroup(${i})">${on?'&#10003; ':''}${escG(g)} <span style="opacity:.75">(n=${n})</span></button>`; }).join('')+
     `<button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(true)">All</button><button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(false)">None</button></div>`+
@@ -3817,34 +3831,101 @@ function renderGroupTrends(host){
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
     const data=groupTrendData(key);
-    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b style="font-size:13px">${meta.label}</b><span style="display:flex;align-items:center;gap:8px"><span class="hint" style="margin:0">mean &plusmn; SEM${meta.unit?' &middot; '+meta.unit:''}</span><button class="btn sm" style="width:auto" onclick="downloadTrendPNG('group','${key}')" title="Download this graph as a 300 dpi PNG for figures">&#8623;&nbsp;PNG</button></span></div>`;
+    html+=`<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px"><b style="font-size:16px">${meta.label}</b><span style="display:flex;align-items:center;gap:8px"><span class="hint" style="margin:0">mean &plusmn; SEM${meta.unit?' &middot; '+meta.unit:''}</span><button class="btn sm" style="width:auto" onclick="downloadTrendPNG('group','${key}')" title="Download this graph as a 300 dpi PNG for figures">&#8623;&nbsp;PNG</button></span></div>`;
     if(!data.rows.length){ html+=`<div class="empty" style="padding:14px">No group data yet for ${meta.label}.</div></div>`; return; }
     // legend
-    html+=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:11px">`+
-      data.groups.map(g=>`<span style="display:inline-flex;align-items:center;gap:4px"><span style="width:10px;height:10px;border-radius:2px;background:${colorMap[g]||'#888'};display:inline-block"></span>${g}</span>`).join('')+`</div>`;
+    html+=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:14px">`+
+      allGroups.map(g=>{ const on=trendGroupActive(g); return `<span role="button" tabindex="0" title="Click to ${on?'hide':'show'} this group" onclick="toggleTrendGroupName('${encodeURIComponent(g)}')" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:6px 8px;border-radius:6px;border:1px solid var(--line);${on?'':'opacity:.45;text-decoration:line-through'}"><span style="width:10px;height:10px;border-radius:2px;background:${colorMap[g]||'#888'};display:inline-block"></span>${escG(g)}</span>`; }).join('')+`</div>`;
     html+= (window.pubGroupPlotSVG?`<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px">`+window.pubGroupPlotSVG(data, meta, colorMap)+`</div>`:groupTrendSVG(data, meta, colorMap));
     // stats table
     const showP=data.groups.length>=2;
-    html+=`<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:11px">`;
-    html+=`<thead><tr><th style="text-align:left;padding:4px 6px;border-bottom:1px solid var(--line)">Timepoint</th>`+
-      data.groups.map(g=>`<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);color:${colorMap[g]||'inherit'}">${g}<br><span style="font-weight:400;font-size:9px;color:var(--ink-faint)">mean&plusmn;SEM (n)</span></th>`).join('')+
-      (showP?`<th style="text-align:right;padding:4px 6px;border-bottom:1px solid var(--line)">p</th>`:``)+`</tr></thead><tbody>`;
+    html+=`<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:14px">`;
+    html+=`<thead><tr><th style="text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)">Timepoint</th>`+
+      data.groups.map(g=>`<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--line);color:${colorMap[g]||'inherit'}">${g}<br><span style="font-weight:400;font-size:12px;color:var(--ink-faint)">mean&plusmn;SEM (n)</span></th>`).join('')+
+      (showP?`<th style="text-align:right;padding:6px 8px;border-bottom:1px solid var(--line)">p</th>`:``)+`</tr></thead><tbody>`;
     data.rows.forEach(r=>{
-      html+=`<tr><td style="padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee)" title="${r.label}">${r.tag}</td>`+
-        data.groups.map(g=>{ const s=r.stats[g]; return `<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${s?`${_fmt(s.mean,1)}±${_fmt(s.sem,1)} (${s.n})`:'—'}</td>`; }).join('')+
-        (showP?`<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${r.p==null?'—':(r.p<0.001?'<0.001':_fmt(r.p,3))} <b style="color:var(--alarm)">${_stars(r.p)}</b></td>`:``)+`</tr>`;
+      html+=`<tr><td style="padding:5px 8px;border-bottom:1px solid var(--line-soft,#eee)" title="${r.label}">${r.tag}</td>`+
+        data.groups.map(g=>{ const s=r.stats[g]; return `<td style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${s?`${_fmt(s.mean,1)}±${_fmt(s.sem,1)} (${s.n})`:'—'}</td>`; }).join('')+
+        (showP?`<td style="text-align:right;padding:5px 8px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">${r.p==null?'—':(r.p<0.001?'<0.001':_fmt(r.p,3))} <b style="color:var(--alarm)">${_stars(r.p)}</b></td>`:``)+`</tr>`;
     });
     html+=`</tbody></table>`;
     const gc=data.groups.length;
-    if(gc===2) html+=`<div class="hint" style="margin-top:4px;font-size:10px">Welch two-sample t-test per timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div>`;
-    else if(gc>=3) html+=`<div class="hint" style="margin-top:4px;font-size:10px">One-way ANOVA (F-test) per timepoint across ${gc} groups. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001. Pairwise Tukey HSD post-hoc shown below.</div>`;
-    else html+=`<div class="hint" style="margin-top:4px;font-size:10px">Only one group present - add a second treatment arm to compare.</div>`;
+    if(gc===2) html+=`<div class="hint" style="margin-top:4px;font-size:13px">Welch two-sample t-test per timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div>`;
+    else if(gc>=3) html+=`<div class="hint" style="margin-top:4px;font-size:13px">One-way ANOVA (F-test) per timepoint across ${gc} groups. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001. Pairwise Tukey HSD post-hoc shown below.</div>`;
+    else html+=`<div class="hint" style="margin-top:4px;font-size:13px">Only one group present - add a second treatment arm to compare.</div>`;
     if(gc>=3) html+= (window.tukeyTableHTML?window.tukeyTableHTML(data, colorMap):'');
     html+=`</div></div>`;
   });
+  try{ html+=statsReportHTML(opts); }catch(e){ console.error('stats report',e); }
   host.innerHTML=html;
 }
 window.renderGroupTrends = renderGroupTrends;
+
+/* v5.10 manuscript-style statistical report (English prose) from the current
+   group selection and parameters. Descriptive and test values come from the
+   same groupTrendData() used for the plots and tables. */
+function _pTxt(p){ return p==null||isNaN(p)?'not computed':(p<0.001?'p < 0.001':'p = '+(Math.round(p*1000)/1000).toFixed(3)); }
+function _num(x,d){ return (x==null||isNaN(x))?'n/a':_fmt(x,d); }
+function statsReport(opts){
+  const groups=[...new Set((App.animals||[]).map(groupOf))].filter(trendGroupActive);
+  const nBy={}; groups.forEach(g=>{ nBy[g]=(App.animals||[]).filter(a=>groupOf(a)===g && !a._demo).length || (App.animals||[]).filter(a=>groupOf(a)===g).length; });
+  const k=groups.length;
+  if(!TREND_SEL.length||k<1) return null;
+  const minN=Math.min.apply(null, groups.map(g=>nBy[g]));
+  const gList=groups.map(g=>g+' (n = '+nBy[g]+')');
+  const joinList=a=>a.length<=1?a.join(''):a.slice(0,-1).join(', ')+(a.length>2?',':'')+' and '+a[a.length-1];
+  let methods='Statistical analysis. Data are presented as mean ± standard error of the mean (SEM). '+
+    (k===1?'Only one group ('+gList[0]+') was selected, so no between-group comparison was made. ':
+    'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
+    (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
+    '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
+    'Analyses were performed in Auravyx Preclinical (v5.10).';
+  const results=[];
+  TREND_SEL.forEach(key=>{
+    const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
+    const data=groupTrendData(key); if(!data.rows.length) return;
+    const unit=meta.unit?(' '+meta.unit):'';
+    const lab=String(meta.label).replace(/ \(lab\)$/,'');
+    const desc=(r)=>data.groups.map(g=>{ const s=r.stats[g]; return s?(g+', '+_num(s.mean,s.mean<10?2:1)+(s.n>1&&!isNaN(s.sem)?' ± '+_num(s.sem,s.mean<10?2:1):'')+unit+(s.n>1?'':' (single animal)')):null; }).filter(Boolean).join('; ');
+    const statTxt=(r)=> r.test==='anova' ? 'F('+r.df1+', '+r.df2+') = '+_num(r.F,2)+', '+_pTxt(r.p) : r.test==='t' ? 't('+_num(r.df2,1)+') = '+_num(r.T,2)+', '+_pTxt(r.p) : _pTxt(r.p);
+    let para=lab+'. ';
+    const base=data.rows.find(r=>/^T1$/i.test(r.tag))||data.rows[0];
+    if(k>=2){
+      para+='At '+base.tag+' ('+String(base.label).replace(/^T[\d.]+\s*-\s*/,'')+'), values were '+desc(base)+' ('+statTxt(base)+(base.p!=null&&base.p<0.05?'; groups differed at this timepoint':'')+'). ';
+      const sig=data.rows.filter(r=>r.p!=null && r.p<0.05);
+      const tested=data.rows.filter(r=>r.p!=null);
+      if(!tested.length) para+='Between-group tests could not be computed at any timepoint (fewer than two values per group). ';
+      else if(!sig.length){ const mn=tested.reduce((a,b)=>b.p<a.p?b:a); para+='No statistically significant between-group difference was detected at any timepoint (lowest '+_pTxt(mn.p)+' at '+mn.tag+'). '; }
+      else {
+        para+='Between-group differences were significant at '+joinList(sig.map(r=>r.tag+' ('+statTxt(r)+')'))+'. ';
+        if(k>=3 && window.tukeyPairs){ sig.forEach(r=>{ const pres=data.groups.filter(g=>r.stats[g]); const tk=tukeyPairs(r.stats,pres); if(!tk) return; const sp=tk.pairs.filter(x=>x.p<0.05); para+= sp.length? ('At '+r.tag+', Tukey HSD showed '+joinList(sp.map(x=>x.a+' vs '+x.b+' ('+_pTxt(x.p)+')'))+'. ') : ('At '+r.tag+', no pairwise comparison reached significance after Tukey adjustment. '); }); }
+      }
+    }
+    // peaks
+    const peaks=data.groups.map(g=>{ let best=null; data.rows.forEach(r=>{ const s=r.stats[g]; if(s && (best==null||s.mean>best.m)) best={m:s.mean,tag:r.tag}; }); return best?(g+' '+_num(best.m,best.m<10?2:1)+unit+' at '+best.tag):null; }).filter(Boolean);
+    if(peaks.length) para+='The highest group mean was '+joinList(peaks)+'.';
+    results.push(para);
+  });
+  const caveat = minN<3 ? 'With '+(minN===1?'a single animal':'only '+minN+' animals')+' in the smallest group, these comparisons have low statistical power and should be regarded as exploratory; the absence of a significant difference does not indicate equivalence.' : '';
+  return {methods, results, caveat};
+}
+function statsReportHTML(opts){
+  const r=statsReport(opts); if(!r) return '';
+  const esc=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const text=[r.methods,'',...r.results.flatMap(p=>[p,''])].concat(r.caveat?[r.caveat]:[]).join('\n').trim();
+  window._statsReportText=text;
+  return `<div class="card" id="statsReport"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><b style="font-size:16px">Statistical report (manuscript draft)</b><button class="btn sm" style="width:auto" onclick="copyStatsReport()">Copy text</button></div>`+
+    `<div style="font-size:16px;line-height:1.65;color:var(--ink)"><p style="margin:0 0 10px"><i>Methods.</i> ${esc(r.methods)}</p><p style="margin:0 0 6px"><i>Results.</i></p>`+
+    r.results.map(p=>`<p style="margin:0 0 10px">${esc(p)}</p>`).join('')+(r.caveat?`<p style="margin:0;color:var(--ink-dim)">${esc(r.caveat)}</p>`:'')+
+    `</div><div class="hint" style="margin-top:8px;font-size:13px">Written automatically from the groups ticked above and the parameters selected. Check every number against the tables before using it in a manuscript.</div></div>`;
+}
+function copyStatsReport(){
+  const t=window._statsReportText||''; if(!t) return;
+  const done=()=>toast('Report copied');
+  try{ navigator.clipboard.writeText(t).then(done,()=>{ fallback(); }); }catch(e){ fallback(); }
+  function fallback(){ const ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta); ta.select(); try{ document.execCommand('copy'); done(); }catch(e){} ta.remove(); }
+}
+window.statsReport=statsReport; window.copyStatsReport=copyStatsReport;
 function setTrendMode(m){ TREND_MODE=m; const A=$('#trendModeAnimal'),G=$('#trendModeGroup'); if(A)A.className='btn sm '+(m==='animal'?'primary':'ghost'); if(G)G.className='btn sm '+(m==='group'?'primary':'ghost'); if(A)A.style.width='auto'; if(G)G.style.width='auto'; renderTrends(); }
 window.setTrendMode = setTrendMode;
 
@@ -6888,7 +6969,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
   function pubGroupPlotSVG(data,meta,colorMap){
     var rows=data.rows, groups=data.groups;
     if(!rows||!rows.length) return '<div class="empty" style="padding:14px">No group data.</div>';
-    var W=620,H=440,PL=82,PR=22,PT=58,PB=72;
+    var W=620,H=460,PL=82,PR=22,PT=80,PB=72;
     // X is CATEGORICAL: timepoints are evenly spaced by index, so every
     // parameter's graph shares the same x layout and the axes line up.
     var n=rows.length;
@@ -6900,14 +6981,14 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
       s+='<line x1="'+(PL-6)+'" y1="'+y.toFixed(1)+'" x2="'+PL+'" y2="'+y.toFixed(1)+'" stroke="#000" stroke-width="1.2"/>';
-      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
+      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="14" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
     var rotate=n>6;
     rows.forEach(function(r,i){ var x=xAt(i);
       s+='<line x1="'+x.toFixed(1)+'" y1="'+(H-PB)+'" x2="'+x.toFixed(1)+'" y2="'+(H-PB+6)+'" stroke="#000" stroke-width="1.2"/>';
       var ty=H-PB+(rotate?15:18);
       s+= rotate
-        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(r.tag)+'</text>'
-        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(r.tag)+'</text>'; });
+        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="16" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(r.tag)+'</text>'
+        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="14" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(r.tag)+'</text>'; });
     s+='<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
     s+='<line x1="'+PL+'" y1="'+(H-PB)+'" x2="'+(W-PR)+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
     groups.forEach(function(g,gi){ var col=colorMap[g]||'#333';
@@ -6922,16 +7003,18 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
           s+='<line x1="'+(x-3.5).toFixed(1)+'" y1="'+yb.toFixed(1)+'" x2="'+(x+3.5).toFixed(1)+'" y2="'+yb.toFixed(1)+'" stroke="'+col+'" stroke-width="1.3"/>'; }
         s+='<circle cx="'+x.toFixed(1)+'" cy="'+sy(p.m).toFixed(1)+'" r="3.4" fill="'+col+'" stroke="#fff" stroke-width="0.6"/>'; });
     });
-    rows.forEach(function(r,i){ var st=stars(r.p); if(st){ s+='<text x="'+xAt(i).toFixed(1)+'" y="'+(PT-4)+'" text-anchor="middle" font-size="13" fill="#000" font-weight="700">'+st+'</text>'; } });
+    rows.forEach(function(r,i){ var st=stars(r.p); if(st){ s+='<text x="'+xAt(i).toFixed(1)+'" y="'+(PT-4)+'" text-anchor="middle" font-size="16" fill="#000" font-weight="700">'+st+'</text>'; } });
     var yc=((PT+(H-PB))/2).toFixed(1);
     var yTitle=esc(meta.label)+(meta.unit?' ('+esc(meta.unit)+')':'');
-    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
-    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
+    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="15" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
+    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="15" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
     var lx=PL, ly=30;
-    groups.forEach(function(g){ var col=colorMap[g]||'#333';
+    groups.forEach(function(g){ var col=colorMap[g]||'#333'; var wTxt=30 + (String(g).length*8.2);
+      if(lx>PL && lx+wTxt>W-PR){ lx=PL; ly+=22; }   // wrap long legends onto a second line
+      s+='<g style="cursor:pointer" onclick="toggleTrendGroupName(\''+encodeURIComponent(g)+'\')"><title>Click to hide this group</title><rect x="'+(lx-3)+'" y="'+(ly-9)+'" width="'+(wTxt+4)+'" height="18" fill="#fff" fill-opacity="0"/>';
       s+='<line x1="'+lx+'" y1="'+ly+'" x2="'+(lx+18)+'" y2="'+ly+'" stroke="'+col+'" stroke-width="2"/><circle cx="'+(lx+9)+'" cy="'+ly+'" r="3.2" fill="'+col+'"/>';
-      s+='<text x="'+(lx+24)+'" y="'+(ly+4)+'" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(g)+'</text>';
-      lx += 30 + (String(g).length*6.4) + 16; });
+      s+='<text x="'+(lx+24)+'" y="'+(ly+4)+'" font-size="14" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(g)+'</text></g>';
+      lx += wTxt + 16; });
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:block;background:#fff">'+s+'</svg>';
   }
   window.pubGroupPlotSVG=pubGroupPlotSVG;
@@ -6964,14 +7047,14 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
       s+='<line x1="'+(PL-6)+'" y1="'+y.toFixed(1)+'" x2="'+PL+'" y2="'+y.toFixed(1)+'" stroke="#000" stroke-width="1.2"/>';
-      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
+      s+='<text x="'+(PL-9)+'" y="'+(y+3.6).toFixed(1)+'" text-anchor="end" font-size="14" fill="#000" font-family="Arial,Helvetica,sans-serif">'+fmtTick(v,nt.step)+'</text>'; });
     var rotate=n>10;
     cats.forEach(function(c,i){ var x=xAt(i);
       s+='<line x1="'+x.toFixed(1)+'" y1="'+(H-PB)+'" x2="'+x.toFixed(1)+'" y2="'+(H-PB+6)+'" stroke="#000" stroke-width="1.2"/>';
       var ty=H-PB+(rotate?15:18);
       s+= rotate
-        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="10.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(c.tag)+'</text>'
-        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="11" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(c.tag)+'</text>'; });
+        ? '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="end" font-size="16" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-45 '+x.toFixed(1)+' '+ty+')">'+esc(c.tag)+'</text>'
+        : '<text x="'+x.toFixed(1)+'" y="'+ty+'" text-anchor="middle" font-size="14" fill="#000" font-family="Arial,Helvetica,sans-serif">'+esc(c.tag)+'</text>'; });
     s+='<line x1="'+PL+'" y1="'+PT+'" x2="'+PL+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
     s+='<line x1="'+PL+'" y1="'+(H-PB)+'" x2="'+(W-PR)+'" y2="'+(H-PB)+'" stroke="#000" stroke-width="1.5"/>';
     var path=pts.map(function(p,i){ return (i?'L':'M')+xAt(p._ci).toFixed(1)+','+sy(p.y).toFixed(1); }).join(' ');
@@ -6980,8 +7063,8 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
       s+='<circle cx="'+xAt(p._ci).toFixed(1)+'" cy="'+sy(p.y).toFixed(1)+'" r="'+((p.death||p.event)?4.2:3.4)+'" fill="'+c+'" stroke="#fff" stroke-width="0.6"/>'; });
     var yc=((PT+(H-PB))/2).toFixed(1);
     var yTitle=esc(meta.label)+(meta.unit?' ('+esc(meta.unit)+')':'');
-    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
-    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="12.5" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
+    s+='<text x="16" y="'+yc+'" text-anchor="middle" font-size="15" fill="#000" font-family="Arial,Helvetica,sans-serif" transform="rotate(-90 16 '+yc+')">'+yTitle+'</text>';
+    s+='<text x="'+((PL+(W-PR))/2).toFixed(1)+'" y="'+(H-12)+'" text-anchor="middle" font-size="15" fill="#000" font-family="Arial,Helvetica,sans-serif">Timepoint</text>';
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'" style="width:100%;height:auto;display:block;background:#fff">'+s+'</svg>';
   }
   window.pubAnimalPlotSVG=pubAnimalPlotSVG;
@@ -7001,9 +7084,9 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
         return '<td style="text-align:right;padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee);font-family:var(--mono,monospace)">'+val+'</td>'; }).join('');
       body+='<tr><td style="padding:3px 6px;border-bottom:1px solid var(--line-soft,#eee)" title="'+esc(r.label)+'">'+esc(r.tag)+'</td>'+cells+'</tr>';
     });
-    return '<div style="overflow-x:auto;margin-top:10px"><div style="font-size:11px;font-weight:600;margin-bottom:3px">Post-hoc: Tukey HSD (pairwise, adjusted p)</div>'+
-      '<table style="width:100%;border-collapse:collapse;font-size:11px"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'+
-      '<div class="hint" style="margin-top:4px;font-size:10px">Tukey HSD controls family-wise error across all pairs at each timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div></div>';
+    return '<div style="overflow-x:auto;margin-top:10px"><div style="font-size:14px;font-weight:600;margin-bottom:3px">Post-hoc: Tukey HSD (pairwise, adjusted p)</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:14px"><thead>'+head+'</thead><tbody>'+body+'</tbody></table>'+
+      '<div class="hint" style="margin-top:4px;font-size:13px">Tukey HSD controls family-wise error across all pairs at each timepoint. * p&lt;0.05, ** p&lt;0.01, *** p&lt;0.001.</div></div>';
   };
 
   /* --- rasterize an SVG string to a PNG at 300 dpi and download it --- */
@@ -7035,7 +7118,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
         if(!data.rows.length){ if(window.toast)toast('No group data to export'); return; }
         var allGroups=Array.from(new Set((App.animals||[]).map(window.groupOf)));
         var cmap={}; allGroups.forEach(function(g,i){ cmap[g]=GCOLORS[i%GCOLORS.length]; });
-        svg=pubGroupPlotSVG(data,meta,cmap); W=620; H=440; safe+='_group';
+        svg=pubGroupPlotSVG(data,meta,cmap); W=620; H=460; safe+='_group';
       } else {
         var pts=window.trendPoints(key);
         if(!pts||!pts.length){ if(window.toast)toast('No data to export'); return; }
