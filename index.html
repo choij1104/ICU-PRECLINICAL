@@ -39,6 +39,17 @@
   v5.6.1 (2026-10-28) - Every trend y-axis now includes 0 (starts at 0 for
       positive data; negative values such as BE still show below 0). Interim
       choice by JC; per-parameter ranges to follow. Display only.
+  v5.7 (2026-11-10) - Full lab panels and ECG strips, so every printout the
+      lab sends can be filed. (1) Chemistry panel (VetScan VS2 Comprehensive
+      Diagnostic): ALB, ALP, ALT, AMY, TBIL, PHOS, TP, GLOB, plus the VS2 BUN,
+      Ca, Crea, Glu, Na, K under their own *_chem keys so they never overwrite
+      the i-STAT values. (2) Full VetScan HM5 CBC: MON, LYM/MON/NEU %, RBC,
+      MCV, MCH, MCHC, RDWc, RDWs, MPV, PCT, PDWc, PDWs (core v5.5 keys kept).
+      (3) i-STAT Chem8 AnGap and Chem8 TCO2 (TCO2_Chem8). (4) ECG / monitor
+      strip records per animal (a.ecg[]: time, label, HR, SpO2, PI, PR, Art,
+      P1, T1, PVCs, Pauses, SVCs, VPBs, Couplets, Missed beats, R-on-T, PPV),
+      shown as a table under Labs and included in JSON export. Additive only;
+      schema stays 3.2; existing keys and records unchanged.
 -->
 <html lang="en">
 <head>
@@ -414,7 +425,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.4</small>
+      Auravyx Preclinical <small>Current &middot; v5.7</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -584,7 +595,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.4
+        Auravyx Preclinical &middot; v5.7
       </div>
     </main>
 
@@ -691,6 +702,7 @@
         <input type="file" id="labFile" class="hidden-file" accept="image/*">
         <div class="hint" style="margin-top:6px">For i-STAT photos use <b>Upload a photo</b> above &mdash; it reads the cartridge and files the values here automatically.</div>
         <div id="labList" style="margin-top:10px"></div>
+        <div id="ecgList" style="margin-top:14px"></div>
       </div>
     </aside>
   </div>
@@ -1860,9 +1872,14 @@ const DEFAULT_VITALS = [
 const DEFAULT_LAB_FIELDS = ['pH','pCO2','pO2','HCO3','TCO2','BE','sO2','Lactate','Hb','Hct','Na','K','Cl','Glucose','iCa','BUN','Creatinine'];
 /* v5.5 CBC (VetScan HM5) core panel - appended, never replaces protocol fields */
 const CBC_LAB_FIELDS = ['WBC','NEU','LYM','Hgb_CBC','Hct_CBC','PLT'];
+/* v5.7 additions - appended after the existing lists, never replacing them */
+const ISTAT_EXTRA_FIELDS = ['AnGap','TCO2_Chem8'];
+const CBC_EXTRA_FIELDS = ['MON','LYM_pct','MON_pct','NEU_pct','RBC','MCV','MCH','MCHC','RDWc','RDWs','MPV','PCT','PDWc','PDWs'];
+const CHEM_LAB_FIELDS = ['ALB','ALP','ALT','AMY','TBIL','BUN_chem','Ca_chem','PHOS','Crea_chem','Glu_chem','Na_chem','K_chem','TP','GLOB'];
 function labFieldList(){
   const base=(App&&App.protocol&&App.protocol.labFields&&App.protocol.labFields.length)?App.protocol.labFields:DEFAULT_LAB_FIELDS;
-  return base.concat(CBC_LAB_FIELDS.filter(f=>base.indexOf(f)<0));
+  const extra=CBC_LAB_FIELDS.concat(ISTAT_EXTRA_FIELDS, CBC_EXTRA_FIELDS, CHEM_LAB_FIELDS);
+  return base.concat(extra.filter(f=>base.indexOf(f)<0));
 }
 
 const $ = s => document.querySelector(s);
@@ -3517,7 +3534,13 @@ let TREND_MODE = 'animal';   // 'animal' | 'group'
 const LAB_UNITS={pH:'',pCO2:'mmHg',pO2:'mmHg',HCO3:'mmol/L',TCO2:'mmol/L',BE:'mmol/L',
   sO2:'%',Lactate:'mmol/L',Hb:'g/dL',Hct:'%',Na:'mmol/L',K:'mmol/L',Cl:'mmol/L',
   Glucose:'mg/dL',iCa:'mmol/L',Creatinine:'mg/dL',
-  WBC:'10^9/L',NEU:'10^9/L',LYM:'10^9/L',Hgb_CBC:'g/dL',Hct_CBC:'%',PLT:'10^9/L'};
+  WBC:'10^9/L',NEU:'10^9/L',LYM:'10^9/L',Hgb_CBC:'g/dL',Hct_CBC:'%',PLT:'10^9/L',
+  /* v5.7 */
+  AnGap:'mmol/L',TCO2_Chem8:'mmol/L',BUN:'mg/dL',
+  MON:'10^9/L',LYM_pct:'%',MON_pct:'%',NEU_pct:'%',RBC:'10^12/L',MCV:'fL',MCH:'pg',MCHC:'g/dL',
+  RDWc:'%',RDWs:'fL',MPV:'fL',PCT:'%',PDWc:'%',PDWs:'fL',
+  ALB:'g/dL',ALP:'U/L',ALT:'U/L',AMY:'U/L',TBIL:'mg/dL',BUN_chem:'mg/dL',Ca_chem:'mg/dL',PHOS:'mg/dL',
+  Crea_chem:'mg/dL',Glu_chem:'mg/dL',Na_chem:'mmol/L',K_chem:'mmol/L',TP:'g/dL',GLOB:'g/dL'};
 
 function trendSeriesOptions(){
   const opts=[];
@@ -6035,7 +6058,27 @@ function saveLab(){
   toast(`Lab saved - ${Object.keys(vals).length} values${nOcr?' ('+nOcr+' via OCR)':''}`);
 }
 function prefixKeys(o){const r={};for(const k in o)r['lab_'+k]=o[k];return r;}
+/* v5.7 ECG / monitor strip records (a.ecg) - read-only table */
+const ECG_COLS=['HR','SpO2','PI','PR','Art','P1','T1','PVCs','Pauses','SVCs','VPBs','Couplets','MissedBeats','RonTs','PPV'];
+function renderEcgList(){
+  const host=document.getElementById('ecgList'); if(!host) return;
+  const a=getActiveAnimal();
+  const list=(a&&Array.isArray(a.ecg))?a.ecg.filter(Boolean):[];
+  if(!list.length){ host.innerHTML=''; return; }
+  const esc=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const sorted=list.slice().sort((x,y)=>String(x.time||'').localeCompare(String(y.time||'')));
+  host.innerHTML='<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px">ECG / monitor strips ('+sorted.length+')</div>'+
+    '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:10.5px;min-width:100%"><thead><tr>'+
+    ['Time','Label'].concat(ECG_COLS).map(h=>'<th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line);white-space:nowrap">'+h+'</th>').join('')+
+    '</tr></thead><tbody>'+sorted.map(e=>{const v=e.v||{};
+      return '<tr><td style="padding:3px 5px;white-space:nowrap;font-family:var(--mono,monospace)">'+esc(String(e.time||'').replace(/^\d{4}-/,''))+'</td><td style="padding:3px 5px">'+esc(e.label)+'</td>'+
+        ECG_COLS.map(k=>'<td style="padding:3px 5px;font-family:var(--mono,monospace);white-space:nowrap">'+esc(v[k]==null?'-':v[k])+'</td>').join('')+'</tr>';}).join('')+
+    '</tbody></table></div>';
+}
+window.renderEcgList=renderEcgList;
+
 function renderLabList(){
+  try{ renderEcgList(); }catch(e){}
   const a=getActiveAnimal(); const c=$('#labList');
   if(!a||!a.labs.length){c.innerHTML='<div class="hint">No lab entries yet.</div>';return;}
   c.innerHTML=a.labs.map((l,i)=>{
@@ -6152,7 +6195,7 @@ function exportAllCSV(){
 }
 function exportJSON(){
   const data={copyright:'(c) 2026 HAKOYA LLC. All rights reserved.', protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
-    animals:App.animals.map(a=>({id:a.id,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values}))})),
+    animals:App.animals.map(a=>({id:a.id,group:a.group||null,info:a.info||null,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values,label:l.label||null})),ecg:a.ecg||[]})),
     exported:nowTs()};
   download('swine_icu_session.json', JSON.stringify(data,null,2),'application/json');
 }
