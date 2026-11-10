@@ -50,6 +50,15 @@
       P1, T1, PVCs, Pauses, SVCs, VPBs, Couplets, Missed beats, R-on-T, PPV),
       shown as a table under Labs and included in JSON export. Additive only;
       schema stays 3.2; existing keys and records unchanged.
+  v5.8 (2026-11-10) - (1) Temperature is stored in Celsius. Any Temp value
+      above 45 is taken as Fahrenheit (handwritten sheets mix F and C) and
+      converted to C on save, in the record and on the H-CARE vitals sheet.
+      (2) Continuous vital-sign log per animal (a.vs[]: the 10-minute
+      anesthesia record - time, HR, carotid/femoral BP+MAP, RR, SpO2, etCO2,
+      Temp, Iso, O2, Air, PEAK, Vt exp, note), shown as a table and exported
+      as CSV. (3) Sync safety: a cell deleted in the room is no longer
+      re-pushed by a device that still holds an old copy, so cleaned-up
+      records cannot come back from a stale phone or laptop.
 -->
 <html lang="en">
 <head>
@@ -425,7 +434,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.7</small>
+      Auravyx Preclinical <small>Current &middot; v5.8</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -570,6 +579,7 @@
       <div class="btn-row" style="margin-top:12px">
         <button class="btn sm" id="exportCsv">Export CSV</button>
         <button class="btn sm" id="exportJson">Export JSON</button>
+        <button class="btn sm" onclick="exportVsCSV()" title="10-minute anesthesia record for every animal">Export anesthesia record</button>
         <button class="btn sm ghost" id="exportAll">Export all animals</button>
         <button class="btn sm ghost" style="color:var(--alarm);border-color:var(--alarm)" onclick="clearAllRows()">Clear all rows</button>
         <button class="btn sm ghost" onclick="archiveAnimal()" title="Hide this animal but keep its data - restorable any time">Archive animal</button>
@@ -595,7 +605,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.7
+        Auravyx Preclinical &middot; v5.8
       </div>
     </main>
 
@@ -703,6 +713,7 @@
         <div class="hint" style="margin-top:6px">For i-STAT photos use <b>Upload a photo</b> above &mdash; it reads the cartridge and files the values here automatically.</div>
         <div id="labList" style="margin-top:10px"></div>
         <div id="ecgList" style="margin-top:14px"></div>
+        <div id="vsList" style="margin-top:14px"></div>
       </div>
     </aside>
   </div>
@@ -5410,7 +5421,8 @@ function syncReconcile(remoteAll){
       // When the room already has a value that differs, we adopt the room's
       // (it carries a real server timestamp) rather than risk clobbering a
       // teammate's entry - the safe choice for life-critical data.
-      if(!r || r.del){
+      // v5.8: a tombstoned cell stays deleted; only cells the room has never seen are pushed
+      if(!r){
         updates[csEncKey(p)]={p:p, v:(cur[p]===undefined?null:cur[p]), t:firebase.database.ServerValue.TIMESTAMP, by:me, nm:nm};
       }
     }
@@ -5632,8 +5644,27 @@ function accessWhoami(){
 window.accessWhoami=accessWhoami;
 
 
+/* v5.8: Temp is kept in Celsius. Values above 45 are Fahrenheit (sheets mix units). */
+function fToC(v){
+  if(v===''||v==null) return v;
+  const n=+v; if(!isFinite(n)) return v;
+  return (n>45 && n<115) ? Math.round((n-32)*5/9*10)/10 : v;
+}
+function normalizeTemps(){
+  try{
+    (App.animals||[]).forEach(a=>{
+      Object.values(a.rows||{}).forEach(r=>{ if(r && r.Temp!=null){ const c=fToC(r.Temp); if(c!==r.Temp) r.Temp=c; } });
+      (Array.isArray(a.vs)?a.vs:[]).forEach(r=>{ if(r && r.Temp!=null){ const c=fToC(r.Temp); if(c!==r.Temp) r.Temp=c; } });
+    });
+    if(typeof HCARE!=='undefined' && HCARE.data) Object.values(HCARE.data).forEach(h=>{
+      Object.values((h&&h.vitals)||{}).forEach(r=>{ if(r && r.temp!=null && r.temp!==''){ const c=fToC(r.temp); if(c!==r.temp) r.temp=c; } });
+    });
+  }catch(e){ console.error('normalizeTemps',e); }
+}
+window.fToC=fToC; window.normalizeTemps=normalizeTemps;
 function autosave(){
   if(_bootLoading) return;      // never save the blank startup state over real data
+  normalizeTemps();
   clearTimeout(_saveTimer);
   _saveTimer=setTimeout(()=>{
     try{
@@ -6077,8 +6108,36 @@ function renderEcgList(){
 }
 window.renderEcgList=renderEcgList;
 
+/* v5.8 continuous vital-sign log (a.vs) - the 10-minute anesthesia record */
+const VS_COLS=[['time','Time'],['HR','HR'],['CA','Carotid'],['FA','Femoral'],['RR','RR'],['SpO2','SpO2'],['EtCO2','etCO2'],['Temp','Temp C'],['Iso','Iso%'],['O2','O2'],['Air','Air'],['PEAK','PEAK'],['VtExp','Vt exp'],['note','Note']];
+function vsBP(r,p){ const s=r[p+'s'],d=r[p+'d'],m=r[p==='CA'?'MAP':'FAmap']; if(s==null&&d==null&&m==null) return ''; return (s!=null?s:'-')+'/'+(d!=null?d:'-')+(m!=null?'('+m+')':''); }
+function renderVsList(){
+  const host=document.getElementById('vsList'); if(!host) return;
+  const a=getActiveAnimal();
+  const list=(a&&Array.isArray(a.vs))?a.vs.filter(Boolean):[];
+  if(!list.length){ host.innerHTML=''; return; }
+  const esc=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const cell=(r,k)=> k==='CA'||k==='FA' ? vsBP(r,k) : (r[k]==null?'':r[k]);
+  host.innerHTML='<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px">Anesthesia record - continuous vitals ('+list.length+')</div>'+
+    '<div style="overflow-x:auto;max-height:420px;overflow-y:auto"><table style="border-collapse:collapse;font-size:10.5px;min-width:100%"><thead><tr>'+
+    VS_COLS.map(c=>'<th style="text-align:left;padding:3px 5px;border-bottom:1px solid var(--line);white-space:nowrap;position:sticky;top:0;background:var(--panel,#fff)">'+c[1]+'</th>').join('')+
+    '</tr></thead><tbody>'+list.map(r=>'<tr>'+VS_COLS.map(c=>'<td style="padding:2px 5px;font-family:var(--mono,monospace);white-space:nowrap">'+esc(cell(r,c[0]))+'</td>').join('')+'</tr>').join('')+
+    '</tbody></table></div>';
+}
+window.renderVsList=renderVsList;
+function exportVsCSV(){
+  const cols=['animal','group','time','HR','CAs','CAd','MAP','FAs','FAd','FAmap','RR','SpO2','EtCO2','Temp_C','Iso','O2','Air','PEAK','VtExp','note'];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(), cols.join(',')];
+  (App.animals||[]).forEach(a=>{ (Array.isArray(a.vs)?a.vs:[]).forEach(r=>{
+    lines.push([a.id,'"'+(a.group||'')+'"',r.time,r.HR,r.CAs,r.CAd,r.MAP,r.FAs,r.FAd,r.FAmap,r.RR,r.SpO2,r.EtCO2,r.Temp,r.Iso,r.O2,r.Air,r.PEAK,r.VtExp,'"'+String(r.note||'').replace(/"/g,"'")+'"'].map(x=>x==null?'':x).join(','));
+  }); });
+  download('anesthesia_record_all_animals.csv', lines.join('\n'), 'text/csv');
+}
+window.exportVsCSV=exportVsCSV;
+
 function renderLabList(){
   try{ renderEcgList(); }catch(e){}
+  try{ renderVsList(); }catch(e){}
   const a=getActiveAnimal(); const c=$('#labList');
   if(!a||!a.labs.length){c.innerHTML='<div class="hint">No lab entries yet.</div>';return;}
   c.innerHTML=a.labs.map((l,i)=>{
@@ -6195,7 +6254,7 @@ function exportAllCSV(){
 }
 function exportJSON(){
   const data={copyright:'(c) 2026 HAKOYA LLC. All rights reserved.', protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
-    animals:App.animals.map(a=>({id:a.id,group:a.group||null,info:a.info||null,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values,label:l.label||null})),ecg:a.ecg||[]})),
+    animals:App.animals.map(a=>({id:a.id,group:a.group||null,info:a.info||null,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values,label:l.label||null})),ecg:a.ecg||[],vs:a.vs||[]})),
     exported:nowTs()};
   download('swine_icu_session.json', JSON.stringify(data,null,2),'application/json');
 }
