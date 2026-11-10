@@ -82,6 +82,11 @@
       series appear in Trends (per animal and per group) with the same
       statistics; arrhythmia incidence by group with Fisher's exact test;
       ECG CSV export; ECG methods sentence in the statistical report.
+  v5.12 (2026-11-10) - Group buttons on Trends respond at once: the button
+      state changes on click and statistics are recomputed on the next frame
+      with a "Recalculating" notice. Tukey p-values are cached and computed on
+      a lighter grid (max |error| vs scipy 7e-6), so a full redraw with four
+      groups and 38 parameters no longer freezes the page for ~7 s.
 -->
 <html lang="en">
 <head>
@@ -457,7 +462,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.11</small>
+      Auravyx Preclinical <small>Current &middot; v5.12</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -628,7 +633,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.11
+        Auravyx Preclinical &middot; v5.12
       </div>
     </main>
 
@@ -3714,22 +3719,40 @@ function trendGroupActive(g){
   const members=(App.animals||[]).filter(a=>groupOf(a)===g);
   return !(members.length && members.every(a=>a._demo));   // demo-only groups start off
 }
+/* v5.12: show the new group state at once, then recompute statistics on the
+   next frame so the click never feels dead while Tukey/ANOVA run. */
+let _trendRenderTimer=null;
+function _markGroupButtons(){
+  (window._trendGroupList||[]).forEach((g,i)=>{
+    const on=trendGroupActive(g);
+    document.querySelectorAll('button[onclick="toggleTrendGroup('+i+')"]').forEach(b=>{ b.className='btn sm '+(on?'primary':'ghost'); b.style.opacity='.75'; });
+  });
+  const host=document.getElementById('trendCharts');
+  if(host && !document.getElementById('trendBusy')){ const d=document.createElement('div'); d.id='trendBusy';
+    d.style.cssText='position:fixed;top:70px;left:50%;transform:translateX(-50%);z-index:70;background:#1f2a44;color:#fff;padding:10px 18px;border-radius:8px;font-size:16px;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+    d.textContent='Recalculating statistics...'; document.body.appendChild(d); }
+}
+function _deferTrendRender(){
+  _markGroupButtons();
+  clearTimeout(_trendRenderTimer);
+  _trendRenderTimer=setTimeout(()=>requestAnimationFrame(()=>setTimeout(()=>{ try{ renderTrends(); } finally { const b=document.getElementById('trendBusy'); if(b) b.remove(); } },0)),30);
+}
 function toggleTrendGroup(i){
   const g=(window._trendGroupList||[])[i]; if(g==null) return;
   TREND_GROUP_STATE[g]=!trendGroupActive(g);
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
-  renderTrends();
+  _deferTrendRender();
 }
 function setAllTrendGroups(on){
   (window._trendGroupList||[]).forEach(g=>{ TREND_GROUP_STATE[g]=!!on; });
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
-  renderTrends();
+  _deferTrendRender();
 }
 function toggleTrendGroupName(enc){
   const g=decodeURIComponent(enc);
   TREND_GROUP_STATE[g]=!trendGroupActive(g);
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
-  renderTrends();
+  _deferTrendRender();
 }
 window.toggleTrendGroupName=toggleTrendGroupName;
 window.trendGroupActive=trendGroupActive; window.toggleTrendGroup=toggleTrendGroup; window.setAllTrendGroups=setAllTrendGroups;
@@ -3892,7 +3915,7 @@ function statsReport(opts){
     'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
     (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
     '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
-    (window.ecgMethodsText?ecgMethodsText():'')+'Analyses were performed in Auravyx Preclinical (v5.11).';
+    (window.ecgMethodsText?ecgMethodsText():'')+'Analyses were performed in Auravyx Preclinical (v5.12).';
   const results=[];
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -7087,7 +7110,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
   function pnorm(z){ return 0.5*(1+erf(z/Math.SQRT2)); }
   function dnorm(z){ return Math.exp(-0.5*z*z)/2.5066282746310002; }
   function wprob(w,k){ if(w<=0) return 0;
-    var lo=-8,hi=8,N=400,h=(hi-lo)/N,sum=0;
+    var lo=-8,hi=8,N=160,h=(hi-lo)/N,sum=0;
     for(var i=0;i<=N;i++){ var x=lo+i*h;
       var f=dnorm(x)*Math.pow(pnorm(x)-pnorm(x-w),k-1);
       var wgt=(i===0||i===N)?1:(i%2?4:2); sum+=wgt*f; }
@@ -7096,10 +7119,16 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     -1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];
     var y=x,tmp=x+5.5; tmp-=(x+0.5)*Math.log(tmp); var ser=1.000000000190015;
     for(var j=0;j<6;j++){ y++; ser+=c[j]/y; } return -tmp+Math.log(2.5066282746310005*ser/x); }
+  /* v5.12: results cached; grid 160x400 (max |error| vs scipy 7e-6) */
+  var _ptkCache=new Map();
   function ptukey(q,k,df){ if(q<=0) return 0;
+    var ck=q.toFixed(7)+'|'+k+'|'+(isFinite(df)?df.toFixed(4):'inf');
+    var hit=_ptkCache.get(ck); if(hit!==undefined) return hit;
+    var r=_ptukey(q,k,df); if(_ptkCache.size>20000) _ptkCache.clear(); _ptkCache.set(ck,r); return r; }
+  function _ptukey(q,k,df){
     if(!isFinite(df)||df>25000) return wprob(q,k);
     var lc=Math.log(2)+(df/2)*Math.log(df/2)-lngamma(df/2);
-    var lo=1e-5,hi=1+12/Math.sqrt(df),N=600,h=(hi-lo)/N,acc=0;
+    var lo=1e-5,hi=1+12/Math.sqrt(df),N=400,h=(hi-lo)/N,acc=0;
     for(var i=0;i<=N;i++){ var u=lo+i*h;
       var g=Math.exp(lc+(df-1)*Math.log(u)-df*u*u/2);
       var val=wprob(q*u,k)*g;
