@@ -74,6 +74,14 @@
       Trends page from the current groups and parameters, with a Copy button.
       Larger text on the group Trends page: tables, legends, notes, the
       report and the text inside the plots (about +3 px) for readability.
+  v5.11 (2026-11-10) - ECG interval measurements per timepoint (a.ecgm[tpId]):
+      HR, rhythm, PVCs per strip, PR, QRS, QT, RR (ms), reader, strip
+      reference and note, entered by hand from 25 mm/s strips. RR is derived
+      from HR when blank. QTcF (Fridericia) for reference and a study-specific
+      QTc = QT - m(HR - mean HR), m = pooled within-animal QT-HR slope. ECG
+      series appear in Trends (per animal and per group) with the same
+      statistics; arrhythmia incidence by group with Fisher's exact test;
+      ECG CSV export; ECG methods sentence in the statistical report.
 -->
 <html lang="en">
 <head>
@@ -449,7 +457,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.10</small>
+      Auravyx Preclinical <small>Current &middot; v5.11</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -620,7 +628,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.10
+        Auravyx Preclinical &middot; v5.11
       </div>
     </main>
 
@@ -729,6 +737,7 @@
         <div id="labList" style="margin-top:10px"></div>
         <div id="ecgList" style="margin-top:14px"></div>
         <div id="vsList" style="margin-top:14px"></div>
+        <div id="ecgMeasure" style="margin-top:16px"></div>
       </div>
     </aside>
   </div>
@@ -3584,6 +3593,7 @@ function trendSeriesOptions(){
     const name=k.replace('lab_','');
     opts.push({key:k, label:name+' (lab)', unit:LAB_UNITS[name]||''});
   });
+  if(window.ecgTrendOptions) ecgTrendOptions().forEach(o=>opts.push(o));
   return opts;
 }
 
@@ -3613,6 +3623,7 @@ window.trendPreset = trendPreset;
    even when a lab was saved without being merged into a row. */
 function trendPoints(key){
   const a=getActiveAnimal(); if(!a) return [];
+  if(key.startsWith('ecg_')) return ecgTrendPoints(a,key.slice(4));
   const order=orderedRows(a);
   const pts=[];
   const seen=new Set();
@@ -3755,6 +3766,7 @@ function groupTrendData(key){
   const isLab=key.startsWith('lab_'), labName=isLab?key.slice(4):null;
   const tps=(App.protocol&&App.protocol.timepoints)||[];
   function valFor(a,tpId){
+    if(key.startsWith('ecg_')) return ecgVal(a,tpId,key.slice(4));
     const r=a.rows&&a.rows[tpId];
     let v=r?r[key]:null;
     if((v==null||v==='') && isLab && a.labs){ const l=a.labs.find(x=>x.tp===tpId && x.values && x.values[labName]!=null && x.values[labName]!==''); if(l) v=l.values[labName]; }
@@ -3856,6 +3868,7 @@ function renderGroupTrends(host){
     if(gc>=3) html+= (window.tukeyTableHTML?window.tukeyTableHTML(data, colorMap):'');
     html+=`</div></div>`;
   });
+  try{ html+=ecgIncidenceHTML(colorMap); }catch(e){ console.error('ecg incidence',e); }
   try{ html+=statsReportHTML(opts); }catch(e){ console.error('stats report',e); }
   host.innerHTML=html;
 }
@@ -3879,7 +3892,7 @@ function statsReport(opts){
     'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
     (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
     '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
-    'Analyses were performed in Auravyx Preclinical (v5.10).';
+    (window.ecgMethodsText?ecgMethodsText():'')+'Analyses were performed in Auravyx Preclinical (v5.11).';
   const results=[];
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -3906,6 +3919,7 @@ function statsReport(opts){
     if(peaks.length) para+='The highest group mean was '+joinList(peaks)+'.';
     results.push(para);
   });
+  try{ const inc=ecgIncidenceText(); if(inc && TREND_SEL.some(k=>k.startsWith('ecg_'))) results.push(inc); }catch(e){}
   const caveat = minN<3 ? 'With '+(minN===1?'a single animal':'only '+minN+' animals')+' in the smallest group, these comparisons have low statistical power and should be regarded as exploratory; the absence of a significant difference does not indicate equivalence.' : '';
   return {methods, results, caveat};
 }
@@ -6235,6 +6249,171 @@ function renderEcgList(){
 }
 window.renderEcgList=renderEcgList;
 
+/* ============================================================
+   v5.11 ECG interval measurements per timepoint (a.ecgm[tpId])
+   Entered by hand from 25 mm/s strips (mean of 3 consecutive beats).
+   ============================================================ */
+const ECGM_NUM=[['HR','HR','bpm'],['PVC','PVCs','/strip'],['PR','PR','ms'],['QRS','QRS','ms'],['QT','QT','ms'],['RR','RR','ms']];
+const ECGM_TXT=[['reader','Reader'],['strip','Strip ref'],['note','Note']];
+const ECG_RHYTHMS=['','Sinus','Sinus tachycardia','Sinus bradycardia','Sinus + PVCs','Sinus + SVCs','SVT','AF / flutter','VT','VF','AV block','Asystole / PEA','Other'];
+function _ecgNum(v){ if(v==null||v==='') return null; const n=typeof v==='number'?v:parseFloat(String(v).replace(',','.')); return isNaN(n)?null:n; }
+function ecgRR(e){ const rr=_ecgNum(e&&e.RR); if(rr!=null&&rr>0) return rr; const hr=_ecgNum(e&&e.HR); return (hr!=null&&hr>0)?60000/hr:null; }
+function ecgHR(e){ const hr=_ecgNum(e&&e.HR); if(hr!=null&&hr>0) return hr; const rr=_ecgNum(e&&e.RR); return (rr!=null&&rr>0)?60000/rr:null; }
+function ecgHasData(e){ if(!e) return false; return ECGM_NUM.some(f=>_ecgNum(e[f[0]])!=null) || !!e.rhythm; }
+function ecgAbnormal(e){
+  if(!e) return null; const r=e.rhythm||''; const pvc=_ecgNum(e.PVC);
+  if(!r && pvc==null) return null;
+  return (pvc!=null&&pvc>0) || (!!r && !/^Sinus( tachycardia| bradycardia)?$/.test(r));
+}
+/* Study-specific QT-HR correction: pooled within-animal slope (each animal
+   centred on its own means), reference HR = mean HR of all paired strips. */
+function qtcFit(){
+  const pts=[];
+  (App.animals||[]).forEach(a=>{ if(!a||a._demo) return; const m=a.ecgm||{};
+    Object.keys(m).forEach(tp=>{ const e=m[tp]; const qt=_ecgNum(e&&e.QT), hr=ecgHR(e); if(qt!=null&&hr!=null) pts.push({id:a.id,hr,qt}); }); });
+  const by={}; pts.forEach(p=>(by[p.id]=by[p.id]||[]).push(p));
+  let sxy=0,sxx=0,syy=0,used=0,nA=0;
+  Object.values(by).forEach(arr=>{ if(arr.length<2) return; nA++;
+    const mx=_mean(arr.map(p=>p.hr)), my=_mean(arr.map(p=>p.qt));
+    arr.forEach(p=>{ const dx=p.hr-mx, dy=p.qt-my; sxy+=dx*dy; sxx+=dx*dx; syy+=dy*dy; used++; }); });
+  if(used<3||sxx===0) return {ok:false,n:pts.length};
+  const m=sxy/sxx;
+  return {ok:true, m, r2:syy>0?(sxy*sxy)/(sxx*syy):0, hrRef:_mean(pts.map(p=>p.hr)), n:used, animals:nA};
+}
+function ecgVal(a,tp,name){
+  const e=a&&a.ecgm&&a.ecgm[tp]; if(!e) return null;
+  if(name==='RR') return ecgRR(e);
+  if(name==='HR') return ecgHR(e);
+  if(name==='QTcF'){ const qt=_ecgNum(e.QT), rr=ecgRR(e); return (qt!=null&&rr)?qt/Math.cbrt(rr/1000):null; }
+  if(name==='QTc'){ const qt=_ecgNum(e.QT), hr=ecgHR(e); if(qt==null||hr==null) return null; const f=qtcFit(); return f.ok?qt-f.m*(hr-f.hrRef):null; }
+  return _ecgNum(e[name]);
+}
+function ecgTrendOptions(){
+  return [['HR','HR (ECG)','bpm'],['PR','PR interval (ECG)','ms'],['QRS','QRS duration (ECG)','ms'],['QT','QT interval (ECG)','ms'],
+    ['QTc','QTc study-specific (ECG)','ms'],['QTcF','QTcF Fridericia (ECG)','ms'],['RR','RR interval (ECG)','ms'],['PVC','PVCs per strip (ECG)','count']]
+    .map(x=>({key:'ecg_'+x[0],label:x[1],unit:x[2]}));
+}
+function ecgTrendPoints(a,name){
+  const tps=(App.protocol&&App.protocol.timepoints)||[]; const pts=[];
+  tps.forEach((tp,i)=>{ const v=ecgVal(a,tp.id,name); if(v==null) return;
+    const r=a.rows&&a.rows[tp.id]; let x=(r&&r._runMin!=null)?r._runMin:(tp.offsetMin!=null?tp.offsetMin:i*10);
+    pts.push({x,y:v,label:tp.label,event:false,death:false,ts:r?r._ts:null}); });
+  pts.sort((p,q)=>p.x-q.x); return pts;
+}
+function _ecgFmt(v,d){ return v==null||isNaN(v)?'':(Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
+function setEcgM(tpEnc,field,val){
+  const tp=decodeURIComponent(tpEnc); const a=getActiveAnimal(); if(!a) return;
+  if(!a.ecgm||typeof a.ecgm!=='object') a.ecgm={};
+  const e=a.ecgm[tp]=a.ecgm[tp]||{};
+  const isNum=ECGM_NUM.some(f=>f[0]===field);
+  if(isNum){ const n=_ecgNum(val); if(String(val).trim()!=='' && n==null){ toast(field+': not a number'); return; } e[field]=n; }
+  else { const t=String(val||'').trim(); e[field]=t||null; }
+  e._ts=nowTs();
+  if(App.audit) App.audit.push({ts:nowTs(),action:'ecg',animal:a.id,tp,field,value:e[field]});
+  autosave();
+  updateEcgDerived();
+}
+window.setEcgM=setEcgM;
+function updateEcgDerived(){
+  const a=getActiveAnimal(); if(!a) return; const f=qtcFit();
+  ((App.protocol&&App.protocol.timepoints)||[]).forEach(tp=>{
+    const id=encodeURIComponent(tp.id);
+    const c1=document.getElementById('ecgF_'+id), c2=document.getElementById('ecgS_'+id), c3=document.getElementById('ecgR_'+id);
+    if(c1) c1.textContent=_ecgFmt(ecgVal(a,tp.id,'QTcF'),0);
+    if(c2) c2.textContent=_ecgFmt(ecgVal(a,tp.id,'QTc'),0);
+    const e=a.ecgm&&a.ecgm[tp.id];
+    if(c3) c3.textContent=(e&&_ecgNum(e.RR)==null&&ecgRR(e))?_ecgFmt(ecgRR(e),0)+'*':'';
+  });
+  const fi=document.getElementById('ecgFitInfo'); if(fi) fi.innerHTML=ecgFitLine(f);
+}
+function ecgFitLine(f){
+  return f.ok ? 'Study QTc fit: slope m = '+_ecgFmt(f.m,2)+' ms/bpm, R&sup2; = '+_ecgFmt(f.r2,2)+', reference HR = '+_ecgFmt(f.hrRef,0)+' bpm ('+f.n+' strips, '+f.animals+' animals). Updates as data are added.'
+              : 'Study QTc needs at least 3 strips with both QT and HR, from animals with 2 or more strips ('+f.n+' so far).';
+}
+function renderEcgMeasure(){
+  const host=document.getElementById('ecgMeasure'); if(!host) return;
+  const a=getActiveAnimal();
+  const tps=(App.protocol&&App.protocol.timepoints)||[];
+  if(!a||!tps.length){ host.innerHTML=''; return; }
+  const m=a.ecgm||{};
+  const esc=x=>String(x==null?'':x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const th=t=>'<th style="text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);white-space:nowrap;font-size:14px;text-transform:none;letter-spacing:0;position:sticky;top:0;background:var(--panel,#fff)">'+t+'</th>';
+  const inp=(tp,f,v,w,type)=>'<input '+(type==='num'?'inputmode="decimal"':'')+' value="'+esc(v==null?'':v)+'" onchange="setEcgM(\''+encodeURIComponent(tp)+'\',\''+f+'\',this.value)" style="width:'+w+'px;font-size:15px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg,#fff);color:var(--ink)">';
+  let h='<div style="font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px">ECG measurements per timepoint</div>'+
+    '<div class="hint" style="font-size:13px;margin-bottom:6px">Measure 3 consecutive beats on the 25 mm/s strip and enter the mean (ms). Leave RR blank to derive it from HR (shown with *).</div>'+
+    '<div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table style="border-collapse:collapse;font-size:15px;min-width:100%"><thead><tr>'+
+    th('Timepoint')+ECGM_NUM.map(f=>th(f[1]+(f[2]?' <span style="font-weight:400;color:var(--ink-faint)">'+f[2]+'</span>':''))).join('')+th('Rhythm')+th('QTcF')+th('QTc study')+ECGM_TXT.map(f=>th(f[1])).join('')+'</tr></thead><tbody>';
+  tps.forEach(tp=>{ const e=m[tp.id]||{}; const id=encodeURIComponent(tp.id);
+    h+='<tr><td style="padding:4px 6px;white-space:nowrap;font-weight:600" title="'+esc(tp.label)+'">'+esc((String(tp.label).match(/\bT\d+(?:\.\d+)?/i)||[tp.label])[0])+'</td>'+
+      ECGM_NUM.map(f=>'<td style="padding:3px 4px;white-space:nowrap">'+inp(tp.id,f[0],e[f[0]],f[0]==='PVC'?56:68,'num')+(f[0]==='RR'?' <span id="ecgR_'+id+'" style="font-family:var(--mono,monospace);color:var(--ink-faint);font-size:13px"></span>':'')+'</td>').join('')+
+      '<td style="padding:3px 4px"><select onchange="setEcgM(\''+id+'\',\'rhythm\',this.value)" style="font-size:15px;padding:5px;border:1px solid var(--line);border-radius:6px;background:var(--bg,#fff);color:var(--ink)">'+ECG_RHYTHMS.map(r=>'<option value="'+esc(r)+'"'+((e.rhythm||'')===r?' selected':'')+'>'+(r||'-')+'</option>').join('')+'</select></td>'+
+      '<td id="ecgF_'+id+'" style="padding:3px 6px;font-family:var(--mono,monospace);text-align:right"></td><td id="ecgS_'+id+'" style="padding:3px 6px;font-family:var(--mono,monospace);text-align:right;font-weight:600"></td>'+
+      ECGM_TXT.map(f=>'<td style="padding:3px 4px">'+inp(tp.id,f[0],e[f[0]],f[0]==='note'?160:90,'txt')+'</td>').join('')+'</tr>';
+  });
+  h+='</tbody></table></div><div id="ecgFitInfo" class="hint" style="font-size:13px;margin-top:6px"></div>'+
+    '<div style="margin-top:8px"><button class="btn sm" style="width:auto" onclick="exportEcgCSV()">Export ECG measurements (CSV)</button></div>';
+  host.innerHTML=h;
+  updateEcgDerived();
+}
+window.renderEcgMeasure=renderEcgMeasure;
+function exportEcgCSV(){
+  const f=qtcFit(); const tps=(App.protocol&&App.protocol.timepoints)||[];
+  const lines=['# (c) 2026 HAKOYA LLC. All rights reserved. Exported '+nowTs(),
+    '# QTcF = QT / (RR/1000)^(1/3). QTc_study = QT - m*(HR - HRref); '+(f.ok?('m = '+f.m.toFixed(3)+' ms/bpm, HRref = '+f.hrRef.toFixed(1)+' bpm, R2 = '+f.r2.toFixed(3)+', n = '+f.n+' strips from '+f.animals+' animals'):'fit not available'),
+    '# RR_source: measured, or derived = 60000/HR',
+    ['animal','group','timepoint_id','timepoint','HR','rhythm','PVCs_per_strip','PR_ms','QRS_ms','QT_ms','RR_ms','RR_source','QTcF_ms','QTc_study_ms','arrhythmia','reader','strip_ref','note'].join(',')];
+  const q=x=>'"'+String(x==null?'':x).replace(/"/g,"'")+'"';
+  (App.animals||[]).forEach(a=>{ if(a._demo) return; const m=a.ecgm||{};
+    tps.forEach(tp=>{ const e=m[tp.id]; if(!ecgHasData(e)) return;
+      const ab=ecgAbnormal(e);
+      lines.push([a.id,q(a.group||''),tp.id,q(tp.label),_ecgFmt(ecgHR(e),0),q(e.rhythm||''),e.PVC??'',e.PR??'',e.QRS??'',e.QT??'',_ecgFmt(ecgRR(e),0),_ecgNum(e.RR)!=null?'measured':(ecgRR(e)?'derived':''),
+        _ecgFmt(ecgVal(a,tp.id,'QTcF'),1),_ecgFmt(ecgVal(a,tp.id,'QTc'),1),ab==null?'':(ab?'yes':'no'),q(e.reader||''),q(e.strip||''),q(e.note||'')].join(','));
+    }); });
+  download('ecg_measurements_all_animals.csv', lines.join('\n'), 'text/csv');
+}
+window.exportEcgCSV=exportEcgCSV;
+/* Arrhythmia incidence by group: an animal counts once if any strip shows a
+   non-sinus rhythm or at least one PVC. Fisher's exact test for 2 groups. */
+function _lfact(n){ let s=0; for(let i=2;i<=n;i++) s+=Math.log(i); return s; }
+function fisher2x2(a,b,c,d){
+  const n=a+b+c+d, r1=a+b, c1=a+c; if(n===0) return null;
+  const lp=x=>_lfact(r1)+_lfact(n-r1)+_lfact(c1)+_lfact(n-c1)-_lfact(n)-_lfact(x)-_lfact(r1-x)-_lfact(c1-x)-_lfact(n-r1-c1+x);
+  const p0=lp(a); let p=0;
+  for(let x=Math.max(0,c1-(n-r1)); x<=Math.min(r1,c1); x++){ const px=lp(x); if(px<=p0+1e-7) p+=Math.exp(px); }
+  return Math.min(1,p);
+}
+function ecgIncidence(){
+  const groups=[...new Set((App.animals||[]).filter(a=>!a._demo).map(groupOf))].filter(trendGroupActive);
+  const rows=groups.map(g=>{ let n=0,k=0; (App.animals||[]).filter(a=>!a._demo&&groupOf(a)===g).forEach(a=>{
+      const vals=Object.values(a.ecgm||{}).map(ecgAbnormal).filter(v=>v!=null); if(!vals.length) return; n++; if(vals.some(Boolean)) k++; });
+    return {g,n,k}; }).filter(r=>r.n>0);
+  let p=null; if(rows.length===2) p=fisher2x2(rows[0].k,rows[0].n-rows[0].k,rows[1].k,rows[1].n-rows[1].k);
+  return {rows,p};
+}
+function ecgIncidenceHTML(colorMap){
+  const inc=ecgIncidence(); if(!inc.rows.length) return '';
+  const td='padding:6px 8px;border-bottom:1px solid var(--line-soft,#eee)';
+  return '<div class="card"><b style="font-size:16px">Arrhythmia incidence (ECG)</b>'+
+    '<table style="width:100%;border-collapse:collapse;font-size:15px;margin-top:8px"><thead><tr><th style="text-align:left;'+td+';font-size:14px;text-transform:none">Group</th><th style="text-align:right;'+td+';font-size:14px;text-transform:none">Animals with arrhythmia / with ECG</th><th style="text-align:right;'+td+';font-size:14px;text-transform:none">%</th></tr></thead><tbody>'+
+    inc.rows.map(r=>'<tr><td style="'+td+';color:'+(colorMap[r.g]||'inherit')+'">'+r.g+'</td><td style="'+td+';text-align:right;font-family:var(--mono,monospace)">'+r.k+' / '+r.n+'</td><td style="'+td+';text-align:right;font-family:var(--mono,monospace)">'+Math.round(100*r.k/r.n)+'</td></tr>').join('')+
+    '</tbody></table><div class="hint" style="margin-top:4px;font-size:13px">An animal counts once if any strip shows a non-sinus rhythm (sinus tachycardia and bradycardia excluded) or at least one PVC. '+
+    (inc.p!=null?"Fisher's exact test (two-sided): "+_pTxt(inc.p)+'.':(inc.rows.length>2?'Tick exactly two groups for Fisher\'s exact test.':''))+'</div></div>';
+}
+function ecgIncidenceText(){
+  const inc=ecgIncidence(); if(!inc.rows.length) return '';
+  const parts=inc.rows.map(r=>r.k+' of '+r.n+' animals in '+r.g);
+  return 'Arrhythmia (any non-sinus rhythm, excluding sinus tachycardia and bradycardia, or at least one premature ventricular complex on a strip) occurred in '+
+    (parts.length<=1?parts.join(''):parts.slice(0,-1).join(', ')+' and '+parts[parts.length-1])+(inc.p!=null?" (Fisher's exact test, "+_pTxt(inc.p)+').':'.');
+}
+function ecgMethodsText(){
+  if(!TREND_SEL.some(k=>k.startsWith('ecg_'))) return '';
+  const f=qtcFit();
+  return 'ECG intervals (PR, QRS, QT and RR) were measured manually on 25 mm/s strips as the mean of three consecutive beats; RR was derived from heart rate when not measured. '+
+    (f.ok?'QT was corrected for heart rate with a study-specific linear correction, QTc = QT − m(HR − HRref), where m ('+_ecgFmt(f.m,2)+' ms/bpm; R² = '+_ecgFmt(f.r2,2)+') is the pooled within-animal slope of QT on heart rate across '+f.n+' strips from '+f.animals+' animals and HRref ('+_ecgFmt(f.hrRef,0)+' bpm) is the mean heart rate of those strips. ':'')+
+    "Fridericia-corrected QT (QTcF = QT/RR^1/3) is reported for reference. Arrhythmia incidence was compared between groups with Fisher's exact test. ";
+}
+Object.assign(window,{ecgVal,ecgTrendOptions,ecgTrendPoints,qtcFit,ecgIncidence,ecgIncidenceHTML,ecgIncidenceText,ecgMethodsText,fisher2x2});
+
 /* v5.8 continuous vital-sign log (a.vs) - the 10-minute anesthesia record */
 const VS_COLS=[['time','Time'],['HR','HR'],['CA','Carotid'],['FA','Femoral'],['RR','RR'],['SpO2','SpO2'],['EtCO2','etCO2'],['Temp','Temp C'],['Iso','Iso%'],['O2','O2'],['Air','Air'],['PEAK','PEAK'],['VtExp','Vt exp'],['note','Note']];
 function vsBP(r,p){ const s=r[p+'s'],d=r[p+'d'],m=r[p==='CA'?'MAP':'FAmap']; if(s==null&&d==null&&m==null) return ''; return (s!=null?s:'-')+'/'+(d!=null?d:'-')+(m!=null?'('+m+')':''); }
@@ -6265,6 +6444,7 @@ window.exportVsCSV=exportVsCSV;
 function renderLabList(){
   try{ renderEcgList(); }catch(e){}
   try{ renderVsList(); }catch(e){}
+  try{ renderEcgMeasure(); }catch(e){ console.error('ecgm',e); }
   const a=getActiveAnimal(); const c=$('#labList');
   if(!a||!a.labs.length){c.innerHTML='<div class="hint">No lab entries yet.</div>';return;}
   c.innerHTML=a.labs.map((l,i)=>{
@@ -6381,7 +6561,7 @@ function exportAllCSV(){
 }
 function exportJSON(){
   const data={copyright:'(c) 2026 HAKOYA LLC. All rights reserved.', protocol:App.protocol?{name:App.protocol.name,timepoints:App.protocol.timepoints,params:App.protocol.params}:null,
-    animals:App.animals.map(a=>({id:a.id,group:a.group||null,info:a.info||null,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values,label:l.label||null})),ecg:a.ecg||[],vs:a.vs||[]})),
+    animals:App.animals.map(a=>({id:a.id,group:a.group||null,info:a.info||null,rows:a.rows,labs:a.labs.map(l=>({ts:l.ts,tp:l.tp,values:l.values,label:l.label||null})),ecg:a.ecg||[],ecgm:a.ecgm||{},vs:a.vs||[]})),
     exported:nowTs()};
   download('swine_icu_session.json', JSON.stringify(data,null,2),'application/json');
 }
