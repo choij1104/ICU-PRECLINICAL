@@ -62,6 +62,11 @@
       shared cells are applied in batches (one redraw + one save per batch)
       instead of one full redraw per cell, which froze the page on join once
       the room held several thousand cells.
+  v5.9 (2026-11-10) - Group picker on Trends (group mode): tick which groups
+      to show and compare; plots, mean +/- SEM, Welch t-test (2 groups),
+      one-way ANOVA + Tukey HSD (3+ groups) recompute for the ticked groups
+      only. Groups made only of demo animals start unticked. The choice is
+      remembered on this device and also applies to the PNG export.
 -->
 <html lang="en">
 <head>
@@ -437,7 +442,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.8</small>
+      Auravyx Preclinical <small>Current &middot; v5.9</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -608,7 +613,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.8
+        Auravyx Preclinical &middot; v5.9
       </div>
     </main>
 
@@ -3683,6 +3688,26 @@ window.renderTrends = renderTrends;
    ============================================================ */
 const GCOLORS=['#4a86e8','#e0662f','#16a766','#a479e2','#d5a021','#00a3a3','#b65775'];
 function groupOf(a){ return (a && (a.group || (a.info&&a.info.arm))) || 'Ungrouped'; }
+/* v5.9 group picker: which groups take part in group trends + statistics */
+var TREND_GROUP_STATE={};
+try{ TREND_GROUP_STATE=JSON.parse(localStorage.getItem('auravyx_trend_groups')||'{}')||{}; }catch(e){ TREND_GROUP_STATE={}; }
+function trendGroupActive(g){
+  if(Object.prototype.hasOwnProperty.call(TREND_GROUP_STATE,g)) return !!TREND_GROUP_STATE[g];
+  const members=(App.animals||[]).filter(a=>groupOf(a)===g);
+  return !(members.length && members.every(a=>a._demo));   // demo-only groups start off
+}
+function toggleTrendGroup(i){
+  const g=(window._trendGroupList||[])[i]; if(g==null) return;
+  TREND_GROUP_STATE[g]=!trendGroupActive(g);
+  try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
+  renderTrends();
+}
+function setAllTrendGroups(on){
+  (window._trendGroupList||[]).forEach(g=>{ TREND_GROUP_STATE[g]=!!on; });
+  try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
+  renderTrends();
+}
+window.trendGroupActive=trendGroupActive; window.toggleTrendGroup=toggleTrendGroup; window.setAllTrendGroups=setAllTrendGroups;
 function _mean(a){ return a.reduce((s,x)=>s+x,0)/a.length; }
 function _sd(a){ if(a.length<2) return NaN; const m=_mean(a); return Math.sqrt(a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1)); }
 function _sem(a){ const s=_sd(a); return isNaN(s)?NaN:s/Math.sqrt(a.length); }
@@ -3695,7 +3720,9 @@ function _welch(a,b){ if(a.length<2||b.length<2) return null; const ma=_mean(a),
    Uses SSW = Σ(n_i-1)·sd_i², SSB = Σ n_i·(mean_i-grand)². */
 function _anova(groups){
   const k=groups.length; if(k<2) return null;
-  if(groups.some(g=>!g||g.n<2||isNaN(g.sd))) return null;
+  // v5.9: a group with one animal adds no within-group variance but still counts (standard one-way ANOVA)
+  if(groups.some(g=>!g||g.n<1)) return null;
+  groups=groups.map(g=>({n:g.n, mean:g.mean, sd:(g.n<2||isNaN(g.sd))?0:g.sd}));
   const N=groups.reduce((s,g)=>s+g.n,0);
   const grand=groups.reduce((s,g)=>s+g.n*g.mean,0)/N;
   const ssb=groups.reduce((s,g)=>s+g.n*Math.pow(g.mean-grand,2),0);
@@ -3724,7 +3751,7 @@ function groupTrendData(key){
   const groupSet={}, rows=[];
   tps.forEach((tp,i)=>{
     const byG={};
-    (App.animals||[]).forEach(a=>{ const num=valFor(a,tp.id); if(num==null) return; const g=groupOf(a); (byG[g]=byG[g]||[]).push(num); });
+    (App.animals||[]).forEach(a=>{ const g=groupOf(a); if(!trendGroupActive(g)) return; const num=valFor(a,tp.id); if(num==null) return; (byG[g]=byG[g]||[]).push(num); });
     const names=Object.keys(byG);
     if(!names.length) return;
     const stats={}; names.forEach(g=>{ groupSet[g]=true; stats[g]={n:byG[g].length, mean:_mean(byG[g]), sem:_sem(byG[g]), sd:_sd(byG[g])}; });
@@ -3778,6 +3805,15 @@ function renderGroupTrends(host){
   const colorMap={}; allGroups.forEach((g,i)=>colorMap[g]=GCOLORS[i%GCOLORS.length]);
   const opts=trendSeriesOptions();
   let html='';
+  // v5.9 group picker
+  window._trendGroupList=allGroups;
+  const escG=x=>String(x).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const nOn=allGroups.filter(trendGroupActive).length;
+  html+=`<div class="card" style="padding:10px 12px"><div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px">Groups to compare <span style="font-weight:400;text-transform:none">(${nOn} of ${allGroups.length} ticked - statistics use ticked groups only)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">`+
+    allGroups.map((g,i)=>{ const on=trendGroupActive(g); const n=(App.animals||[]).filter(a=>groupOf(a)===g).length;
+      return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto;min-height:36px;${on?`background:${colorMap[g]};border-color:${colorMap[g]}`:''}" onclick="toggleTrendGroup(${i})">${on?'&#10003; ':''}${escG(g)} <span style="opacity:.75">(n=${n})</span></button>`; }).join('')+
+    `<button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(true)">All</button><button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(false)">None</button></div>`+
+    (nOn<2?`<div class="hint" style="margin-top:6px">Tick at least two groups to get between-group statistics.</div>`:'')+`</div>`;
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
     const data=groupTrendData(key);
@@ -6814,7 +6850,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
   function tukeyPairs(stats,names){
     var k=names.length; if(k<3) return null;
     var dfW=0,ssw=0,ok=true;
-    names.forEach(function(g){ var s=stats[g]; if(!s||s.n<2||isNaN(s.sd)){ok=false;return;} dfW+=(s.n-1); ssw+=(s.n-1)*s.sd*s.sd; });
+    names.forEach(function(g){ var s=stats[g]; if(!s||s.n<1){ok=false;return;} var sd=(s.n<2||isNaN(s.sd))?0:s.sd; dfW+=(s.n-1); ssw+=(s.n-1)*sd*sd; });  // v5.9: n=1 groups allowed
     if(!ok||dfW<=0) return null;
     var msw=ssw/dfW; if(!(msw>0)) return null;
     var pairs=[];
