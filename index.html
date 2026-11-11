@@ -87,6 +87,19 @@
       with a "Recalculating" notice. Tukey p-values are cached and computed on
       a lighter grid (max |error| vs scipy 7e-6), so a full redraw with four
       groups and 38 parameters no longer freezes the page for ~7 s.
+  v5.13 (2026-11-11) - Trends display. (1) Y-axis fits the data by default
+      (nice ticks with a small margin), so pH, Na, Cl, Temp and SpO2 no longer
+      sit flat against a 0-based axis; a "Y from 0" switch next to "include
+      T0" brings back the v5.6.1 zero-based axis. Applies to on-screen plots
+      and PNG export. (2) PIP and Vt: when a timepoint has no value of its
+      own, the 10-minute anesthesia record (a.vs PEAK / Vt exp) entry nearest
+      that timepoint (within 10 min) is shown instead, per animal and per
+      group; stored rows are not changed, and the plot says when this was
+      used. (3) Each group plot states how many animals of each ticked group
+      have data for that parameter when it is fewer than the group size.
+      (4) Demo-only groups are marked "demo" in the group picker and "All"
+      no longer ticks them (they can still be ticked one by one).
+      Display only; schema stays 3.2; no stored value changed.
 -->
 <html lang="en">
 <head>
@@ -462,7 +475,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.12</small>
+      Auravyx Preclinical <small>Current &middot; v5.13</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -633,7 +646,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.12
+        Auravyx Preclinical &middot; v5.13
       </div>
     </main>
 
@@ -3623,6 +3636,30 @@ function trendPreset(name){
 }
 window.trendPreset = trendPreset;
 
+/* v5.13: PIP / Vt fallback from the 10-minute anesthesia record (a.vs).
+   Used only for display when the timepoint row has no value of its own. */
+const VS_FALLBACK={PIP:'PEAK', TV:'VtExp'};
+const VS_FALLBACK_MAXMIN=10;
+function _hhmmToMin(t){ if(t==null||t==='') return null; const s=String(t).replace(/[^0-9]/g,''); if(s.length<3||s.length>4) return null; const h=parseInt(s.slice(0,s.length-2),10), m=parseInt(s.slice(-2),10); if(isNaN(h)||isNaN(m)||h>23||m>59) return null; return h*60+m; }
+function _rowClockMin(r){
+  if(!r) return null;
+  const st=_hhmmToMin(r._sheetTime); if(st!=null) return st;
+  const ts=r._ts; if(!ts) return null;
+  const m=String(ts).match(/T(\d{2}):(\d{2})/);
+  if(m && !/Z$/.test(String(ts))) return parseInt(m[1],10)*60+parseInt(m[2],10);   // local wall time as written
+  const d=new Date(ts); return isNaN(d)?null:d.getHours()*60+d.getMinutes();
+}
+function vsFallbackVal(a,rowId,key){
+  const col=VS_FALLBACK[key]; if(!col||!a||!Array.isArray(a.vs)||!a.vs.length) return null;
+  const t=_rowClockMin(a.rows&&a.rows[rowId]); if(t==null) return null;
+  let best=null,bd=Infinity;
+  a.vs.forEach(v=>{ if(!v) return; const num=typeof v[col]==='number'?v[col]:parseFloat(v[col]); if(isNaN(num)) return; const m=_hhmmToMin(v.time); if(m==null) return; const d=Math.abs(m-t); if(d<bd){ bd=d; best=num; } });
+  return bd<=VS_FALLBACK_MAXMIN?best:null;
+}
+window.vsFallbackVal=vsFallbackVal;
+let _vsFallbackHit={};
+window._vsFallbackUsed=function(key){ return key?!!_vsFallbackHit[key]:Object.keys(_vsFallbackHit).some(k=>_vsFallbackHit[k]&&(typeof TREND_SEL==='undefined'||TREND_SEL.includes(k))); };
+
 /* Collect ordered data points for one series from the active animal.
    Reads recorded rows AND standalone lab entries so blood gas plots
    even when a lab was saved without being merged into a row. */
@@ -3634,7 +3671,8 @@ function trendPoints(key){
   const seen=new Set();
   order.forEach(([rid,label])=>{
     const r=a.rows[rid];
-    const v=r[key];
+    let v=r[key], fromVs=false;
+    if((v==null||v==='') && VS_FALLBACK[key]){ const fv=vsFallbackVal(a,rid,key); if(fv!=null){ v=fv; fromVs=true; } }
     if(v==null||v==='') return;
     const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
     if(isNaN(num)) return;
@@ -3652,7 +3690,7 @@ function trendPoints(key){
       x=maxSoFar+(r._death?10:5);
     }
     if(x==null) x=pts.length;   // last resort: keep them in entry order
-    pts.push({x, y:num, label, event:!!r._event, death:!!r._death, ts:r._ts});
+    pts.push({x, y:num, label, event:!!r._event, death:!!r._death, ts:r._ts, fromVs});
     seen.add(rid);
   });
   // lab entries not already merged into a row
@@ -3697,6 +3735,7 @@ function renderTrends(){
     html+= pts.length<1
       ? `<div class="empty" style="padding:14px">No data yet for ${meta.label}.</div>`
       : (window.pubAnimalPlotSVG?`<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px">`+window.pubAnimalPlotSVG(pts, meta)+`</div>`:trendSVG(pts, meta));
+    if(pts.some(p=>p.fromVs)) html+=`<div class="hint" style="margin-top:4px">${pts.filter(p=>p.fromVs).length} of ${pts.length} point(s) taken from the 10-minute anesthesia record (${VS_FALLBACK[key]==='PEAK'?'PEAK':'Vt exp'}, nearest entry within ${VS_FALLBACK_MAXMIN} min of the timepoint).</div>`;
     html+=`</div>`;
   });
   host.innerHTML=html;
@@ -3743,8 +3782,10 @@ function toggleTrendGroup(i){
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
   _deferTrendRender();
 }
+function _demoOnlyGroup(g){ const m=(App.animals||[]).filter(a=>groupOf(a)===g); return !!(m.length && m.every(a=>a._demo)); }
 function setAllTrendGroups(on){
-  (window._trendGroupList||[]).forEach(g=>{ TREND_GROUP_STATE[g]=!!on; });
+  // v5.13: "All" means every study group; demo-only groups stay off unless ticked by hand
+  (window._trendGroupList||[]).forEach(g=>{ TREND_GROUP_STATE[g]=!!on && !_demoOnlyGroup(g); });
   try{ localStorage.setItem('auravyx_trend_groups', JSON.stringify(TREND_GROUP_STATE)); }catch(e){}
   _deferTrendRender();
 }
@@ -3788,10 +3829,12 @@ function _fmt(x,d){ if(x==null||isNaN(x)) return '-'; d=(d==null?1:d); return (M
 function groupTrendData(key){
   const isLab=key.startsWith('lab_'), labName=isLab?key.slice(4):null;
   const tps=(App.protocol&&App.protocol.timepoints)||[];
+  let usedVs=false;
   function valFor(a,tpId){
     if(key.startsWith('ecg_')) return ecgVal(a,tpId,key.slice(4));
     const r=a.rows&&a.rows[tpId];
     let v=r?r[key]:null;
+    if((v==null||v==='') && r && VS_FALLBACK[key]){ const fv=vsFallbackVal(a,tpId,key); if(fv!=null){ v=fv; usedVs=true; } }
     if((v==null||v==='') && isLab && a.labs){ const l=a.labs.find(x=>x.tp===tpId && x.values && x.values[labName]!=null && x.values[labName]!==''); if(l) v=l.values[labName]; }
     if(v==null||v==='') return null;
     const num=typeof v==='number'?v:parseFloat(String(v).split('/')[0]);
@@ -3810,7 +3853,8 @@ function groupTrendData(key){
     const tag=(tp.label.match(/\bT\d+(?:\.\d+)?/i)||[tp.label.split(/[-–(]/)[0].trim()])[0];
     rows.push({x: tp.offsetMin!=null?tp.offsetMin:i*10, tag, label:tp.label, stats, p, test, F, T, df1, df2});
   });
-  return {rows, groups:Object.keys(groupSet)};
+  _vsFallbackHit[key]=usedVs;
+  return {rows, groups:Object.keys(groupSet), usedVs};
 }
 
 function groupTrendSVG(data, meta, colorMap){
@@ -3860,8 +3904,8 @@ function renderGroupTrends(host){
   const nOn=allGroups.filter(trendGroupActive).length;
   html+=`<div class="card" style="padding:10px 12px"><div style="font-size:14px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:6px">Groups to compare <span style="font-weight:400;text-transform:none">(${nOn} of ${allGroups.length} ticked - statistics use ticked groups only)</span></div><div style="display:flex;flex-wrap:wrap;gap:6px">`+
     allGroups.map((g,i)=>{ const on=trendGroupActive(g); const n=(App.animals||[]).filter(a=>groupOf(a)===g).length;
-      return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto;min-height:36px;${on?`background:${colorMap[g]};border-color:${colorMap[g]}`:''}" onclick="toggleTrendGroup(${i})">${on?'&#10003; ':''}${escG(g)} <span style="opacity:.75">(n=${n})</span></button>`; }).join('')+
-    `<button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(true)">All</button><button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(false)">None</button></div>`+
+      return `<button class="btn sm ${on?'primary':'ghost'}" style="width:auto;min-height:36px;${on?`background:${colorMap[g]};border-color:${colorMap[g]}`:''}" onclick="toggleTrendGroup(${i})">${on?'&#10003; ':''}${escG(g)} <span style="opacity:.75">(n=${n}${_demoOnlyGroup(g)?', demo':''})</span></button>`; }).join('')+
+    `<button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(true)" title="Tick every study group (demo-only groups stay off)">All</button><button class="btn sm ghost" style="width:auto;min-height:36px" onclick="setAllTrendGroups(false)">None</button></div>`+
     (nOn<2?`<div class="hint" style="margin-top:6px">Tick at least two groups to get between-group statistics.</div>`:'')+`</div>`;
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -3872,6 +3916,11 @@ function renderGroupTrends(host){
     html+=`<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:4px;font-size:14px">`+
       allGroups.map(g=>{ const on=trendGroupActive(g); return `<span role="button" tabindex="0" title="Click to ${on?'hide':'show'} this group" onclick="toggleTrendGroupName('${encodeURIComponent(g)}')" style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;padding:6px 8px;border-radius:6px;border:1px solid var(--line);${on?'':'opacity:.45;text-decoration:line-through'}"><span style="width:10px;height:10px;border-radius:2px;background:${colorMap[g]||'#888'};display:inline-block"></span>${escG(g)}</span>`; }).join('')+`</div>`;
     html+= (window.pubGroupPlotSVG?`<div style="background:#fff;border:1px solid var(--line);border-radius:8px;padding:4px;max-width:720px;margin:0 auto">`+window.pubGroupPlotSVG(data, meta, colorMap)+`</div>`:groupTrendSVG(data, meta, colorMap));
+    // v5.13: say so when a ticked group has fewer animals with data than its size
+    { const ticked=allGroups.filter(trendGroupActive);
+      const cov=ticked.map(g=>{ const total=(App.animals||[]).filter(a=>groupOf(a)===g).length; const have=data.rows.reduce((m,r)=>Math.max(m,(r.stats[g]&&r.stats[g].n)||0),0); return {g,total,have}; });
+      if(cov.some(c=>c.have<c.total)) html+=`<div class="hint" style="margin-top:6px;font-size:13px"><b>Animals with data:</b> `+cov.map(c=>`<span style="color:${colorMap[c.g]||'inherit'};white-space:nowrap">${escG(c.g)} ${c.have} of ${c.total}</span>`).join(' &middot; ')+`. The n at each timepoint is in the table below.</div>`;
+      if(data.usedVs) html+=`<div class="hint" style="margin-top:4px;font-size:13px">Where a timepoint has no ${escG(meta.label)} value of its own, the 10-minute anesthesia record entry nearest that timepoint (within ${VS_FALLBACK_MAXMIN} min) is used.</div>`; }
     // stats table
     const showP=data.groups.length>=2;
     html+=`<div style="overflow-x:auto;margin-top:8px"><table style="width:100%;border-collapse:collapse;font-size:15px">`;
@@ -3915,7 +3964,7 @@ function statsReport(opts){
     'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
     (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
     '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
-    (window.ecgMethodsText?ecgMethodsText():'')+'Analyses were performed in Auravyx Preclinical (v5.12).';
+    (window.ecgMethodsText?ecgMethodsText():'')+(window._vsFallbackUsed&&window._vsFallbackUsed()?'Where peak inspiratory pressure or tidal volume was not recorded at a timepoint, the value from the 10-minute anesthesia record nearest that timepoint (within 10 minutes) was used. ':'')+'Analyses were performed in Auravyx Preclinical (v5.13).';
   const results=[];
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -4024,8 +4073,8 @@ function trendSVG(pts, meta){
   if(xMax===xMin){ xMax=xMin+1; }
   const pad=(yMax-yMin)*0.15 || (Math.abs(yMax)*0.1 || 1);
   yMin-=pad; yMax+=pad;
-  // v5.6.1: y-axis always includes 0
-  if(yMin>0) yMin=0; if(yMax<0) yMax=0;
+  // v5.6.1: y-axis includes 0 - since v5.13 only when "Y from 0" is on
+  if(window.TREND_Y_ZERO){ if(yMin>0) yMin=0; if(yMax<0) yMax=0; }
   const sx=v=>PL+((v-xMin)/(xMax-xMin))*(W-PL-PR);
   const sy=v=>PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB);
   const line=pts.map((p,i)=>`${i?'L':'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(' ');
@@ -7168,6 +7217,16 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var gmin=Math.floor(min/d)*d, gmax=Math.ceil(max/d)*d; var ticks=[];
     for(var v=gmin; v<=gmax+d*0.5; v+=d){ ticks.push(Math.abs(v)<d*1e-6?0:v); }
     return {ticks:ticks,min:gmin,max:gmax,step:d}; }
+  /* v5.13: y range. Default fits the data (10% margin, never crossing 0 for
+     one-signed data); with "Y from 0" on, the axis includes 0 as in v5.6.1. */
+  function yTicks(vals){
+    var lo=Math.min.apply(null,vals), hi=Math.max.apply(null,vals);
+    if(window.TREND_Y_ZERO) return niceTicks(Math.min(0,lo),Math.max(0,hi),6);
+    var span=hi-lo, pad=span>0?span*0.1:(Math.abs(hi)*0.05||1);
+    var a=lo-pad, b=hi+pad;
+    if(lo>=0 && a<0) a=0; if(hi<=0 && b>0) b=0;
+    return niceTicks(a,b,6);
+  }
   function fmtTick(v,step){ var d=step>=1?0:(step>=0.1?1:2); return (Math.round(v*Math.pow(10,d))/Math.pow(10,d)).toFixed(d); }
   function animTag(p){ var L=String(p.label||''); if(p.death) return 'DEATH';
     var mT=L.match(/\bT(\d+(?:\.\d+)?)/i); if(mT) return 'T'+mT[1];
@@ -7185,7 +7244,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
     var yv=[]; rows.forEach(function(r){ groups.forEach(function(g){ var s=r.stats[g]; if(s){ var e=isNaN(s.sem)?0:s.sem; yv.push(s.mean+e); yv.push(s.mean-e); } }); });
     if(!yv.length) return '<div class="empty" style="padding:14px">No group data.</div>';
-    var nt=niceTicks(Math.min(0,Math.min.apply(null,yv)),Math.max(0,Math.max.apply(null,yv)),6), yMin=nt.min, yMax=nt.max;
+    var nt=yTicks(yv), yMin=nt.min, yMax=nt.max;
     var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
@@ -7251,7 +7310,7 @@ try{ renderAnimalTabs(); rebuildTable(); renderTimeline(); renderLabList();
     var n=cats.length;
     var xAt=function(i){ return PL + (n<=1 ? (W-PL-PR)/2 : (i/(n-1))*(W-PL-PR)); };
     var ys=pts.map(function(p){return p.y;});
-    var nt=niceTicks(Math.min(0,Math.min.apply(null,ys)),Math.max(0,Math.max.apply(null,ys)),6), yMin=nt.min, yMax=nt.max;
+    var nt=yTicks(ys), yMin=nt.min, yMax=nt.max;
     var sy=function(v){ return PT+(1-(v-yMin)/(yMax-yMin))*(H-PT-PB); };
     var s='';
     nt.ticks.forEach(function(v){ if(v<yMin-1e-9||v>yMax+1e-9) return; var y=sy(v);
@@ -7822,6 +7881,9 @@ try{
    it unless the operator ticks "include T0" under Trends.
    ============================================================ */
 const T0_KEY='auravyx_trend_t0';
+const YZERO_KEY='auravyx_trend_yzero';
+window.TREND_Y_ZERO=false;
+try{ window.TREND_Y_ZERO = localStorage.getItem(YZERO_KEY)==='1'; }catch(e){}
 window.TREND_INCLUDE_T0=false;
 try{ window.TREND_INCLUDE_T0 = localStorage.getItem(T0_KEY)==='1'; }catch(e){}
 if(typeof trendPoints==='function'){
@@ -7841,6 +7903,13 @@ try{
     lab.innerHTML='<input type="checkbox" id="trendIncludeT0"'+(window.TREND_INCLUDE_T0?' checked':'')+'> include T0 (pre-op)';
     gBtn.insertAdjacentElement('afterend',lab);
     lab.querySelector('input').addEventListener('change',e=>{ window.TREND_INCLUDE_T0=e.target.checked; try{ localStorage.setItem(T0_KEY, e.target.checked?'1':'0'); }catch(_){} if(typeof renderTrends==='function') renderTrends(); });
+    // v5.13: y-axis fits the data unless this is ticked
+    const labY=document.createElement('label');
+    labY.style.cssText=lab.style.cssText;
+    labY.title='Off: the y-axis fits the data. On: every y-axis includes 0.';
+    labY.innerHTML='<input type="checkbox" id="trendYZero"'+(window.TREND_Y_ZERO?' checked':'')+'> Y from 0';
+    lab.insertAdjacentElement('afterend',labY);
+    labY.querySelector('input').addEventListener('change',e=>{ window.TREND_Y_ZERO=e.target.checked; try{ localStorage.setItem(YZERO_KEY, e.target.checked?'1':'0'); }catch(_){} if(typeof renderTrends==='function') renderTrends(); });
   }
 }catch(e){}
 })();
