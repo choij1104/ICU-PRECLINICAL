@@ -87,6 +87,12 @@
       with a "Recalculating" notice. Tukey p-values are cached and computed on
       a lighter grid (max |error| vs scipy 7e-6), so a full redraw with four
       groups and 38 parameters no longer freezes the page for ~7 s.
+  v5.14 (2026-11-20) - Analysis tab (read-only): A data completeness and
+    notes flagged in the record; B VS2 chemistry baseline vs end of study,
+    paired delta by group (Welch / ANOVA), organ panels, upper-limit flag;
+    C HM5 CBC at pre-baseline with reference-range flags and group check;
+    D ECG monitor strips with ectopy incidence (Fisher); E ECG-lab
+    correlation explorer (nearest i-STAT within a window, Spearman, descriptive).
   v5.13 (2026-11-11) - Trends display. (1) Y-axis fits the data by default
       (nice ticks with a small margin), so pH, Na, Cl, Temp and SpO2 no longer
       sit flat against a 0-based axis; a "Y from 0" switch next to "include
@@ -475,7 +481,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.13</small>
+      Auravyx Preclinical <small>Current &middot; v5.14</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -489,6 +495,7 @@
     <button class="tabbtn active" data-tab="live">Current</button>
     <button class="tabbtn" data-tab="timeline">Timeline &amp; Labs</button>
     <button class="tabbtn" data-tab="trends">Trends</button>
+    <button class="tabbtn" data-tab="analysis">Analysis</button>
     <button class="tabbtn" data-tab="setup">Protocol &amp; Source</button>
     <button class="tabbtn" data-tab="settings">Photo / Settings</button>
     <button class="tabbtn" data-tab="log">Study Log</button>
@@ -646,7 +653,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.13
+        Auravyx Preclinical &middot; v5.14
       </div>
     </main>
 
@@ -673,6 +680,11 @@
         </div>
       </div>
       <div id="trendCharts"></div>
+    </main>
+
+    <main class="col center" data-panel="analysis">
+      <h2 class="sec">Analysis &mdash; chemistry, CBC, ECG</h2>
+      <div id="analysisBody"></div>
     </main>
 
     <aside class="col left" data-panel="log">
@@ -3964,7 +3976,7 @@ function statsReport(opts){
     'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
     (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
     '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
-    (window.ecgMethodsText?ecgMethodsText():'')+(window._vsFallbackUsed&&window._vsFallbackUsed()?'Where peak inspiratory pressure or tidal volume was not recorded at a timepoint, the value from the 10-minute anesthesia record nearest that timepoint (within 10 minutes) was used. ':'')+'Analyses were performed in Auravyx Preclinical (v5.13).';
+    (window.ecgMethodsText?ecgMethodsText():'')+(window._vsFallbackUsed&&window._vsFallbackUsed()?'Where peak inspiratory pressure or tidal volume was not recorded at a timepoint, the value from the 10-minute anesthesia record nearest that timepoint (within 10 minutes) was used. ':'')+'Analyses were performed in Auravyx Preclinical (v5.14).';
   const results=[];
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -7055,12 +7067,199 @@ $$('.modal-bg').forEach(m=>m.addEventListener('click',e=>{
   }
 })();
 
+/* ============================================================
+   v5.14 ANALYSIS TAB - chemistry (BL vs EOS), CBC baseline,
+   ECG monitor strips, ECG/lab correlation, data completeness.
+   Reads only; never changes study data.
+   ============================================================ */
+const AN_CHEM=[
+  ['Kidney',[['Crea_chem','CRE','mg/dL',0.9,1.9],['BUN_chem','BUN','mg/dL',2,11],['PHOS','PHOS','mg/dL',6.8,10.6],['K_chem','K','mmol/L',3.5,4.7]]],
+  ['Liver',[['ALT','ALT','U/L',25,55],['ALP','ALP','U/L',56,134],['TBIL','TBIL','mg/dL',0.2,0.5],['ALB','ALB','g/dL',2.5,4.4],['TP','TP','g/dL',5.1,7.2],['GLOB','GLOB','g/dL',1.8,4.1]]],
+  ['Pancreas',[['AMY','AMY','U/L',739,2882]]],
+  ['Electrolytes / glucose',[['Na_chem','NA','mmol/L',129,143],['Ca_chem','CA','mg/dL',9.2,11.2],['Glu_chem','GLU','mg/dL',52,154]]]
+];
+const AN_CHEM_ULOQ={AMY:4000};   // VS2 reports ">4000"; stored value 4000 is a floor, not a measurement
+const AN_CBC=[['WBC','WBC','10^9/L',11,22],['NEU','NEU','10^9/L',5,10],['LYM','LYM','10^9/L',5.5,11.1],['MON','MON','10^9/L',0.66,1.32],
+  ['RBC','RBC','10^12/L',5,8],['Hgb_CBC','HGB','g/dL',10,16],['Hct_CBC','HCT','%',32,50],['MCV','MCV','fL',50,68],['MCH','MCH','pg',17,21],['MCHC','MCHC','g/dL',30,34],['PLT','PLT','10^9/L',325,715]];
+const AN_LAB_X=[['Lactate','Lactate','mmol/L'],['pH','pH',''],['K','K (i-STAT)','mmol/L'],['iCa','iCa','mmol/L'],['BE','BE','mmol/L'],['Glucose','Glucose','mg/dL'],['Hb','Hb','g/dL'],['HCO3','HCO3','mmol/L']];
+const AN_ECG_Y=[['HR','HR (strip)','bpm'],['PPV','PPV (strip)','%'],['ECT','Ectopy SVC+PVC (strip)','/min'],['SVCs','SVCs (strip)','/min'],['PVCs','PVCs (strip)','/min'],
+  ['m_QRS','QRS (measured)','ms'],['m_QT','QT (measured)','ms'],['m_QTc','QTc study (measured)','ms'],['m_PR','PR (measured)','ms']];
+var AN_STATE={x:'K',y:'ECT',win:15};
+try{ const s=JSON.parse(localStorage.getItem('auravyx_an_state')||'null'); if(s) AN_STATE=Object.assign(AN_STATE,s); }catch(e){}
+
+function _anAnimals(){ return (App.animals||[]).filter(a=>a&&!a._demo&&trendGroupActive(groupOf(a))); }
+function _anGroups(){ const all=[...new Set((App.animals||[]).filter(a=>a&&!a._demo).map(groupOf))]; const cm={}; all.forEach((g,i)=>cm[g]=GCOLORS[i%GCOLORS.length]); return {groups:all.filter(trendGroupActive),cm}; }
+function _anEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function _anNum(v){ return _ecgNum(v); }
+function _anTpLabel(id){ const tp=((App.protocol&&App.protocol.timepoints)||[]).find(t=>t.id===id); return tp?((String(tp.label).match(/\bT\d+(?:\.\d+)?/i)||[tp.label])[0]):id; }
+function _anTpOff(id){ const tp=((App.protocol&&App.protocol.timepoints)||[]).find(t=>t.id===id); return tp&&tp.offsetMin!=null?tp.offsetMin:null; }
+/* chemistry draws: earliest pre-injury row (offset<=0) = BL, latest row with offset>=80 (post deflation) = EOS */
+function _anChemPair(a,key){
+  const rows=a.rows||{}; let bl=null,eos=null;
+  Object.keys(rows).forEach(id=>{ const v=_anNum(rows[id]&&rows[id]['lab_'+key]); if(v==null) return; const off=_anTpOff(id); if(off==null) return;
+    if(off<=0 && (!bl||off<bl.off)) bl={v,off,id};
+    if(off>=80 && (!eos||off>eos.off)) eos={v,off,id}; });
+  return {bl,eos};
+}
+function _anTable(head,rows,opts){
+  const td='padding:5px 8px;border-bottom:1px solid var(--line-soft,#eee);white-space:nowrap';
+  return '<div style="overflow-x:auto"><table style="border-collapse:collapse;font-size:14px;min-width:100%"><thead><tr>'+
+    head.map((h,i)=>'<th style="'+td+';text-align:'+(i?'right':'left')+';font-size:13px;text-transform:none;letter-spacing:0;border-bottom:1px solid var(--line)">'+h+'</th>').join('')+
+    '</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map((c,i)=>'<td style="'+td+';text-align:'+(i?'right':'left')+(i?';font-family:var(--mono,monospace)':'')+'">'+c+'</td>').join('')+'</tr>').join('')+'</tbody></table></div>';
+}
+function _anGroupTest(byG){
+  const gs=Object.keys(byG).filter(g=>byG[g].length>=1);
+  if(gs.length<2) return '';
+  if(gs.length===2){ const w=_welch(byG[gs[0]],byG[gs[1]]); return w?('Welch p = '+_fmt(w.p,3)+_stars(w.p)):'n too small'; }
+  const an=_anova(gs.map(g=>({n:byG[g].length,mean:_mean(byG[g]),sd:_sd(byG[g])})));
+  return an?('ANOVA p = '+_fmt(an.p,3)+_stars(an.p)):'n too small';
+}
+function _anMSD(arr,d){ if(!arr.length) return '-'; return _fmt(_mean(arr),d)+(arr.length>1?' &plusmn; '+_fmt(_sd(arr),d):'')+' <span style="color:var(--ink-faint)">('+arr.length+')</span>'; }
+
+/* ---- A. data completeness + flagged notes ---- */
+function _anCompleteness(){
+  const tps=(App.protocol&&App.protocol.timepoints)||[]; const {cm}=_anGroups();
+  const rows=_anAnimals().map(a=>{ const R=a.rows||{};
+    const ist=tps.filter(t=>R[t.id]&&_anNum(R[t.id].lab_Lactate)!=null).length;
+    const cbc=Object.values(R).some(r=>r&&_anNum(r.lab_WBC)!=null);
+    const ch=AN_CHEM[0][1][0][0]; const p=_anChemPair(a,ch);
+    const ecg=(a.ecg||[]).length, ecgm=Object.values(a.ecgm||{}).filter(ecgHasData).length, vs=(a.vs||[]).length;
+    const ok=x=>x?'&#10003;':'<span style="color:#c0392b">&mdash;</span>';
+    return ['<b>'+_anEsc(a.id)+'</b> <span style="color:'+(cm[groupOf(a)]||'inherit')+'">'+_anEsc(groupOf(a))+'</span>', ist+' / '+tps.length, ok(cbc), ok(p.bl), ok(p.eos), ecg||'<span style="color:#c0392b">0</span>', ecgm, vs||'<span style="color:#c0392b">0</span>'];
+  });
+  const flags=[]; const re=/(dextrose|deviation|missed|wrong blood|did not give|not recorded|arrow-flagged)/i;
+  _anAnimals().forEach(a=>{ const t=(a.info&&a.info.plan)||''; t.split(/(?<=\.)\s+/).forEach(s=>{ if(re.test(s)) flags.push('<b>'+_anEsc(a.id)+'</b>: '+_anEsc(s.trim())); }); });
+  return '<div class="card"><b style="font-size:16px">A. Data completeness</b><div class="hint" style="font-size:13px;margin:4px 0 8px">i-STAT = timepoints with lactate. Chem BL = pre-injury VS2 draw; Chem EOS = VS2 draw after deflation. ECG strips = monitor printouts; measured = hand-measured intervals.</div>'+
+    _anTable(['Animal','i-STAT','CBC','Chem BL','Chem EOS','ECG strips','ECG measured','10-min rows'],rows)+
+    (flags.length?'<div style="margin-top:10px;font-size:14px"><b>Notes flagged in the source record</b> <span class="hint" style="font-size:12px">(keyword match in the animal notes; review before analysis)</span><ul style="margin:6px 0 0 18px;padding:0">'+flags.map(f=>'<li style="margin:3px 0">'+f+'</li>').join('')+'</ul></div>':'')+'</div>';
+}
+/* ---- B. chemistry BL vs EOS ---- */
+function _anChem(){
+  const {groups,cm}=_anGroups(); const A=_anAnimals();
+  let h='<div class="card"><b style="font-size:16px">B. Chemistry (VetScan VS2): baseline vs end of study</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Paired within each animal. &Delta; = EOS &minus; BL, group mean &plusmn; SD (n). Group test on &Delta;: Welch t-test for 2 groups, one-way ANOVA for 3. Reference ranges are the VS2 printed ranges; values outside are counted at EOS.</div>';
+  AN_CHEM.forEach(([organ,list])=>{
+    const rows=list.map(([key,lab,unit,lo,hi])=>{
+      const by={}; const out={}; let cens=false;
+      groups.forEach(g=>{ by[g]=[]; out[g]=[0,0]; });
+      A.forEach(a=>{ const g=groupOf(a); if(!by[g]) return; const p=_anChemPair(a,key); if(!p.bl||!p.eos) return;
+        if(AN_CHEM_ULOQ[lab]&&(p.bl.v>=AN_CHEM_ULOQ[lab]||p.eos.v>=AN_CHEM_ULOQ[lab])) cens=true;
+        by[g].push(p.eos.v-p.bl.v); out[g][1]++; if(p.eos.v<lo||p.eos.v>hi) out[g][0]++; });
+      return ['<b>'+lab+'</b> <span style="color:var(--ink-faint)">'+unit+'</span>'+(cens?' <span title="One or more values at the analyzer upper limit (>'+AN_CHEM_ULOQ[lab]+'); &Delta; is not reliable" style="color:#c0392b">&#9888; &ge;'+AN_CHEM_ULOQ[lab]+'</span>':'')]
+        .concat(groups.map(g=>_anMSD(by[g],key==='TBIL'||key==='Crea_chem'?2:1)+'<br><span style="color:var(--ink-faint);font-size:12px">EOS out of range '+out[g][0]+'/'+out[g][1]+'</span>'))
+        .concat([_anGroupTest(by)]);
+    });
+    h+='<div style="margin-top:10px"><div style="font-weight:700;font-size:14px;margin-bottom:4px">'+organ+'</div>'+
+      _anTable(['Analyte (&Delta;)'].concat(groups.map(g=>'<span style="color:'+cm[g]+'">'+_anEsc(g)+'</span>')).concat(['Test']),rows)+'</div>';
+  });
+  return h+'</div>';
+}
+/* ---- C. CBC baseline ---- */
+function _anCbc(){
+  const {groups,cm}=_anGroups(); const A=_anAnimals();
+  const val=(a,k)=>{ const R=a.rows||{}; for(const id of Object.keys(R)){ const v=_anNum(R[id]&&R[id]['lab_'+k]); if(v!=null) return v; } return null; };
+  const per=A.map(a=>['<b>'+_anEsc(a.id)+'</b>'].concat(AN_CBC.map(([k,,, lo,hi])=>{ const v=val(a,k); if(v==null) return '-'; const o=v<lo||v>hi; return o?'<span style="color:#c0392b;font-weight:700" title="outside HM5 range '+lo+'-'+hi+'">'+_fmt(v,v<20?2:0)+(v<lo?' &darr;':' &uarr;')+'</span>':_fmt(v,v<20?2:0); })));
+  const grp=AN_CBC.map(([k,lab,unit])=>{ const by={}; groups.forEach(g=>by[g]=[]); A.forEach(a=>{ const v=val(a,k); if(v!=null&&by[groupOf(a)]) by[groupOf(a)].push(v); });
+    return ['<b>'+lab+'</b> <span style="color:var(--ink-faint)">'+unit+'</span>'].concat(groups.map(g=>_anMSD(by[g],2))).concat([_anGroupTest(by)]); });
+  return '<div class="card"><b style="font-size:16px">C. CBC at pre-baseline (VetScan HM5)</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Used to check that groups start comparable. Red = outside the HM5 printed reference range (&darr; low, &uarr; high). A group difference here is a baseline imbalance, not a treatment effect.</div>'+
+    _anTable(['Animal'].concat(AN_CBC.map(c=>c[1])),per)+
+    '<div style="margin-top:10px">'+_anTable(['Group comparison'].concat(groups.map(g=>'<span style="color:'+cm[g]+'">'+_anEsc(g)+'</span>')).concat(['Test']),grp)+'</div></div>';
+}
+/* ---- D/E. ECG strips and pairing with labs ---- */
+function _anStripMin(a,e){
+  const t1=a.rows&&a.rows.T1&&a.rows.T1._ts; const t=e&&e.time; if(!t1||!t) return null;
+  const d=new Date(String(t).replace(' ','T')); const b=new Date(t1); if(isNaN(d)||isNaN(b)) return null; return (d-b)/60000;
+}
+function _anStripVal(e,k){ const v=e&&e.v||{}; if(k==='ECT'){ const s=_anNum(v.SVCs),p=_anNum(v.PVCs); return (s==null&&p==null)?null:(s||0)+(p||0); } return _anNum(v[k]); }
+function _anLabNear(a,minRun,key,win){
+  let best=null; Object.keys(a.rows||{}).forEach(id=>{ const r=a.rows[id]; const v=_anNum(r&&r['lab_'+key]); if(v==null||r._runMin==null) return;
+    let m=r._runMin; if(r._ts&&a.rows.T1&&a.rows.T1._ts){ const d=(new Date(r._ts)-new Date(a.rows.T1._ts))/60000; if(isFinite(d)) m=d; }
+    const dt=Math.abs(m-minRun); if(dt<=win&&(!best||dt<best.dt)) best={v,dt,id}; });
+  return best;
+}
+function _anPairs(xKey,yKey,win){
+  const pts=[];
+  _anAnimals().forEach(a=>{
+    if(yKey.startsWith('m_')){ const nm=yKey.slice(2);
+      Object.keys(a.ecgm||{}).forEach(tp=>{ const y=ecgVal(a,tp,nm); const x=_anNum(a.rows&&a.rows[tp]&&a.rows[tp]['lab_'+xKey]); if(x!=null&&y!=null) pts.push({x,y,id:a.id,g:groupOf(a),lab:_anTpLabel(tp)}); });
+    } else {
+      (a.ecg||[]).forEach(e=>{ const y=_anStripVal(e,yKey); if(y==null) return; const m=_anStripMin(a,e); if(m==null) return; const l=_anLabNear(a,m,xKey,win); if(!l) return;
+        pts.push({x:l.v,y,id:a.id,g:groupOf(a),lab:(e.label||'')+' vs '+_anTpLabel(l.id)+' ('+Math.round(l.dt)+' min)'}); });
+    }
+  });
+  return pts;
+}
+function _anRank(a){ const s=a.map((v,i)=>[v,i]).sort((p,q)=>p[0]-q[0]); const r=new Array(a.length); let i=0; while(i<s.length){ let j=i; while(j+1<s.length&&s[j+1][0]===s[i][0]) j++; const rk=(i+j)/2+1; for(let k=i;k<=j;k++) r[s[k][1]]=rk; i=j+1; } return r; }
+function _anSpearman(xs,ys){
+  const n=xs.length; if(n<4) return null; const rx=_anRank(xs), ry=_anRank(ys); const mx=_mean(rx), my=_mean(ry);
+  let sxy=0,sxx=0,syy=0; for(let i=0;i<n;i++){ sxy+=(rx[i]-mx)*(ry[i]-my); sxx+=(rx[i]-mx)**2; syy+=(ry[i]-my)**2; }
+  if(!sxx||!syy) return null; const rho=sxy/Math.sqrt(sxx*syy); const t=rho*Math.sqrt((n-2)/Math.max(1e-12,1-rho*rho));
+  return {rho,n,p:_tp(Math.abs(t),n-2)};
+}
+function _anScatter(pts,xl,yl,cm){
+  const W=640,H=340,L=56,R=16,T=14,B=44; if(!pts.length) return '<div class="hint" style="padding:20px;text-align:center">No pairs yet for this combination.</div>';
+  const xs=pts.map(p=>p.x), ys=pts.map(p=>p.y); let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  if(x0===x1){x0-=1;x1+=1;} if(y0===y1){y0-=1;y1+=1;} const px=(x1-x0)*0.06, py=(y1-y0)*0.08; x0-=px;x1+=px;y0-=py;y1+=py;
+  const sx=v=>L+(v-x0)/(x1-x0)*(W-L-R), sy=v=>H-B-(v-y0)/(y1-y0)*(H-T-B);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;max-width:720px;background:#fff;border:1px solid var(--line);border-radius:8px">';
+  for(let i=0;i<=4;i++){ const xv=x0+(x1-x0)*i/4, yv=y0+(y1-y0)*i/4;
+    s+='<line x1="'+sx(xv)+'" y1="'+T+'" x2="'+sx(xv)+'" y2="'+(H-B)+'" stroke="#eee"/><text x="'+sx(xv)+'" y="'+(H-B+16)+'" font-size="11" text-anchor="middle" fill="#555">'+_fmt(xv,Math.abs(x1-x0)<5?2:0)+'</text>';
+    s+='<line x1="'+L+'" y1="'+sy(yv)+'" x2="'+(W-R)+'" y2="'+sy(yv)+'" stroke="#eee"/><text x="'+(L-6)+'" y="'+(sy(yv)+4)+'" font-size="11" text-anchor="end" fill="#555">'+_fmt(yv,Math.abs(y1-y0)<5?2:0)+'</text>'; }
+  s+='<text x="'+((W+L)/2)+'" y="'+(H-6)+'" font-size="12" text-anchor="middle" fill="#222">'+_anEsc(xl)+'</text><text x="14" y="'+((H-B)/2)+'" font-size="12" text-anchor="middle" fill="#222" transform="rotate(-90 14 '+((H-B)/2)+')">'+_anEsc(yl)+'</text>';
+  pts.forEach(p=>{ s+='<circle cx="'+sx(p.x)+'" cy="'+sy(p.y)+'" r="5" fill="'+(cm[p.g]||'#888')+'" fill-opacity=".8" stroke="#fff"><title>'+_anEsc(p.id+' | '+p.lab+' | x='+p.x+', y='+p.y)+'</title></circle>'; });
+  return s+'</svg>';
+}
+function _anEcg(){
+  const {groups,cm}=_anGroups(); const A=_anAnimals();
+  const inc=groups.map(g=>{ let n=0,k=0; A.filter(a=>groupOf(a)===g).forEach(a=>{ const vals=(a.ecg||[]).map(e=>_anStripVal(e,'ECT')).filter(v=>v!=null); if(!vals.length) return; n++; if(vals.some(v=>v>0)) k++; }); return {g,n,k}; }).filter(r=>r.n);
+  let p=null; if(inc.length===2) p=fisher2x2(inc[0].k,inc[0].n-inc[0].k,inc[1].k,inc[1].n-inc[1].k);
+  const strips=[]; A.forEach(a=>(a.ecg||[]).forEach(e=>{ const m=_anStripMin(a,e); strips.push(['<b>'+_anEsc(a.id)+'</b>',_anEsc(e.label||''),m==null?'-':Math.round(m),_anStripVal(e,'HR')??'-',_anStripVal(e,'PPV')??'-',_anStripVal(e,'SVCs')??'-',_anStripVal(e,'PVCs')??'-']); }));
+  return '<div class="card"><b style="font-size:16px">D. ECG monitor strips</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Monitor summary values printed on each strip. Minutes are from T1 (baseline). Ectopy = SVCs + PVCs per minute. An animal counts as "ectopy" if any strip shows &gt;0. Fisher exact p for 2 groups.</div>'+
+    _anTable(['Group','Animals with ectopy / with strips','%'],inc.map(r=>['<span style="color:'+cm[r.g]+'">'+_anEsc(r.g)+'</span>',r.k+' / '+r.n,Math.round(100*r.k/r.n)]))+
+    (p!=null?'<div class="hint" style="font-size:13px;margin-top:4px">Fisher exact p = '+_fmt(p,3)+'</div>':'')+
+    '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:14px">All strips ('+strips.length+')</summary>'+_anTable(['Animal','Strip label','Min from T1','HR','PPV %','SVCs','PVCs'],strips)+'</details></div>';
+}
+function _anCorr(){
+  const {cm}=_anGroups(); const xo=AN_LAB_X.find(x=>x[0]===AN_STATE.x)||AN_LAB_X[0], yo=AN_ECG_Y.find(y=>y[0]===AN_STATE.y)||AN_ECG_Y[0];
+  const pts=_anPairs(xo[0],yo[0],AN_STATE.win); const sp=_anSpearman(pts.map(p=>p.x),pts.map(p=>p.y));
+  const nA=new Set(pts.map(p=>p.id)).size;
+  const sel=(id,opts,cur)=>'<select onchange="anSet(\''+id+'\',this.value)" style="font-size:15px;padding:6px;border:1px solid var(--line);border-radius:6px">'+opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===cur?' selected':'')+'>'+_anEsc(o[1])+'</option>').join('')+'</select>';
+  return '<div class="card"><b style="font-size:16px">E. ECG &harr; lab correlation (hypothesis exploration)</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Each strip is paired with the nearest i-STAT draw of the same animal within the window. Measured intervals (QRS, QT, QTc, PR) pair with labs at the same timepoint. Spearman &rho; is shown for orientation only: repeated strips from one animal are not independent, so treat p as descriptive until a mixed model is used.</div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">Lab (x) '+sel('x',AN_LAB_X,xo[0])+' ECG (y) '+sel('y',AN_ECG_Y,yo[0])+' window '+sel('win',[['10','&plusmn;10 min'],['15','&plusmn;15 min'],['30','&plusmn;30 min']].map(o=>[o[0],o[1].replace('&plusmn;','±')]),String(AN_STATE.win))+'</div>'+
+    _anScatter(pts,xo[1]+(xo[2]?' ('+xo[2]+')':''),yo[1]+(yo[2]?' ('+yo[2]+')':''),cm)+
+    '<div style="font-size:14px;margin-top:6px">'+(sp?('Spearman &rho; = <b>'+_fmt(sp.rho,2)+'</b>, n = '+sp.n+' pairs from '+nA+' animals, p = '+_fmt(sp.p,3)+' (descriptive)'):(pts.length+' pairs from '+nA+' animals; need at least 4 pairs for &rho;'))+'</div>'+
+    '<div class="hint" style="font-size:13px;margin-top:4px">Starting pairs: K &harr; QRS, iCa &harr; QTc, lactate or pH &harr; ectopy. QRS/QT need hand-measured intervals (Timeline &amp; Labs &rarr; ECG measurements).</div></div>';
+}
+function anSet(k,v){ AN_STATE[k]=(k==='win')?(+v||15):v; try{ localStorage.setItem('auravyx_an_state',JSON.stringify(AN_STATE)); }catch(e){} const c=document.getElementById('anCorr'); if(c) c.innerHTML=_anCorr(); }
+window.anSet=anSet;
+function exportAnalysisCSV(){
+  const q=x=>'"'+String(x==null?'':x).replace(/"/g,"'")+'"'; const L=['# (c) 2026 HAKOYA LLC. All rights reserved. Auravyx analysis export '+nowTs()];
+  L.push('section,animal,group,analyte,BL,EOS,delta,BL_tp,EOS_tp');
+  _anAnimals().forEach(a=>AN_CHEM.forEach(([,list])=>list.forEach(([k,lab])=>{ const p=_anChemPair(a,k); if(!p.bl&&!p.eos) return;
+    L.push(['chem',a.id,q(groupOf(a)),lab,p.bl?p.bl.v:'',p.eos?p.eos.v:'',(p.bl&&p.eos)?_fmt(p.eos.v-p.bl.v,2):'',p.bl?_anTpLabel(p.bl.id):'',p.eos?_anTpLabel(p.eos.id):''].join(',')); })));
+  L.push('section,animal,group,strip_label,min_from_T1,HR,PPV,SVCs,PVCs,'+AN_LAB_X.map(x=>x[0]+'_near').join(','));
+  _anAnimals().forEach(a=>(a.ecg||[]).forEach(e=>{ const m=_anStripMin(a,e);
+    L.push(['ecg',a.id,q(groupOf(a)),q(e.label||''),m==null?'':Math.round(m),_anStripVal(e,'HR')??'',_anStripVal(e,'PPV')??'',_anStripVal(e,'SVCs')??'',_anStripVal(e,'PVCs')??''].concat(AN_LAB_X.map(x=>{ const l=m==null?null:_anLabNear(a,m,x[0],AN_STATE.win); return l?l.v:''; })).join(',')); }));
+  download('auravyx_analysis_export.csv',L.join('\n'),'text/csv');
+}
+window.exportAnalysisCSV=exportAnalysisCSV;
+function renderAnalysis(){
+  const host=document.getElementById('analysisBody'); if(!host) return;
+  const {groups}=_anGroups();
+  let h='<div class="hint" style="font-size:13px;margin-bottom:8px">Groups in use: '+groups.map(_anEsc).join(' &middot; ')+' (change on the Trends tab group buttons). Demo animals are excluded. <button class="btn sm" style="width:auto;margin-left:8px" onclick="exportAnalysisCSV()">Export analysis (CSV)</button></div>';
+  const parts=[_anCompleteness,_anChem,_anCbc,_anEcg];
+  parts.forEach(f=>{ try{ h+=f(); }catch(e){ console.error('analysis',e); h+='<div class="card hint">Section error: '+_anEsc(e.message)+'</div>'; } });
+  h+='<div id="anCorr">'+(()=>{ try{ return _anCorr(); }catch(e){ console.error(e); return ''; } })()+'</div>';
+  host.innerHTML=h;
+}
+window.renderAnalysis=renderAnalysis;
+
 (function(){
   function showTab(name){
     document.querySelectorAll('.tabbtn').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
     document.querySelectorAll('.col[data-panel]').forEach(c=>c.classList.toggle('active', c.dataset.panel===name));
     var body=document.querySelector('.body'); if(body) body.scrollTop=0;
     if(name==='log' && window.renderStudyLog) renderStudyLog();
+    if(name==='analysis' && window.renderAnalysis) renderAnalysis();
   }
   document.querySelectorAll('.tabbtn').forEach(b=>{
     b.addEventListener('click',()=>showTab(b.dataset.tab));
