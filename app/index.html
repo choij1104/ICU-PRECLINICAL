@@ -7128,7 +7128,7 @@ function _anCompleteness(){
     return ['<b>'+_anEsc(a.id)+'</b> <span style="color:'+(cm[groupOf(a)]||'inherit')+'">'+_anEsc(groupOf(a))+'</span>', ist+' / '+tps.length, ok(cbc), ok(p.bl), ok(p.eos), ecg||'<span style="color:#c0392b">0</span>', ecgm, vs||'<span style="color:#c0392b">0</span>'];
   });
   const flags=[]; const re=/(dextrose|deviation|missed|wrong blood|did not give|not recorded|arrow-flagged)/i;
-  _anAnimals().forEach(a=>{ const t=(a.info&&a.info.plan)||''; t.split(/(?<=\.)\s+/).forEach(s=>{ if(re.test(s)) flags.push('<b>'+_anEsc(a.id)+'</b>: '+_anEsc(s.trim())); }); });
+  _anAnimals().forEach(a=>{ const t=(a.info&&a.info.plan)||''; t.split(/(?<=\.)\s+/).forEach(s=>{ if(re.test(s) && !/(no dextrose|dextrose NA)/i.test(s)) flags.push('<b>'+_anEsc(a.id)+'</b>: '+_anEsc(s.trim())); }); });
   return '<div class="card"><b style="font-size:16px">A. Data completeness</b><div class="hint" style="font-size:13px;margin:4px 0 8px">i-STAT = timepoints with lactate. Chem BL = pre-injury VS2 draw; Chem EOS = VS2 draw after deflation. ECG strips = monitor printouts; measured = hand-measured intervals.</div>'+
     _anTable(['Animal','i-STAT','CBC','Chem BL','Chem EOS','ECG strips','ECG measured','10-min rows'],rows)+
     (flags.length?'<div style="margin-top:10px;font-size:14px"><b>Notes flagged in the source record</b> <span class="hint" style="font-size:12px">(keyword match in the animal notes; review before analysis)</span><ul style="margin:6px 0 0 18px;padding:0">'+flags.map(f=>'<li style="margin:3px 0">'+f+'</li>').join('')+'</ul></div>':'')+'</div>';
@@ -7226,6 +7226,7 @@ function _anCorr(){
   return '<div class="card"><b style="font-size:16px">E. ECG &harr; lab correlation (hypothesis exploration)</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Each strip is paired with the nearest i-STAT draw of the same animal within the window. Measured intervals (QRS, QT, QTc, PR) pair with labs at the same timepoint. Spearman &rho; is shown for orientation only: repeated strips from one animal are not independent, so treat p as descriptive until a mixed model is used.</div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:8px">Lab (x) '+sel('x',AN_LAB_X,xo[0])+' ECG (y) '+sel('y',AN_ECG_Y,yo[0])+' window '+sel('win',[['10','&plusmn;10 min'],['15','&plusmn;15 min'],['30','&plusmn;30 min']].map(o=>[o[0],o[1].replace('&plusmn;','±')]),String(AN_STATE.win))+'</div>'+
     _anScatter(pts,xo[1]+(xo[2]?' ('+xo[2]+')':''),yo[1]+(yo[2]?' ('+yo[2]+')':''),cm)+
+    '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:4px">'+[...new Set(pts.map(p=>p.g))].map(g=>'<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+(cm[g]||'#888')+';margin-right:4px"></span>'+_anEsc(g)+'</span>').join('')+'</div>'+
     '<div style="font-size:14px;margin-top:6px">'+(sp?('Spearman &rho; = <b>'+_fmt(sp.rho,2)+'</b>, n = '+sp.n+' pairs from '+nA+' animals, p = '+_fmt(sp.p,3)+' (descriptive)'):(pts.length+' pairs from '+nA+' animals; need at least 4 pairs for &rho;'))+'</div>'+
     '<div class="hint" style="font-size:13px;margin-top:4px">Starting pairs: K &harr; QRS, iCa &harr; QTc, lactate or pH &harr; ectopy. QRS/QT need hand-measured intervals (Timeline &amp; Labs &rarr; ECG measurements).</div></div>';
 }
