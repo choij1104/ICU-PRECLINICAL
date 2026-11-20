@@ -87,6 +87,9 @@
       with a "Recalculating" notice. Tukey p-values are cached and computed on
       a lighter grid (max |error| vs scipy 7e-6), so a full redraw with four
       groups and 38 parameters no longer freezes the page for ~7 s.
+  v5.15 (2026-11-20) - Analysis: measured QRS/QT/QTcF per monitor strip (e.m)
+    paired with the nearest lab draw; EOS rule reads the protocol timeline
+    (second half) so any protocol works; strip table shows QRS/QT.
   v5.14 (2026-11-20) - Analysis tab (read-only): A data completeness and
     notes flagged in the record; B VS2 chemistry baseline vs end of study,
     paired delta by group (Welch / ANOVA), organ panels, upper-limit flag;
@@ -481,7 +484,7 @@
         <circle cx="172" cy="92" r="10" fill="#4FD1C5"/>
       </svg>
       <span class="dot"></span>
-      Auravyx Preclinical <small>Current &middot; v5.14</small>
+      Auravyx Preclinical <small>Current &middot; v5.15</small>
     </div>
     <div class="runclock" id="runclock" title="Elapsed since the animal went on the table. Tap to set the start time.">RUN&nbsp;TIME <b id="runtime">&mdash;</b><button id="runStopBtn" title="Stop the run clock (freezes elapsed - tap RUN TIME to resume)" style="display:none;margin-left:7px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:12px;line-height:1;cursor:pointer">&#9632;</button><button id="runResetBtn" title="Reset the run clock for a new animal" style="display:none;margin-left:5px;width:28px;height:28px;border-radius:5px;border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.1);color:#fff;font-size:13px;line-height:1;cursor:pointer">&#8635;</button></div>
     <input type="file" id="uploadPhotoFile" class="hidden-file" accept="image/*">
@@ -653,7 +656,7 @@
       <div style="text-align:center;padding:18px 0 8px;color:var(--ink-faint);font-size:11px;line-height:1.6">
         &copy; 2026 <b style="color:var(--ink-dim)">HAKOYA LLC</b>. All rights reserved.<br>
         <span style="color:var(--ink-faint)">Proprietary &amp; confidential &mdash; licensed use only. No copying, redistribution, or reverse engineering.</span><br>
-        Auravyx Preclinical &middot; v5.14
+        Auravyx Preclinical &middot; v5.15
       </div>
     </main>
 
@@ -3976,7 +3979,7 @@ function statsReport(opts){
     'The groups compared were '+joinList(gList)+'. At each timepoint, between-group differences were tested with '+
     (k===2?"Welch's two-sample t-test":"one-way analysis of variance (ANOVA), followed by Tukey's honestly significant difference (HSD) test for pairwise comparisons")+
     '. A two-sided p < 0.05 was considered statistically significant. Timepoints were analyzed separately, without correction for repeated measures or multiple timepoints. ')+
-    (window.ecgMethodsText?ecgMethodsText():'')+(window._vsFallbackUsed&&window._vsFallbackUsed()?'Where peak inspiratory pressure or tidal volume was not recorded at a timepoint, the value from the 10-minute anesthesia record nearest that timepoint (within 10 minutes) was used. ':'')+'Analyses were performed in Auravyx Preclinical (v5.14).';
+    (window.ecgMethodsText?ecgMethodsText():'')+(window._vsFallbackUsed&&window._vsFallbackUsed()?'Where peak inspiratory pressure or tidal volume was not recorded at a timepoint, the value from the 10-minute anesthesia record nearest that timepoint (within 10 minutes) was used. ':'')+'Analyses were performed in Auravyx Preclinical (v5.15).';
   const results=[];
   TREND_SEL.forEach(key=>{
     const meta=opts.find(o=>o.key===key)||{label:key,unit:''};
@@ -7083,7 +7086,7 @@ const AN_CBC=[['WBC','WBC','10^9/L',11,22],['NEU','NEU','10^9/L',5,10],['LYM','L
   ['RBC','RBC','10^12/L',5,8],['Hgb_CBC','HGB','g/dL',10,16],['Hct_CBC','HCT','%',32,50],['MCV','MCV','fL',50,68],['MCH','MCH','pg',17,21],['MCHC','MCHC','g/dL',30,34],['PLT','PLT','10^9/L',325,715]];
 const AN_LAB_X=[['Lactate','Lactate','mmol/L'],['pH','pH',''],['K','K (i-STAT)','mmol/L'],['iCa','iCa','mmol/L'],['BE','BE','mmol/L'],['Glucose','Glucose','mg/dL'],['Hb','Hb','g/dL'],['HCO3','HCO3','mmol/L']];
 const AN_ECG_Y=[['HR','HR (strip)','bpm'],['PPV','PPV (strip)','%'],['ECT','Ectopy SVC+PVC (strip)','/min'],['SVCs','SVCs (strip)','/min'],['PVCs','PVCs (strip)','/min'],
-  ['m_QRS','QRS (measured)','ms'],['m_QT','QT (measured)','ms'],['m_QTc','QTc study (measured)','ms'],['m_PR','PR (measured)','ms']];
+  ['m_QRS','QRS (measured)','ms'],['m_QT','QT (measured)','ms'],['m_QTcF','QTcF Fridericia (measured)','ms'],['m_HR','HR (measured)','bpm']];
 var AN_STATE={x:'K',y:'ECT',win:15};
 try{ const s=JSON.parse(localStorage.getItem('auravyx_an_state')||'null'); if(s) AN_STATE=Object.assign(AN_STATE,s); }catch(e){}
 
@@ -7093,12 +7096,14 @@ function _anEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp
 function _anNum(v){ return _ecgNum(v); }
 function _anTpLabel(id){ const tp=((App.protocol&&App.protocol.timepoints)||[]).find(t=>t.id===id); return tp?((String(tp.label).match(/\bT\d+(?:\.\d+)?/i)||[tp.label])[0]):id; }
 function _anTpOff(id){ const tp=((App.protocol&&App.protocol.timepoints)||[]).find(t=>t.id===id); return tp&&tp.offsetMin!=null?tp.offsetMin:null; }
-/* chemistry draws: earliest pre-injury row (offset<=0) = BL, latest row with offset>=80 (post deflation) = EOS */
+/* chemistry draws: earliest row at or before baseline (offset<=0) = BL; latest row in the second half of the
+   protocol timeline = EOS. Works for any protocol: it reads the timepoint offsets, not H-CARE names. */
+function _anEosMin(){ const offs=((App.protocol&&App.protocol.timepoints)||[]).map(t=>t.offsetMin).filter(v=>v!=null); return offs.length?Math.max(...offs)/2:80; }
 function _anChemPair(a,key){
   const rows=a.rows||{}; let bl=null,eos=null;
   Object.keys(rows).forEach(id=>{ const v=_anNum(rows[id]&&rows[id]['lab_'+key]); if(v==null) return; const off=_anTpOff(id); if(off==null) return;
     if(off<=0 && (!bl||off<bl.off)) bl={v,off,id};
-    if(off>=80 && (!eos||off>eos.off)) eos={v,off,id}; });
+    if(off>=_anEosMin() && (!eos||off>eos.off)) eos={v,off,id}; });
   return {bl,eos};
 }
 function _anTable(head,rows,opts){
@@ -7179,8 +7184,15 @@ function _anLabNear(a,minRun,key,win){
 function _anPairs(xKey,yKey,win){
   const pts=[];
   _anAnimals().forEach(a=>{
-    if(yKey.startsWith('m_')){ const nm=yKey.slice(2);
-      Object.keys(a.ecgm||{}).forEach(tp=>{ const y=ecgVal(a,tp,nm); const x=_anNum(a.rows&&a.rows[tp]&&a.rows[tp]['lab_'+xKey]); if(x!=null&&y!=null) pts.push({x,y,id:a.id,g:groupOf(a),lab:_anTpLabel(tp)}); });
+    if(yKey.startsWith('m_')){ const nm=yKey.slice(2); const used={};
+      // measured intervals stored on each monitor strip (e.m), paired with the nearest lab draw
+      (a.ecg||[]).forEach(e=>{ const m=e&&e.m; if(!m) return; let y=_anNum(m[nm]);
+        if(nm==='QTcF'){ const qt=_anNum(m.QT), rr=_anNum(m.RR); y=(qt!=null&&rr)?qt/Math.cbrt(rr/1000):null; }
+        if(y==null) return; const mm=_anStripMin(a,e); if(mm==null) return; const l=_anLabNear(a,mm,xKey,win); if(!l) return;
+        used[e.time]=1; pts.push({x:l.v,y,id:a.id,g:groupOf(a),lab:(e.label||'')+' vs '+_anTpLabel(l.id)+' ('+Math.round(l.dt)+' min)'}); });
+      // hand measurements entered per timepoint (ECG measurements table) that are not from a stored strip
+      Object.keys(a.ecgm||{}).forEach(tp=>{ const em=a.ecgm[tp]; if(em&&em.strip&&Object.keys(used).some(t=>String(em.strip).indexOf(t)>=0)) return;
+        const y=ecgVal(a,tp,nm); const x=_anNum(a.rows&&a.rows[tp]&&a.rows[tp]['lab_'+xKey]); if(x!=null&&y!=null) pts.push({x,y,id:a.id,g:groupOf(a),lab:_anTpLabel(tp)}); });
     } else {
       (a.ecg||[]).forEach(e=>{ const y=_anStripVal(e,yKey); if(y==null) return; const m=_anStripMin(a,e); if(m==null) return; const l=_anLabNear(a,m,xKey,win); if(!l) return;
         pts.push({x:l.v,y,id:a.id,g:groupOf(a),lab:(e.label||'')+' vs '+_anTpLabel(l.id)+' ('+Math.round(l.dt)+' min)'}); });
@@ -7212,11 +7224,11 @@ function _anEcg(){
   const {groups,cm}=_anGroups(); const A=_anAnimals();
   const inc=groups.map(g=>{ let n=0,k=0; A.filter(a=>groupOf(a)===g).forEach(a=>{ const vals=(a.ecg||[]).map(e=>_anStripVal(e,'ECT')).filter(v=>v!=null); if(!vals.length) return; n++; if(vals.some(v=>v>0)) k++; }); return {g,n,k}; }).filter(r=>r.n);
   let p=null; if(inc.length===2) p=fisher2x2(inc[0].k,inc[0].n-inc[0].k,inc[1].k,inc[1].n-inc[1].k);
-  const strips=[]; A.forEach(a=>(a.ecg||[]).forEach(e=>{ const m=_anStripMin(a,e); strips.push(['<b>'+_anEsc(a.id)+'</b>',_anEsc(e.label||''),m==null?'-':Math.round(m),_anStripVal(e,'HR')??'-',_anStripVal(e,'PPV')??'-',_anStripVal(e,'SVCs')??'-',_anStripVal(e,'PVCs')??'-']); }));
+  const strips=[]; A.forEach(a=>(a.ecg||[]).forEach(e=>{ const m=_anStripMin(a,e); const mm=e.m||{}; strips.push(['<b>'+_anEsc(a.id)+'</b>',_anEsc(e.label||''),m==null?'-':Math.round(m),_anStripVal(e,'HR')??'-',_anStripVal(e,'PPV')??'-',_anStripVal(e,'SVCs')??'-',_anStripVal(e,'PVCs')??'-',mm.QRS??'-',mm.QT??'-']); }));
   return '<div class="card"><b style="font-size:16px">D. ECG monitor strips</b><div class="hint" style="font-size:13px;margin:4px 0 8px">Monitor summary values printed on each strip. Minutes are from T1 (baseline). Ectopy = SVCs + PVCs per minute. An animal counts as "ectopy" if any strip shows &gt;0. Fisher exact p for 2 groups.</div>'+
     _anTable(['Group','Animals with ectopy / with strips','%'],inc.map(r=>['<span style="color:'+cm[r.g]+'">'+_anEsc(r.g)+'</span>',r.k+' / '+r.n,Math.round(100*r.k/r.n)]))+
     (p!=null?'<div class="hint" style="font-size:13px;margin-top:4px">Fisher exact p = '+_fmt(p,3)+'</div>':'')+
-    '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:14px">All strips ('+strips.length+')</summary>'+_anTable(['Animal','Strip label','Min from T1','HR','PPV %','SVCs','PVCs'],strips)+'</details></div>';
+    '<details style="margin-top:8px"><summary style="cursor:pointer;font-size:14px">All strips ('+strips.length+')</summary>'+_anTable(['Animal','Strip label','Min from T1','HR','PPV %','SVCs','PVCs','QRS ms','QT ms'],strips)+'<div class="hint" style="font-size:12px;margin-top:4px">QRS/QT: median-beat measurement from the scanned strip (reader shown in the record). QT left blank where the T wave was too flat or its end could not be placed.</div>'+'</details></div>';
 }
 function _anCorr(){
   const {cm}=_anGroups(); const xo=AN_LAB_X.find(x=>x[0]===AN_STATE.x)||AN_LAB_X[0], yo=AN_ECG_Y.find(y=>y[0]===AN_STATE.y)||AN_ECG_Y[0];
@@ -7228,7 +7240,7 @@ function _anCorr(){
     _anScatter(pts,xo[1]+(xo[2]?' ('+xo[2]+')':''),yo[1]+(yo[2]?' ('+yo[2]+')':''),cm)+
     '<div style="display:flex;gap:12px;flex-wrap:wrap;font-size:13px;margin-top:4px">'+[...new Set(pts.map(p=>p.g))].map(g=>'<span><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+(cm[g]||'#888')+';margin-right:4px"></span>'+_anEsc(g)+'</span>').join('')+'</div>'+
     '<div style="font-size:14px;margin-top:6px">'+(sp?('Spearman &rho; = <b>'+_fmt(sp.rho,2)+'</b>, n = '+sp.n+' pairs from '+nA+' animals, p = '+_fmt(sp.p,3)+' (descriptive)'):(pts.length+' pairs from '+nA+' animals; need at least 4 pairs for &rho;'))+'</div>'+
-    '<div class="hint" style="font-size:13px;margin-top:4px">Starting pairs: K &harr; QRS, iCa &harr; QTc, lactate or pH &harr; ectopy. QRS/QT need hand-measured intervals (Timeline &amp; Labs &rarr; ECG measurements).</div></div>';
+    '<div class="hint" style="font-size:13px;margin-top:4px">Starting pairs: K &harr; QRS, iCa &harr; QTcF, lactate or pH &harr; ectopy. Measured QRS/QT come from the strips (auto-measured, verify) or from the ECG measurements table.</div></div>';
 }
 function anSet(k,v){ AN_STATE[k]=(k==='win')?(+v||15):v; try{ localStorage.setItem('auravyx_an_state',JSON.stringify(AN_STATE)); }catch(e){} const c=document.getElementById('anCorr'); if(c) c.innerHTML=_anCorr(); }
 window.anSet=anSet;
